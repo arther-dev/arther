@@ -22,14 +22,17 @@ client keys; the DSN is a public ingest key). Secrets are never written to this 
   `SENTRY_DSN/ORG/PROJECT/AUTH_TOKEN`) — which also closes the two “Manual” secret
   items below. Note: `SENTRY_AUTH_TOKEN` is **Production-only**; add it (+ORG/PROJECT)
   to Preview per step 2 so preview builds get source maps too.
-- **F0.4 acceptance: fired, found a build bug, fix landed.** `/sentry-check?go=1` on
-  the production deploy reached Sentry (ARTHER-APP-1 server-side, ARTHER-APP-2 client
-  digest error) — but with **minified frames**: Turborepo strict env mode stripped the
-  undeclared `SENTRY_*`/`SUPABASE_*` vars from `app#build` (`[@sentry/nextjs] No auth
-  token provided. Will not upload source maps`), and pnpm blocked the `@sentry/cli`
-  install script. Fixed in repo: `turbo.json` build `env`/`passThroughEnv` +
-  `@sentry/cli` in `pnpm.onlyBuiltDependencies`. **Re-run the acceptance after the
-  next production deploy** and confirm source-mapped frames before ticking M1.
+- **F0.4 acceptance: PASSED (2026-06-11, second run).** First run (`/sentry-check?go=1`
+  on production) reached Sentry (ARTHER-APP-1/2) but with **minified frames**: Turborepo
+  strict env mode stripped the undeclared `SENTRY_*`/`SUPABASE_*` vars from `app#build`
+  (`[@sentry/nextjs] No auth token provided. Will not upload source maps`), and pnpm
+  blocked the `@sentry/cli` install script. Fixed in repo (`turbo.json` build
+  `env`/`passThroughEnv` + `@sentry/cli` in `pnpm.onlyBuiltDependencies`, PR #10); the
+  PR's preview build then logged `Successfully uploaded source maps` ×3 (node/edge/client)
+  and the re-fired probe produced **ARTHER-APP-3 with fully source-mapped frames**
+  (`page.tsx:16:11 (SentryCheck)` + source context). Production gets source maps on the
+  first deploy that includes the fix. Preview also serves the app over HTTPS on a real
+  URL (auth middleware gates `/design-tokens` → login card, HSTS on) — F0.3 step 3 ✓.
 - **Auth settings (step 3): still unverified** — not readable via connector and
   `*.supabase.co` is outside this session's network allowlist; confirm in the
   dashboard (email confirmation on, Google OAuth, site URL = Vercel app URL).
@@ -65,8 +68,9 @@ no project-creation or env-var tools. Team: “Arther” (formerly “Arther's p
 - `SENTRY_ORG=arther` · `SENTRY_PROJECT=arther-app`
 - ☒ **Manual:** `SENTRY_AUTH_TOKEN` (step 3) — org settings → Auth Tokens; secret, Vercel
   env only. *Done — set on Production (2026-06-11 update); add to Preview too.*
-- ☐ Acceptance test (step 4): fired 2026-06-11 — events arrived but frames unmapped
-  (turbo strict env, fixed in repo); **re-run after the next production deploy**.
+- ☒ Acceptance test (step 4): **passed 2026-06-11** — ARTHER-APP-3 on the PR #10
+  preview deploy, source-mapped frames (`page.tsx:16:11 (SentryCheck)`). First attempt
+  was unmapped (turbo strict env — fixed in repo, see status update above).
 
 ## F0.2 — Supabase
 
