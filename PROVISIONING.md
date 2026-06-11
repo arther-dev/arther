@@ -6,6 +6,43 @@ executed by hand, or by an agent session that has the Supabase / Vercel / Sentry
 connectors attached. Closing all three closes milestone **M1**'s infrastructure gate
 (IMPLEMENTATION_PLAN.md §4/§6).
 
+## Status — executed 2026-06-11 (agent session, MCP connectors)
+
+Everything reachable through the Supabase / Sentry connectors is done; the rest needs
+dashboard access. Values below are **public-tier** (anon/publishable keys are RLS-guarded
+client keys; the DSN is a public ingest key). Secrets are never written to this repo.
+
+**F0.2 Supabase — done (except auth config + service keys):**
+
+| | dev | prod |
+|---|---|---|
+| Project ref | `ncarijtpzriupskfriot` | `uobovmuggodidiqrsqss` |
+| `SUPABASE_URL` | `https://ncarijtpzriupskfriot.supabase.co` | `https://uobovmuggodidiqrsqss.supabase.co` |
+| Region | us-west-2 (pre-existing) | us-west-1 (us-west-2 not offered via connector; same US jurisdiction) |
+| Schema | all 11 migrations applied; verified 60 tables, RLS on 60/60, seeds + RPCs | same, identical counts |
+
+- `SUPABASE_ANON_KEY` (legacy) and the modern publishable key are retrievable from the
+  dashboard (Project Settings → API Keys) or via MCP `get_publishable_keys`; dev publishable:
+  `sb_publishable_r77jBVfZtza3EZ9DNXMtTg_JXh2IA0D`, prod publishable:
+  `sb_publishable_K0zsgmzdDhD9RXKGhD9kOQ_PS6yD6cj`.
+- ☐ **Manual:** `SUPABASE_SERVICE_ROLE_KEY` per project (dashboard → API Keys; secret — `.env`/Vercel only).
+- ☐ **Manual:** Auth settings per project (step 3): email+password with confirmation, Google OAuth, site URL.
+- ☐ **Blocked on plan:** PITR/backups (step 4) — org is on the **free** plan; PITR requires a paid plan. Decide before real prod data.
+
+**F0.3 Vercel — manual remainder:** the Vercel connector exposes no project-creation or
+env-var tools, so the two-project repo import below (with per-app Root Directory + env
+vars) must be done in the Vercel dashboard. Team exists: “Arther's projects”
+(`team_T6BMoZyEWNHn7Iw1CELDGh3R`).
+
+**F0.4 Sentry — done (except auth token):** project `arther/arther-app` created
+(platform `javascript-nextjs`, team `arther`).
+
+- `SENTRY_DSN` / `NEXT_PUBLIC_SENTRY_DSN`:
+  `https://14850d72b17273e6952325e82272067d@o4511544438226944.ingest.us.sentry.io/4511544541249536`
+- `SENTRY_ORG=arther` · `SENTRY_PROJECT=arther-app`
+- ☐ **Manual:** `SENTRY_AUTH_TOKEN` (step 3) — org settings → Auth Tokens; secret, Vercel env only.
+- ☐ Acceptance test (step 4) runs once a Vercel preview deploy exists.
+
 ## F0.2 — Supabase
 
 Two projects, **dev and prod separate** (vibecode gate: prod DB never shared with dev).
