@@ -15,6 +15,7 @@ export type ProductId = Branded<string, 'ProductId'>;
 export type ComponentId = Branded<string, 'ComponentId'>;
 export type SpecFieldId = Branded<string, 'SpecFieldId'>;
 export type FieldVersionId = Branded<string, 'FieldVersionId'>;
+export type UnitId = Branded<string, 'UnitId'>;
 export type ReleaseId = Branded<string, 'ReleaseId'>;
 export type DocumentId = Branded<string, 'DocumentId'>;
 
@@ -27,5 +28,6 @@ export const productIdSchema = uuid.transform((v) => v as ProductId);
 export const componentIdSchema = uuid.transform((v) => v as ComponentId);
 export const specFieldIdSchema = uuid.transform((v) => v as SpecFieldId);
 export const fieldVersionIdSchema = uuid.transform((v) => v as FieldVersionId);
+export const unitIdSchema = uuid.transform((v) => v as UnitId);
 export const releaseIdSchema = uuid.transform((v) => v as ReleaseId);
 export const documentIdSchema = uuid.transform((v) => v as DocumentId);
