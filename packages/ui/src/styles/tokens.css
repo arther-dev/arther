@@ -1,0 +1,110 @@
+/**
+ * Arther design tokens — two-tier system, semantic layer only.
+ * Source of truth: Figma DS `GESXbRrqd3dYh8XkFBLpeC` via
+ * Development/Handoff/01-foundations-design-system.md (2026-06-08 republish).
+ *
+ * Components and screens read ONLY these semantic vars — never raw hex,
+ * never primitives (Handoff 01 §1). Theme switches by remapping values under
+ * [data-theme], not by editing components.
+ */
+
+:root,
+[data-theme='dark'] {
+  /* --- Backgrounds (surface ramp, Handoff 01 §2.1) --- */
+  --bg-canvas: #0e0e10;
+  --bg-surface: #141416;
+  --bg-panel: #16161a;
+  --bg-raised: #1a1a1f;
+  --bg-active: #1c1c20;
+  --bg-inset: #232328;
+
+  /* --- Text (§2.2) --- */
+  --text-primary: #ececee;
+  --text-secondary: #9a9aa2;
+  --text-tertiary: #8a8a90; /* AA on all six surfaces; prefer secondary for dense small meta on inset */
+  --text-disabled: #58585e; /* contrast-exempt; disabled control text only */
+  --text-link: #378add;
+
+  /* --- Borders (§2.3) --- */
+  --border-subtle: #1e1e22; /* decorative dividers only — never interactive boundaries */
+  --border-strong: #2a2a30;
+  --border-input: #6e6e76; /* resting form-control boundary */
+  --border-focus: #378add; /* :focus-visible ring everywhere */
+
+  /* --- Status (§2.4) — shared across modes by design --- */
+  --status-live: #5e9e78;
+  --status-stale: #b9892f;
+  --status-review: #378add;
+  --status-draft: #9a9aa2;
+  --status-unpublished: #9a9aa2;
+
+  /* --- Safety (§2.4) — NON-THEMEABLE per ISO 82079 / ANSI Z535.6.
+         Brand Profiles and themes must never recolor these. --- */
+  --safety-warn-bg: #fbeeea;
+  --safety-warn-text: #b23b22;
+  --safety-warn-border: #b23b22;
+}
+
+[data-theme='light'] {
+  /* Light-mode structural values are NOT in the repo (Handoff 01 §2: export
+     from Figma Dev Mode). Required before the Phase 2 editor paper island —
+     IMPLEMENTATION_PLAN.md §7.10. Known value so far: */
+  --text-link: #1a66c9; /* 4.9:1 on paper (a11y audit P2 fix) */
+}
+
+:root {
+  /* --- Typography (§3): Instrument Sans only; 400/500/600 only --- */
+  --font-ui: 'Instrument Sans', system-ui, sans-serif;
+
+  /* 12 text styles: size / weight / line-height */
+  --type-display: 600 28px/1.2 var(--font-ui);
+  --type-h1: 600 24px/1.25 var(--font-ui);
+  --type-h2: 600 20px/1.3 var(--font-ui);
+  --type-title: 500 18px/1.35 var(--font-ui);
+  --type-body-large: 500 17px/1.45 var(--font-ui);
+  --type-body: 400 16px/1.5 var(--font-ui);
+  --type-body-strong: 500 16px/1.5 var(--font-ui);
+  --type-label: 400 14px/1.4 var(--font-ui);
+  --type-label-strong: 500 14px/1.4 var(--font-ui);
+  --type-caption: 400 13px/1.35 var(--font-ui);
+  --type-caption-strong: 500 13px/1.35 var(--font-ui);
+  --type-overline: 600 11.5px/1.2 var(--font-ui); /* +6% tracking via --tracking-overline */
+  --tracking-overline: 0.06em;
+
+  /* --- Spacing (§4): eleven steps, t-shirt named --- */
+  --space-2xs: 2px;
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 20px;
+  --space-2xl: 24px;
+  --space-3xl: 32px;
+  --space-4xl: 40px;
+  --space-5xl: 48px;
+  --space-6xl: 64px;
+
+  /* --- Radius (§5): rounded corners only with full borders --- */
+  --radius-2xs: 2px;
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-pill: 999px;
+
+  /* --- Elevation (§6): exact values pending Dev Mode export; no glows/gradients --- */
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.35);
+  --shadow-panel: 0 4px 12px rgb(0 0 0 / 0.4);
+  --shadow-overlay: 0 12px 32px rgb(0 0 0 / 0.5);
+
+  /* --- Sizing (§7): control heights that drive density + tap targets --- */
+  --size-rail-item: 44px;
+  --size-field-row: 48px;
+  --size-nav-row: 40px;
+  --size-control: 36px; /* Button / Tab */
+  --size-icon-button: 34px;
+  --size-avatar: 30px;
+  --size-spec-token: 24px;
+  --size-hit-area-min: 24px; /* WCAG 2.2 AA floor for every icon-only control */
+}

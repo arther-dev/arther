@@ -1,0 +1,16 @@
+{
+  "name": "@arther/db-tests",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test:db": "vitest run"
+  },
+  "devDependencies": {
+    "postgres": "^3.4.5",
+    "typescript": "^5.8.0",
+    "vitest": "^3.1.0"
+  }
+}
