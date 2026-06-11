@@ -1,0 +1,19 @@
+# dependencies
+node_modules/
+
+# builds
+.next/
+.turbo/
+dist/
+out/
+coverage/
+
+# env — never commit secrets (see .env.example)
+.env
+.env.*
+!.env.example
+
+# misc
+.DS_Store
+*.log
+*.tsbuildinfo
