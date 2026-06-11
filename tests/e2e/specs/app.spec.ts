@@ -2,9 +2,9 @@ import { expect, test } from '@playwright/test';
 
 const APP = 'http://localhost:3000';
 
-test.describe('authenticated app shell (token swatch placeholder)', () => {
+test.describe('design tokens reference page', () => {
   test('renders the dark theme with the design-token page', async ({ page }) => {
-    await page.goto(APP);
+    await page.goto(`${APP}/design-tokens`);
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
     await expect(page.getByRole('heading', { level: 1, name: 'Arther' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Surface ramp' })).toBeVisible();
@@ -15,14 +15,14 @@ test.describe('authenticated app shell (token swatch placeholder)', () => {
   });
 
   test('renders the five status pills with visible labels (never color-only)', async ({ page }) => {
-    await page.goto(APP);
+    await page.goto(`${APP}/design-tokens`);
     for (const status of ['live', 'stale', 'review', 'draft', 'unpublished']) {
       await expect(page.locator(`.ui-status-pill--${status}`)).toHaveText(status);
     }
   });
 
   test('button atoms are interactive and keyboard-focusable', async ({ page }) => {
-    await page.goto(APP);
+    await page.goto(`${APP}/design-tokens`);
     const primary = page.getByRole('button', { name: 'Primary' });
     await expect(primary).toBeEnabled();
     await expect(page.getByRole('button', { name: 'Disabled' })).toBeDisabled();
