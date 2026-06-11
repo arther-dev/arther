@@ -335,3 +335,51 @@
   gap: var(--space-md);
   margin-top: var(--space-sm);
 }
+
+/* --- Text field (DS atom; resting border = border/input, §2.3/§11.4) --- */
+.ui-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+.ui-field__label {
+  font: var(--type-label-strong);
+  color: var(--text-secondary);
+}
+.ui-field__input {
+  height: var(--size-nav-row);
+  padding: 0 var(--space-md);
+  font: var(--type-body);
+  color: var(--text-primary);
+  background: var(--bg-inset);
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-xs);
+}
+.ui-field__input::placeholder {
+  color: var(--text-tertiary);
+}
+.ui-field__input:hover {
+  border-color: var(--text-tertiary);
+}
+.ui-field__input:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 1px;
+}
+.ui-field__input--error {
+  border-color: var(--safety-warn-text);
+}
+.ui-field__input:disabled {
+  color: var(--text-disabled);
+  border-color: var(--border-strong);
+  cursor: not-allowed;
+}
+.ui-field__error {
+  font: var(--type-caption);
+  color: var(--safety-warn-text);
+  margin: 0;
+}
+.ui-field__hint {
+  font: var(--type-caption);
+  color: var(--text-tertiary);
+  margin: 0;
+}

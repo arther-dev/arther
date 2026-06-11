@@ -13,6 +13,7 @@ export {
 } from './shell/icons';
 export { EmptyState, type EmptyStateProps } from './components/EmptyState';
 export { Button, type ButtonProps } from './components/Button';
+export { TextField, type TextFieldProps } from './components/TextField';
 export { buttonVariants, type ButtonVariantProps } from './components/button-variants';
 export { Divider } from './components/Divider';
 export { Skeleton } from './components/Skeleton';
