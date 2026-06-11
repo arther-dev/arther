@@ -1,0 +1,113 @@
+/**
+ * Starter atom styles — semantic token vars only (no raw hex; Handoff 01 §10.2).
+ * One class block per DS component; variant axes map to modifier classes
+ * composed by the cva maps in ../components.
+ */
+
+/* --- Button (DS atom: Variant × Size; Default/Hover/Pressed/Focus/Disabled) --- */
+.ui-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  height: var(--size-control);
+  padding: 0 var(--space-lg);
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  font: var(--type-label-strong);
+  color: var(--text-primary);
+  background: transparent;
+  cursor: pointer;
+}
+.ui-btn:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+.ui-btn:disabled {
+  color: var(--text-disabled);
+  cursor: not-allowed;
+}
+.ui-btn--primary {
+  background: var(--bg-inset);
+  border-color: var(--border-strong);
+}
+.ui-btn--primary:hover:not(:disabled) {
+  background: var(--bg-active);
+}
+.ui-btn--secondary {
+  border-color: var(--border-input);
+}
+.ui-btn--secondary:hover:not(:disabled) {
+  background: var(--bg-raised);
+}
+.ui-btn--ghost:hover:not(:disabled) {
+  background: var(--bg-raised);
+}
+.ui-btn--sm {
+  height: 28px;
+  padding: 0 var(--space-md);
+  font: var(--type-caption-strong);
+}
+
+/* --- Status pill (DS atom: Semantic axis; label always present, never color-only) --- */
+.ui-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-2xs) var(--space-sm);
+  border-radius: var(--radius-pill);
+  font: var(--type-caption-strong);
+  color: var(--text-secondary);
+  background: var(--bg-inset);
+}
+.ui-status-pill::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: currentColor;
+}
+.ui-status-pill--live {
+  color: var(--status-live);
+}
+.ui-status-pill--stale {
+  color: var(--status-stale);
+}
+.ui-status-pill--review {
+  color: var(--status-review);
+}
+.ui-status-pill--draft {
+  color: var(--status-draft);
+}
+.ui-status-pill--unpublished {
+  color: var(--status-unpublished);
+}
+
+/* --- Divider (layout primitive; decorative only → border/subtle) --- */
+.ui-divider {
+  border: none;
+  border-top: 1px solid var(--border-subtle);
+  margin: 0;
+}
+
+/* --- Skeleton (layout primitive) --- */
+.ui-skeleton {
+  display: block;
+  background: var(--bg-inset);
+  border-radius: var(--radius-xs);
+  animation: ui-skeleton-pulse 1.6s ease-in-out infinite;
+}
+@keyframes ui-skeleton-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ui-skeleton {
+    animation: none;
+  }
+}
