@@ -1,110 +1,20 @@
 import Link from 'next/link';
 import {
   getActiveWorkspace,
+  listComponents,
+  listFieldsForComponents,
   listFieldsForProduct,
+  listProductComponents,
   listProducts,
   listUnits,
-  type SpecFieldRow,
-  type UnitRow,
 } from '@arther/db';
-import { formatFieldValue, type ProductId } from '@arther/types';
-import {
-  AppShell,
-  BoxIcon,
-  Button,
-  EmptyState,
-  GridIcon,
-  LocalRail,
-  Skeleton,
-  TagIcon,
-} from '@arther/ui';
+import type { ComponentId, ProductId } from '@arther/types';
+import { AppShell, Button, EmptyState, Skeleton } from '@arther/ui';
 import { getSupabaseServer } from '../../../lib/supabase/server';
 import { AddFieldForm } from './AddFieldForm';
+import { AttachComponentForm } from './ComponentForms';
 import { NewProductForm } from './NewProductForm';
-import { ScalarValueEditor } from './ScalarValueEditor';
-
-const RAIL = (
-  <LocalRail
-    items={[
-      { id: 'products', label: 'Products', icon: <BoxIcon />, active: true },
-      { id: 'library', label: 'Component Library', icon: <GridIcon /> },
-      { id: 'releases', label: 'Releases', icon: <TagIcon /> },
-    ]}
-  />
-);
-
-function FieldGrid({ fields, units }: { fields: SpecFieldRow[]; units: UnitRow[] }) {
-  const unitSymbol = new Map(units.map((u) => [u.id as string, u.symbol]));
-  let lastCategory = '';
-  return (
-    <table className="specs-grid">
-      <thead>
-        <tr>
-          <th scope="col">Field</th>
-          <th scope="col">Value</th>
-          <th scope="col">Source</th>
-          <th scope="col"></th>
-        </tr>
-      </thead>
-      <tbody>
-        {fields.map((field) => {
-          const categoryHeader =
-            field.category !== lastCategory ? (
-              <tr key={`cat-${field.category}`} className="specs-grid__category">
-                <th scope="colgroup" colSpan={4}>
-                  {field.category}
-                </th>
-              </tr>
-            ) : null;
-          lastCategory = field.category;
-          return (
-            <FragmentRow
-              key={field.id}
-              header={categoryHeader}
-              field={field}
-              units={units}
-              symbol={field.unit_id ? unitSymbol.get(field.unit_id) : undefined}
-            />
-          );
-        })}
-      </tbody>
-    </table>
-  );
-}
-
-function FragmentRow({
-  header,
-  field,
-  units,
-  symbol,
-}: {
-  header: React.ReactNode;
-  field: SpecFieldRow;
-  units: UnitRow[];
-  symbol?: string;
-}) {
-  const valueSymbol =
-    field.type === 'scalar' && field.value
-      ? units.find((u) => u.id === (field.value as { unit_id?: string }).unit_id)?.symbol
-      : symbol;
-  return (
-    <>
-      {header}
-      <tr>
-        <td>{field.name}</td>
-        <td>{formatFieldValue(field.type, field.value, valueSymbol)}</td>
-        <td className="specs-grid__meta">{field.source}</td>
-        <td>
-          {field.type === 'scalar' ? (
-            <ScalarValueEditor field={field} units={units} />
-          ) : (
-            <span className="specs-grid__meta">editor soon</span>
-          )}
-        </td>
-      </tr>
-    </>
-  );
-}
+import { CATEGORIES, FieldGrid, SpecsRail } from './shared';
 
 export default async function SpecsPage({
   searchParams,
@@ -117,7 +27,7 @@ export default async function SpecsPage({
   if (!supabase) {
     return (
       <AppShell
-        rail={RAIL}
+        rail={<SpecsRail active="products" />}
         navigator={
           <div aria-busy="true">
             <Skeleton style={{ height: 16, width: '70%', marginBottom: 8 }} />
@@ -139,7 +49,7 @@ export default async function SpecsPage({
   const workspace = await getActiveWorkspace(supabase);
   if (!workspace) {
     return (
-      <AppShell rail={RAIL}>
+      <AppShell rail={<SpecsRail active="products" />}>
         <EmptyState
           title="Create your workspace first"
           description="Specs live inside a workspace — set yours up and come back."
@@ -179,7 +89,7 @@ export default async function SpecsPage({
 
   if (!selected) {
     return (
-      <AppShell rail={RAIL} navigator={navigator}>
+      <AppShell rail={<SpecsRail active="products" />} navigator={navigator}>
         <EmptyState
           title="No products yet"
           description="Products and their shared components live here — the system of record your documents are generated from."
@@ -188,30 +98,67 @@ export default async function SpecsPage({
     );
   }
 
-  const [fields, units] = await Promise.all([
+  const [fields, units, edges, components] = await Promise.all([
     listFieldsForProduct(supabase, selected.id),
     listUnits(supabase, workspace.id),
+    listProductComponents(supabase, selected.id),
+    listComponents(supabase, workspace.id),
   ]);
-  const categories = [
-    'Electrical',
-    'Mechanical',
-    'Performance',
-    'Thermal',
-    'Environmental',
-    'Compliance',
-    'General',
-  ];
+  const componentFields = await listFieldsForComponents(
+    supabase,
+    edges.map((e) => e.component_id as ComponentId),
+  );
+  const attachable = components.filter((c) => !edges.some((e) => e.component_id === c.id));
 
   return (
-    <AppShell rail={RAIL} navigator={navigator}>
+    <AppShell rail={<SpecsRail active="products" />} navigator={navigator}>
       <div className="specs-content">
         <h1 className="specs-title">{selected.name}</h1>
-        {fields.length > 0 ? (
-          <FieldGrid fields={fields} units={units} />
-        ) : (
-          <p className="specs-grid__meta">No spec fields yet — add the first one below.</p>
-        )}
-        <AddFieldForm productId={selected.id} categories={categories} />
+
+        <section className="specs-section">
+          <h2 className="specs-section__title">Product fields</h2>
+          {fields.length > 0 ? (
+            <FieldGrid fields={fields} units={units} />
+          ) : (
+            <p className="specs-grid__meta">No product-level fields yet.</p>
+          )}
+          <AddFieldForm ownerKind="product" ownerId={selected.id} categories={CATEGORIES} />
+        </section>
+
+        <section className="specs-section">
+          <h2 className="specs-section__title">Components</h2>
+          {edges.map((edge) => (
+            <details key={edge.id} className="specs-component" open>
+              <summary className="specs-component__summary">
+                {edge.component_name}
+                <span className="specs-grid__meta">
+                  {' '}
+                  ×{edge.quantity}
+                  {edge.usage_count > 1 ? ` · shared — used in ${edge.usage_count} products` : ''}
+                </span>
+              </summary>
+              <FieldGrid fields={componentFields.get(edge.component_id) ?? []} units={units} />
+              <AddFieldForm
+                ownerKind="component"
+                ownerId={edge.component_id}
+                categories={CATEGORIES}
+              />
+            </details>
+          ))}
+          {edges.length === 0 ? (
+            <p className="specs-grid__meta">
+              No components attached — shared components carry one field history across every
+              product that uses them.
+            </p>
+          ) : null}
+          <AttachComponentForm productId={selected.id} components={attachable} />
+          {attachable.length === 0 && components.length === 0 ? (
+            <p className="specs-grid__meta">
+              The <Link href="/specs/library" className="specs-value-button">Component Library</Link> is
+              empty — create components there first.
+            </p>
+          ) : null}
+        </section>
       </div>
     </AppShell>
   );

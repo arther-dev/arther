@@ -214,3 +214,44 @@ body {
   outline: 2px solid var(--border-focus);
   outline-offset: 2px;
 }
+
+/* --- Specs sections + components (F6.2 slice) --- */
+.specs-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+.specs-section__title {
+  font: var(--type-h2);
+  margin: 0;
+}
+.specs-component {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--space-md) var(--space-lg);
+  background: var(--bg-surface);
+}
+.specs-component__summary {
+  font: var(--type-title);
+  cursor: pointer;
+  padding: var(--space-xs) 0;
+}
+.specs-component__summary:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+.specs-checks {
+  display: flex;
+  gap: var(--space-md);
+  border: none;
+  margin: 0;
+  padding: 0;
+  flex-wrap: wrap;
+}
+.specs-checks__item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  font: var(--type-label);
+  color: var(--text-primary);
+}
