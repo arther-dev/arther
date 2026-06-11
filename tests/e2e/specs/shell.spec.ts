@@ -35,15 +35,31 @@ test.describe('app shell frame (Handoff 02)', () => {
   test('Specs mounts rail + Navigator with the three IA views', async ({ page }) => {
     await page.goto(`${APP}/specs`);
     const rail = page.getByRole('navigation', { name: 'Views' });
-    await expect(rail.getByRole('button', { name: 'Products' })).toHaveAttribute(
+    await expect(rail.getByRole('link', { name: 'Products' })).toHaveAttribute(
       'aria-current',
       'page',
     );
-    await expect(rail.getByRole('button', { name: 'Component Library' })).toBeVisible();
+    await expect(rail.getByRole('link', { name: 'Component Library' })).toBeVisible();
     await expect(rail.getByRole('button', { name: 'Releases' })).toBeVisible();
     await expect(page.locator('.ui-shell__navigator')).toBeVisible();
     await expect(page.getByRole('heading', { name: 'No products yet' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Add product' })).toBeVisible();
+  });
+
+  test('the rail switches between Products and the Component Library', async ({ page }) => {
+    await page.goto(`${APP}/specs`);
+    await page.getByRole('link', { name: 'Component Library' }).click();
+    await expect(page).toHaveURL(`${APP}/specs/library`);
+    const rail = page.getByRole('navigation', { name: 'Views' });
+    await expect(rail.getByRole('link', { name: 'Component Library' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    await expect(
+      page.getByRole('heading', { name: 'Component Library' }),
+    ).toBeVisible();
+    await rail.getByRole('link', { name: 'Products' }).click();
+    await expect(page).toHaveURL(`${APP}/specs`);
   });
 
   test('shell controls are keyboard-reachable with a visible focus ring', async ({ page }) => {
@@ -51,7 +67,7 @@ test.describe('app shell frame (Handoff 02)', () => {
     const search = page.getByRole('button', { name: 'Search (⌘K)' });
     await search.focus();
     await expect(search).toBeFocused();
-    const products = page.getByRole('button', { name: 'Products' });
+    const products = page.getByRole('link', { name: 'Products' });
     await products.focus();
     await expect(products).toBeFocused();
   });

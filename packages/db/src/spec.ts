@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   parseFieldValue,
+  type ComponentId,
   type FieldType,
   type FieldValue,
   type ProductId,
@@ -86,6 +87,8 @@ export interface SpecFieldRow {
   type: FieldType;
   value: FieldValue | null;
   unit_id: UnitId | null;
+  /** Field-level option list for enum/multi_enum (spec §4.6: options belong to the field). */
+  options: string[] | null;
   category: string;
   source: 'rated' | 'typical' | 'measured' | 'calculated';
   conditions: string | null;
@@ -93,21 +96,44 @@ export interface SpecFieldRow {
   archived_at: string | null;
 }
 
+const FIELD_COLUMNS =
+  'id, workspace_id, name, type, value, unit_id, options, category, source, conditions, display_order, archived_at';
+
 export async function listFieldsForProduct(
   client: SupabaseClient,
   productId: ProductId,
 ): Promise<SpecFieldRow[]> {
   const { data, error } = await client
     .from('spec_fields')
-    .select(
-      'id, workspace_id, name, type, value, unit_id, category, source, conditions, display_order, archived_at',
-    )
+    .select(FIELD_COLUMNS)
     .eq('product_id', productId)
     .is('archived_at', null)
     .order('category')
     .order('display_order');
   if (error) throw new Error(`listFieldsForProduct: ${error.message}`);
   return (data ?? []) as SpecFieldRow[];
+}
+
+export async function listFieldsForComponents(
+  client: SupabaseClient,
+  componentIds: ComponentId[],
+): Promise<Map<ComponentId, SpecFieldRow[]>> {
+  const result = new Map<ComponentId, SpecFieldRow[]>();
+  if (componentIds.length === 0) return result;
+  const { data, error } = await client
+    .from('spec_fields')
+    .select(`${FIELD_COLUMNS}, component_id`)
+    .in('component_id', componentIds)
+    .is('archived_at', null)
+    .order('category')
+    .order('display_order');
+  if (error) throw new Error(`listFieldsForComponents: ${error.message}`);
+  for (const row of (data ?? []) as Array<SpecFieldRow & { component_id: ComponentId }>) {
+    const list = result.get(row.component_id) ?? [];
+    list.push(row);
+    result.set(row.component_id, list);
+  }
+  return result;
 }
 
 export interface UnitRow {
@@ -136,11 +162,15 @@ export async function createSpecField(
   client: SupabaseClient,
   input: {
     workspaceId: WorkspaceId;
-    productId: ProductId;
+    /** Exactly one owner (0003 XOR check): product or component. */
+    productId?: ProductId;
+    componentId?: ComponentId;
     name: string;
     type: FieldType;
     category: string;
     unitId?: UnitId;
+    /** Required for enum/multi_enum (spec §4.6). */
+    options?: string[];
     createdBy: UserId;
     /** Optional initial value — validated, then versioned via the RPC. */
     value?: unknown;
@@ -150,11 +180,13 @@ export async function createSpecField(
     .from('spec_fields')
     .insert({
       workspace_id: input.workspaceId,
-      product_id: input.productId,
+      product_id: input.productId ?? null,
+      component_id: input.componentId ?? null,
       name: input.name,
       type: input.type,
       category: input.category,
       unit_id: input.unitId ?? null,
+      options: input.options ?? null,
       created_by: input.createdBy,
     })
     .select('id')
@@ -170,6 +202,114 @@ export async function createSpecField(
     });
   }
   return fieldId;
+}
+
+export interface ComponentRow {
+  id: ComponentId;
+  workspace_id: WorkspaceId;
+  name: string;
+  type: 'assembly' | 'module' | 'part';
+  description: string | null;
+  archived_at: string | null;
+  /** Graph fan-out: how many products use this component ("used in N products"). */
+  usage_count: number;
+}
+
+export async function listComponents(
+  client: SupabaseClient,
+  workspaceId: WorkspaceId,
+): Promise<ComponentRow[]> {
+  const { data, error } = await client
+    .from('components')
+    .select('id, workspace_id, name, type, description, archived_at, product_components(count)')
+    .eq('workspace_id', workspaceId)
+    .is('archived_at', null)
+    .order('name');
+  if (error) throw new Error(`listComponents: ${error.message}`);
+  return (data ?? []).map((row) => {
+    const { product_components, ...rest } = row as ComponentRow & {
+      product_components: Array<{ count: number }>;
+    };
+    return { ...rest, usage_count: product_components?.[0]?.count ?? 0 };
+  });
+}
+
+export async function createComponent(
+  client: SupabaseClient,
+  input: {
+    workspaceId: WorkspaceId;
+    name: string;
+    type?: 'assembly' | 'module' | 'part';
+    createdBy: UserId;
+  },
+): Promise<ComponentId> {
+  const { data, error } = await client
+    .from('components')
+    .insert({
+      workspace_id: input.workspaceId,
+      name: input.name,
+      type: input.type ?? 'part',
+      created_by: input.createdBy,
+    })
+    .select('id')
+    .single();
+  if (error) throw new Error(`createComponent: ${error.message}`);
+  return data.id as ComponentId;
+}
+
+export interface ProductComponentEdge {
+  id: string;
+  component_id: ComponentId;
+  component_name: string;
+  quantity: number;
+  /** Across the whole workspace — drives the shared-component badge. */
+  usage_count: number;
+}
+
+/** The graph, not a tree (invariant 3): edges from one product to its components. */
+export async function listProductComponents(
+  client: SupabaseClient,
+  productId: ProductId,
+): Promise<ProductComponentEdge[]> {
+  const { data, error } = await client
+    .from('product_components')
+    .select('id, component_id, quantity, components!inner(name, product_components(count))')
+    .eq('product_id', productId)
+    .order('display_order');
+  if (error) throw new Error(`listProductComponents: ${error.message}`);
+  return (data ?? []).map((row) => {
+    const c = (row as Record<string, unknown>).components as {
+      name: string;
+      product_components: Array<{ count: number }>;
+    };
+    return {
+      id: (row as { id: string }).id,
+      component_id: (row as { component_id: string }).component_id as ComponentId,
+      component_name: c.name,
+      quantity: (row as { quantity: number }).quantity,
+      usage_count: c.product_components?.[0]?.count ?? 0,
+    };
+  });
+}
+
+export async function addComponentToProduct(
+  client: SupabaseClient,
+  input: {
+    workspaceId: WorkspaceId;
+    productId: ProductId;
+    componentId: ComponentId;
+    quantity?: number;
+    createdBy: UserId;
+  },
+): Promise<void> {
+  const { error } = await client.from('product_components').insert({
+    workspace_id: input.workspaceId,
+    product_id: input.productId,
+    component_id: input.componentId,
+    quantity: input.quantity ?? 1,
+    created_by: input.createdBy,
+  });
+  if (error) throw new Error(`addComponentToProduct: ${error.message}`);
 }
 
 export async function updateFieldValue(
