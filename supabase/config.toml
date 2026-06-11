@@ -1,0 +1,16 @@
+# Supabase CLI configuration (F0.2). After creating the cloud projects, run:
+#   supabase link --project-ref <dev-project-ref>
+#   supabase db push
+# See PROVISIONING.md for the full runbook.
+
+project_id = "arther"
+
+[db]
+major_version = 17
+
+[auth]
+site_url = "http://localhost:3000"
+
+[auth.email]
+# Email verification required before app access (F2.1, vibecode gate).
+enable_confirmations = true

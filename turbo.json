@@ -9,6 +9,12 @@
     "typecheck": {
       "dependsOn": ["^typecheck"]
     },
+    "app#typecheck": {
+      "dependsOn": ["app#build"]
+    },
+    "portal#typecheck": {
+      "dependsOn": ["portal#build"]
+    },
     "test": {},
     "dev": {
       "cache": false,
