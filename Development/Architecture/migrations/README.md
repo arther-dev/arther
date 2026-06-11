@@ -34,6 +34,7 @@ SQL migrations for the [architecture](../arther-architecture.md): conventions, i
 | `0009_content_reuse.sql` | `library_items`, `library_item_versions`, `snippet_embeds` (override model; keyed 1:1 to the placing block — the block row is the placement, the embed row is the state), `duplication_records`; archive-not-delete guard; **wires `blocks.snippet_id` + `snippet_review_items.snippet_id` → `library_items`**; RLS. |
 | `0010_variants.sql` | `product_variants`, `variant_deltas` (4 delta types), `block_variant_scopes`; **wires `block_spec_references.variant_id`, `published_snapshots.variant_id`, `generation_runs.variant_id` → `product_variants`**; extends the component guard to variant deltas and the product guard to variants; RLS. |
 | `0011_analytics.sql` | `analytics_events` (append-only shared envelope; partition-by-month at volume); RLS. |
+| `0012_spec_field_rpcs.sql` | `update_spec_field_value()` — atomic version append + pointer move + value update (F5.5), security invoker so caller RLS governs. |
 
 The assistant (Ask Arther) is session-scoped and adds no tables.
 
@@ -64,7 +65,7 @@ After applying, run the RLS probe (Phase 1 task F8.1): sign in as user A in work
 
 ## v1 complete
 
-Migrations `0001`–`0011` realise the full v1 data model across all four phases — every cross-phase foreign key is now wired (Content Reuse in `0009`, Variants in `0010`), and the 9 June architecture audit's schema findings are folded in: generation-run state, import sessions, FTS columns, the five built-in Document Types, release/snapshot immutability, role-aware policies, and workspace soft delete. The app-owned contracts to remember: the editor writes `blocks.text_content`, the publish pipeline writes `published_snapshots.search_text`, and pipelines (not clients) create snapshots and generation runs.
+Migrations `0001`–`0012` realise the full v1 data model across all four phases — every cross-phase foreign key is now wired (Content Reuse in `0009`, Variants in `0010`), and the 9 June architecture audit's schema findings are folded in: generation-run state, import sessions, FTS columns, the five built-in Document Types, release/snapshot immutability, role-aware policies, and workspace soft delete. The app-owned contracts to remember: the editor writes `blocks.text_content`, the publish pipeline writes `published_snapshots.search_text`, and pipelines (not clients) create snapshots and generation runs.
 
 ## Post-launch (pre-wired, additive — not in these migrations)
 
