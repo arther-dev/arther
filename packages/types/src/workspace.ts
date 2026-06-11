@@ -20,6 +20,18 @@ export const workspaceSlugSchema = z
   .max(63)
   .regex(/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/, 'lowercase alphanumeric with inner hyphens');
 
+/** Derive a portal-safe slug from a workspace name (live preview on /welcome). */
+export function slugifyWorkspaceName(name: string): string {
+  return name
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 63)
+    .replace(/-+$/g, '');
+}
+
 export const workspaceSchema = z.object({
   id: workspaceIdSchema,
   name: z.string().min(1),
