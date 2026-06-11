@@ -117,3 +117,100 @@ body {
 .auth-slug-preview code {
   color: var(--text-primary);
 }
+
+/* --- Specs mode (F6.1 first slice): navigator list + field grid --- */
+.specs-nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+.specs-nav__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2xs);
+}
+.specs-nav__item {
+  display: block;
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-xs);
+  font: var(--type-label);
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+.specs-nav__item:hover {
+  background: var(--bg-raised);
+  color: var(--text-primary);
+}
+.specs-nav__item--active {
+  background: var(--bg-active);
+  color: var(--text-primary);
+}
+.specs-nav__item:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+.specs-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2xl);
+  padding: var(--space-2xl);
+}
+.specs-title {
+  font: var(--type-h1);
+  margin: 0;
+}
+.specs-grid {
+  width: 100%;
+  border-collapse: collapse;
+}
+.specs-grid th,
+.specs-grid td {
+  text-align: left;
+  padding: var(--space-md);
+  border-bottom: 1px solid var(--border-subtle);
+  font: var(--type-label);
+  color: var(--text-primary);
+}
+.specs-grid thead th {
+  font: var(--type-caption-strong);
+  color: var(--text-secondary);
+}
+.specs-grid__category th {
+  font: var(--type-overline);
+  letter-spacing: var(--tracking-overline);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  background: var(--bg-panel);
+}
+.specs-grid__meta {
+  color: var(--text-tertiary);
+}
+.specs-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+.specs-form--row {
+  flex-direction: row;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: var(--space-md);
+}
+.specs-value-input {
+  width: 110px;
+}
+.specs-value-button {
+  border: none;
+  background: transparent;
+  color: var(--text-link);
+  text-decoration: underline;
+  font: var(--type-caption);
+  cursor: pointer;
+}
+.specs-value-button:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
