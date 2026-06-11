@@ -1,0 +1,16 @@
+{
+  "name": "@arther/e2e",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test:e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "~1.56.0",
+    "@types/node": "^22.19.21",
+    "typescript": "^5.8.0"
+  }
+}
