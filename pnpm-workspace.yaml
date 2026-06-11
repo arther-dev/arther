@@ -2,3 +2,4 @@ packages:
   - "apps/*"
   - "packages/*"
   - "tests/db"
+  - "tests/e2e"

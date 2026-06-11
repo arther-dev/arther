@@ -15,6 +15,7 @@
     "db:down": "bash scripts/db-down.sh",
     "db:migrate": "bash scripts/db-migrate.sh",
     "test:db": "pnpm --filter @arther/db-tests test:db",
+    "test:e2e": "pnpm --filter @arther/e2e test:e2e",
     "check:drift": "bash scripts/check-migration-drift.sh"
   },
   "devDependencies": {

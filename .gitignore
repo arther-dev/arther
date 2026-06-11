@@ -13,6 +13,11 @@ coverage/
 .env.*
 !.env.example
 
+# playwright
+playwright-report/
+test-results/
+blob-report/
+
 # misc
 .DS_Store
 *.log

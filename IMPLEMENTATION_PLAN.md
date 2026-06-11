@@ -47,6 +47,7 @@ Per the [ADR decision summary](Development/Architecture/arther-adrs.md#decision-
 | DB tests | `postgres` (postgres.js) against dockerized Postgres 17 | Same probes run in CI service container |
 | Lint | ESLint 9 flat config from `packages/config` | `eslint-config-next` layered in apps |
 | Monorepo runner | Turborepo 2.x | Per ADR-003 |
+| E2E tests | Playwright `~1.56` (`tests/e2e`, chromium) against production builds of both apps | Same engine as the ADR-008 PDF pipeline; every shipped surface gets at least a render/interaction smoke. Pinned to the sandbox's preinstalled chromium-1194 (`PLAYWRIGHT_BROWSERS_PATH`); CI installs its own browsers — bump freely once dev environments can download them |
 
 ## 3. Repo layout convention
 
@@ -140,6 +141,7 @@ No cloud credentials exist yet. Everything below the "needed at" line is buildab
 3. DB smoke probes: helpers exist, `create_workspace()` seeds defaults, immutability triggers raise, slug immutable, archive guards block.
 4. **Second-user RLS probe** (F8.1, pulled forward from the Phase 1 gate): user B in workspace W2 can neither read nor mutate W1 rows. Extended at G8.3 (Phase 2 tables), C9.1/C9.2 (snapshots/portal), H.2 (all tables).
 5. Migration drift check: doc copy ≡ canonical copy.
+6. **Playwright E2E suite** (`tests/e2e`) against production builds of `apps/app` and `apps/portal`. Standing rule from M1 on: every feature PR that adds or changes a user-facing surface adds/updates an E2E spec for it (auth flows at F2, spec database UI at F6, import at F7, editor at G4, portal + no-JS readability at C6, …).
 
 ## 9. Risk register
 
@@ -159,3 +161,4 @@ No cloud credentials exist yet. Everything below the "needed at" line is buildab
 | Date | Session | Shipped | Deviations |
 |---|---|---|---|
 | 2026-06-11 | Phase 1 kick-off | This plan; monorepo scaffold (apps/app, apps/portal, 7 packages); canonical migrations + docker Postgres harness + auth shim; smoke + RLS probes; `canDo` + seat model; dark design tokens + starter atoms; Zod env loader; CI | `packages/authz`/`packages/jobs` added beyond F0.1's named list (§7.7–7.8); F1.6 lint rule deferred to follow-up (runtime guard + tests in place); F0.2–F0.4 deferred pending credentials |
+| 2026-06-11 | Playwright E2E | `tests/e2e` Playwright suite (chromium, prod builds of both apps via webServer) + CI `e2e` job; standing gate §8.6 — every user-facing surface ships with an E2E smoke | — |
