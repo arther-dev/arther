@@ -287,3 +287,23 @@ body {
   font: var(--type-label);
   color: var(--text-primary);
 }
+
+/* --- Table mini-spreadsheet (F6.3) --- */
+.specs-table-editor {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--space-md);
+  background: var(--bg-panel);
+  max-width: 720px;
+}
+.specs-table-editor__grid th,
+.specs-table-editor__grid td {
+  vertical-align: top;
+}
+.specs-table-editor__cell {
+  width: 110px;
+}
+.specs-table-editor__paste-input {
+  width: 100%;
+  resize: none;
+}

@@ -10,6 +10,12 @@ import {
   updateFieldValueAction,
   type SpecsFormState,
 } from './actions';
+import { TableEditor } from './TableEditor';
+
+export interface ComponentOption {
+  id: string;
+  name: string;
+}
 
 /**
  * Inline per-type value editors (F6.3) for the scalar family: scalar, range,
@@ -170,7 +176,15 @@ function TypeInputs({
   );
 }
 
-export function FieldValueEditor({ field, units }: { field: SpecFieldRow; units: UnitRow[] }) {
+export function FieldValueEditor({
+  field,
+  units,
+  components = [],
+}: {
+  field: SpecFieldRow;
+  units: UnitRow[];
+  components?: ComponentOption[];
+}) {
   const [editing, setEditing] = useState(false);
   const [state, action, pending] = useActionState<SpecsFormState, FormData>(
     async (prev, formData) => {
@@ -180,10 +194,6 @@ export function FieldValueEditor({ field, units }: { field: SpecFieldRow; units:
     },
     {},
   );
-
-  if (field.type === 'table' || field.type === 'reference') {
-    return <span className="specs-grid__meta">editor soon</span>;
-  }
 
   if (!editing) {
     return (
@@ -195,6 +205,50 @@ export function FieldValueEditor({ field, units }: { field: SpecFieldRow; units:
       >
         Edit
       </button>
+    );
+  }
+
+  if (field.type === 'table') {
+    return <TableEditor field={field} units={units} onClose={() => setEditing(false)} />;
+  }
+
+  if (field.type === 'reference') {
+    // §5.5: select over the Component Library; a component never references
+    // itself (the F5.9 cycle check would reject it anyway).
+    const candidates = components.filter((c) => c.id !== field.component_id);
+    return (
+      <form action={action} className="specs-form specs-form--row" noValidate>
+        <input type="hidden" name="fieldId" value={field.id} />
+        <input type="hidden" name="type" value="reference" />
+        <label className="ui-field__label" htmlFor={`ref-${field.id}`}>
+          Component
+        </label>
+        <select
+          id={`ref-${field.id}`}
+          name="componentId"
+          className="ui-field__input"
+          defaultValue={(field.value as { component_id?: string } | null)?.component_id ?? ''}
+        >
+          <option value="" disabled>
+            Select…
+          </option>
+          {candidates.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+        <Button type="submit" size="sm" disabled={pending}>
+          {pending ? 'Saving…' : 'Save'}
+        </Button>
+        <Button type="button" size="sm" variant="ghost" onClick={() => setEditing(false)}>
+          Cancel
+        </Button>
+        {candidates.length === 0 ? (
+          <p className="specs-grid__meta">No other components in the library yet.</p>
+        ) : null}
+        {state.error ? <p className="ui-field__error">{state.error}</p> : null}
+      </form>
     );
   }
 

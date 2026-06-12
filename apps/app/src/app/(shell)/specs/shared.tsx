@@ -1,7 +1,8 @@
+import Link from 'next/link';
 import type { OverrideRow, SpecFieldRow, UnitRow } from '@arther/db';
 import { formatFieldValue, isOverridableFieldType } from '@arther/types';
 import { BoxIcon, GridIcon, LocalRail, TagIcon } from '@arther/ui';
-import { FieldValueEditor, OverrideEditor } from './FieldValueEditor';
+import { FieldValueEditor, OverrideEditor, type ComponentOption } from './FieldValueEditor';
 
 /** Workspace categories are seeded by 0003; custom categories arrive with Settings. */
 export const CATEGORIES = [
@@ -53,10 +54,13 @@ export interface OverrideContext {
 export function FieldGrid({
   fields,
   units,
+  components = [],
   overrideContext,
 }: {
   fields: SpecFieldRow[];
   units: UnitRow[];
+  /** Component Library options for reference pickers + name resolution. */
+  components?: ComponentOption[];
   overrideContext?: OverrideContext;
 }) {
   let lastCategory = '';
@@ -96,6 +100,7 @@ export function FieldGrid({
               header={header}
               field={field}
               units={units}
+              components={components}
               symbol={symbol}
               edgeId={overrideContext?.edgeId}
               override={override}
@@ -111,6 +116,7 @@ function FieldRowWithHeader({
   header,
   field,
   units,
+  components,
   symbol,
   edgeId,
   override,
@@ -118,6 +124,7 @@ function FieldRowWithHeader({
   header: React.ReactNode;
   field: SpecFieldRow;
   units: UnitRow[];
+  components: ComponentOption[];
   symbol?: string;
   edgeId?: string;
   override: OverrideRow | null;
@@ -131,13 +138,24 @@ function FieldRowWithHeader({
         : field.unit_id;
     return units.find((u) => u.id === unitId)?.symbol;
   })();
+  // §5.5: a reference renders as a navigable link to the referenced component.
+  const referenced =
+    field.type === 'reference' && effective
+      ? components.find((c) => c.id === (effective as { component_id: string }).component_id)
+      : undefined;
   return (
     <>
       {header}
       <tr>
         <td>{field.name}</td>
         <td>
-          {formatFieldValue(field.type, effective, symbol)}
+          {referenced ? (
+            <Link href="/specs/library" className="specs-value-button">
+              → {referenced.name}
+            </Link>
+          ) : (
+            formatFieldValue(field.type, effective, symbol)
+          )}
           {override ? (
             <span className="specs-grid__meta">
               {' '}
@@ -148,7 +166,7 @@ function FieldRowWithHeader({
         </td>
         <td className="specs-grid__meta">{field.source}</td>
         <td>
-          <FieldValueEditor field={field} units={units} />
+          <FieldValueEditor field={field} units={units} components={components} />
           {edgeId && isOverridableFieldType(field.type) ? (
             <OverrideEditor field={field} units={units} edgeId={edgeId} override={override} />
           ) : null}

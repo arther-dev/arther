@@ -123,7 +123,7 @@ export default async function SpecsPage({
         <section className="specs-section">
           <h2 className="specs-section__title">Product fields</h2>
           {fields.length > 0 ? (
-            <FieldGrid fields={fields} units={units} />
+            <FieldGrid fields={fields} units={units} components={components} />
           ) : (
             <p className="specs-grid__meta">No product-level fields yet.</p>
           )}
@@ -145,6 +145,7 @@ export default async function SpecsPage({
               <FieldGrid
                 fields={componentFields.get(edge.component_id) ?? []}
                 units={units}
+                components={components}
                 overrideContext={{ edgeId: edge.id, overrides }}
               />
               <AddFieldForm
