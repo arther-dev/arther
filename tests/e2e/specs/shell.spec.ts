@@ -40,7 +40,7 @@ test.describe('app shell frame (Handoff 02)', () => {
       'page',
     );
     await expect(rail.getByRole('link', { name: 'Component Library' })).toBeVisible();
-    await expect(rail.getByRole('button', { name: 'Releases' })).toBeVisible();
+    await expect(rail.getByRole('link', { name: 'Releases' })).toBeVisible();
     await expect(page.locator('.ui-shell__navigator')).toBeVisible();
     await expect(page.getByRole('heading', { name: 'No products yet' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Add product' })).toBeVisible();

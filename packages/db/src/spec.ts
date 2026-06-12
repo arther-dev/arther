@@ -1,10 +1,12 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
+  isOverridableFieldType,
   parseFieldValue,
   type ComponentId,
   type FieldType,
   type FieldValue,
   type ProductId,
+  type ReleaseId,
   type SpecFieldId,
   type UnitId,
   type UserId,
@@ -345,6 +347,162 @@ export async function listFieldVersions(
     .order('changed_at', { ascending: false });
   if (error) throw new Error(`listFieldVersions: ${error.message}`);
   return (data ?? []) as FieldVersionRow[];
+}
+
+export interface ReleaseRow {
+  id: ReleaseId;
+  product_id: ProductId;
+  name: string;
+  tag: string;
+  notes: string | null;
+  created_by: UserId | null;
+  created_at: string;
+  /** How many field versions this release pins. */
+  pinned_count: number;
+}
+
+export async function listReleasesForProduct(
+  client: SupabaseClient,
+  productId: ProductId,
+): Promise<ReleaseRow[]> {
+  const { data, error } = await client
+    .from('product_releases')
+    .select('id, product_id, name, tag, notes, created_by, created_at, release_field_values(count)')
+    .eq('product_id', productId)
+    .order('created_at', { ascending: false });
+  if (error) throw new Error(`listReleasesForProduct: ${error.message}`);
+  return (data ?? []).map((row) => {
+    const { release_field_values, ...rest } = row as ReleaseRow & {
+      release_field_values: Array<{ count: number }>;
+    };
+    return { ...rest, pinned_count: release_field_values?.[0]?.count ?? 0 };
+  });
+}
+
+/** Workspace-wide list for the Releases rail view, newest first. */
+export async function listReleases(
+  client: SupabaseClient,
+  workspaceId: WorkspaceId,
+): Promise<Array<ReleaseRow & { product_name: string }>> {
+  const { data, error } = await client
+    .from('product_releases')
+    .select(
+      'id, product_id, name, tag, notes, created_by, created_at, products!inner(name), release_field_values(count)',
+    )
+    .eq('workspace_id', workspaceId)
+    .order('created_at', { ascending: false });
+  if (error) throw new Error(`listReleases: ${error.message}`);
+  return (data ?? []).map((row) => {
+    const { products, release_field_values, ...rest } = row as unknown as ReleaseRow & {
+      products: { name: string };
+      release_field_values: Array<{ count: number }>;
+    };
+    return {
+      ...rest,
+      product_name: products.name,
+      pinned_count: release_field_values?.[0]?.count ?? 0,
+    };
+  });
+}
+
+/**
+ * Named snapshot pinning the current FieldVersion of every valued field on
+ * the product + its attached components — atomic via the 0013 RPC (invoker
+ * rights, RLS active). Never automatic: explicit user action only (§3.8).
+ */
+export async function createRelease(
+  client: SupabaseClient,
+  input: { productId: ProductId; name: string; tag: string; notes?: string },
+): Promise<ReleaseId> {
+  const { data, error } = await client.rpc('create_product_release', {
+    p_product_id: input.productId,
+    p_name: input.name,
+    p_tag: input.tag,
+    p_notes: input.notes ?? null,
+  });
+  if (error) throw new Error(`createRelease: ${error.message}`);
+  return data as ReleaseId;
+}
+
+/**
+ * Deletion is permitted while no document references the release; the 0013
+ * guard raises otherwise (§3.8). The confirmation step lives in the UI.
+ */
+export async function deleteRelease(client: SupabaseClient, releaseId: ReleaseId): Promise<void> {
+  const { error } = await client.from('product_releases').delete().eq('id', releaseId);
+  if (error) throw new Error(`deleteRelease: ${error.message}`);
+}
+
+export interface OverrideRow {
+  product_component_id: string;
+  field_id: SpecFieldId;
+  value: FieldValue;
+  set_by: UserId | null;
+  set_at: string;
+}
+
+/** All overrides held by one product's edges, keyed `${edgeId}:${fieldId}`. */
+export async function listOverridesForProduct(
+  client: SupabaseClient,
+  productId: ProductId,
+): Promise<Map<string, OverrideRow>> {
+  const { data, error } = await client
+    .from('product_component_overrides')
+    .select('product_component_id, field_id, value, set_by, set_at, product_components!inner(product_id)')
+    .eq('product_components.product_id', productId);
+  if (error) throw new Error(`listOverridesForProduct: ${error.message}`);
+  const map = new Map<string, OverrideRow>();
+  for (const row of (data ?? []) as unknown as OverrideRow[]) {
+    map.set(`${row.product_component_id}:${row.field_id}`, row);
+  }
+  return map;
+}
+
+/**
+ * Set (or replace) a product-specific override on a shared component field.
+ * Scalar family only (§3.5) — gated here AND by the 0013 integrity trigger.
+ * `set_by` routes review notifications when the underlying field changes.
+ */
+export async function setComponentOverride(
+  client: SupabaseClient,
+  input: {
+    workspaceId: WorkspaceId;
+    productComponentId: string;
+    fieldId: SpecFieldId;
+    type: FieldType;
+    value: unknown;
+    setBy: UserId;
+  },
+): Promise<void> {
+  if (!isOverridableFieldType(input.type)) {
+    throw new Error(`setComponentOverride: ${input.type} fields cannot be overridden`);
+  }
+  const parsed = parseFieldValue(input.type, input.value);
+  const { error } = await client.from('product_component_overrides').upsert(
+    {
+      workspace_id: input.workspaceId,
+      product_component_id: input.productComponentId,
+      field_id: input.fieldId,
+      value: parsed,
+      set_by: input.setBy,
+      set_at: new Date().toISOString(),
+    },
+    { onConflict: 'product_component_id,field_id' },
+  );
+  if (error) throw new Error(`setComponentOverride: ${error.message}`);
+}
+
+/** Remove an override — the field falls back to the component's global value. */
+export async function clearComponentOverride(
+  client: SupabaseClient,
+  input: { productComponentId: string; fieldId: SpecFieldId },
+): Promise<void> {
+  const { error } = await client
+    .from('product_component_overrides')
+    .delete()
+    .eq('product_component_id', input.productComponentId)
+    .eq('field_id', input.fieldId);
+  if (error) throw new Error(`clearComponentOverride: ${error.message}`);
 }
 
 /** Membership lookup for canDo (@arther/authz) over the user-JWT client. */

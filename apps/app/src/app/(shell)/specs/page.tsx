@@ -4,8 +4,10 @@ import {
   listComponents,
   listFieldsForComponents,
   listFieldsForProduct,
+  listOverridesForProduct,
   listProductComponents,
   listProducts,
+  listReleasesForProduct,
   listUnits,
 } from '@arther/db';
 import type { ComponentId, ProductId } from '@arther/types';
@@ -14,6 +16,7 @@ import { getSupabaseServer } from '../../../lib/supabase/server';
 import { AddFieldForm } from './AddFieldForm';
 import { AttachComponentForm } from './ComponentForms';
 import { NewProductForm } from './NewProductForm';
+import { CreateReleaseForm, DeleteReleaseButton } from './ReleaseForms';
 import { CATEGORIES, FieldGrid, SpecsRail } from './shared';
 
 export default async function SpecsPage({
@@ -98,11 +101,13 @@ export default async function SpecsPage({
     );
   }
 
-  const [fields, units, edges, components] = await Promise.all([
+  const [fields, units, edges, components, overrides, releases] = await Promise.all([
     listFieldsForProduct(supabase, selected.id),
     listUnits(supabase, workspace.id),
     listProductComponents(supabase, selected.id),
     listComponents(supabase, workspace.id),
+    listOverridesForProduct(supabase, selected.id),
+    listReleasesForProduct(supabase, selected.id),
   ]);
   const componentFields = await listFieldsForComponents(
     supabase,
@@ -137,7 +142,11 @@ export default async function SpecsPage({
                   {edge.usage_count > 1 ? ` · shared — used in ${edge.usage_count} products` : ''}
                 </span>
               </summary>
-              <FieldGrid fields={componentFields.get(edge.component_id) ?? []} units={units} />
+              <FieldGrid
+                fields={componentFields.get(edge.component_id) ?? []}
+                units={units}
+                overrideContext={{ edgeId: edge.id, overrides }}
+              />
               <AddFieldForm
                 ownerKind="component"
                 ownerId={edge.component_id}
@@ -158,6 +167,31 @@ export default async function SpecsPage({
               empty — create components there first.
             </p>
           ) : null}
+        </section>
+
+        <section className="specs-section">
+          <h2 className="specs-section__title">Releases</h2>
+          {releases.length > 0 ? (
+            <ul className="specs-form" aria-label="Releases">
+              {releases.map((r) => (
+                <li key={r.id} className="specs-release">
+                  <strong>{r.name}</strong>
+                  <span className="specs-release__tag">{r.tag}</span>
+                  <span className="specs-grid__meta">
+                    {r.pinned_count} pinned {r.pinned_count === 1 ? 'value' : 'values'} ·{' '}
+                    {new Date(r.created_at).toLocaleDateString()}
+                  </span>
+                  {r.notes ? <span className="specs-grid__meta">{r.notes}</span> : null}
+                  <DeleteReleaseButton releaseId={r.id} name={r.name} />
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="specs-grid__meta">
+              No releases yet — field edits accumulate in “latest” until you snapshot them.
+            </p>
+          )}
+          <CreateReleaseForm productId={selected.id} />
         </section>
       </div>
     </AppShell>

@@ -6,17 +6,23 @@ import { z } from 'zod';
 import { createCanDo } from '@arther/authz';
 import {
   addComponentToProduct,
+  clearComponentOverride,
   createComponent,
   createProduct,
+  createRelease,
   createSpecField,
+  deleteRelease,
   getActiveWorkspace,
   membershipLookupFor,
+  setComponentOverride,
   updateFieldValue,
 } from '@arther/db';
 import {
   fieldTypeSchema,
+  isOverridableFieldType,
   type ComponentId,
   type ProductId,
+  type ReleaseId,
   type SpecFieldId,
   type UnitId,
   type UserId,
@@ -199,6 +205,147 @@ export async function updateFieldValueAction(
   }
   revalidatePath('/specs');
   revalidatePath('/specs/library');
+  return {};
+}
+
+const releaseSchema = z.object({
+  productId: z.string().uuid(),
+  name: z.string().trim().min(1, 'Name the release.'),
+  tag: z.string().trim().min(1, 'Tag the release (e.g. v2.1).'),
+  notes: z.string().trim().optional(),
+});
+
+/** Releases are explicit user action only — never automatic on edits (§3.8). */
+export async function createReleaseAction(
+  _prev: SpecsFormState,
+  formData: FormData,
+): Promise<SpecsFormState> {
+  const parsed = releaseSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { error: parsed.error.issues[0]!.message };
+
+  const auth = await authorize();
+  if ('error' in auth) return { error: auth.error };
+
+  try {
+    await createRelease(auth.supabase, {
+      productId: parsed.data.productId as ProductId,
+      name: parsed.data.name,
+      tag: parsed.data.tag,
+      notes: parsed.data.notes || undefined,
+    });
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : 'Could not create the release.' };
+  }
+  revalidatePath('/specs');
+  revalidatePath('/specs/releases');
+  return {};
+}
+
+/** Confirmation happens in the UI; the 0013 guard blocks document-referenced releases. */
+export async function deleteReleaseAction(
+  _prev: SpecsFormState,
+  formData: FormData,
+): Promise<SpecsFormState> {
+  const parsed = z.object({ releaseId: z.string().uuid() }).safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { error: 'Invalid release reference.' };
+
+  const auth = await authorize();
+  if ('error' in auth) return { error: auth.error };
+
+  try {
+    await deleteRelease(auth.supabase, parsed.data.releaseId as ReleaseId);
+  } catch (e) {
+    return {
+      error:
+        e instanceof Error && e.message.includes('documents generated')
+          ? 'This release has documents generated from it — it can’t be deleted.'
+          : 'Could not delete the release.',
+    };
+  }
+  revalidatePath('/specs');
+  revalidatePath('/specs/releases');
+  return {};
+}
+
+const overrideHeadSchema = z.object({
+  productComponentId: z.string().uuid(),
+  fieldId: z.string().uuid(),
+  type: fieldTypeSchema,
+});
+
+/** Product-specific override on a shared component field (§3.5, scalar family only). */
+export async function setOverrideAction(
+  _prev: SpecsFormState,
+  formData: FormData,
+): Promise<SpecsFormState> {
+  const head = overrideHeadSchema.safeParse({
+    productComponentId: formData.get('productComponentId'),
+    fieldId: formData.get('fieldId'),
+    type: formData.get('type'),
+  });
+  if (!head.success) return { error: 'Invalid override reference.' };
+  if (!isOverridableFieldType(head.data.type)) {
+    return { error: `${head.data.type} fields can’t be overridden per product.` };
+  }
+
+  const builder = valueBuilders[head.data.type];
+  if (!builder) return { error: `No editor for ${head.data.type} fields yet.` };
+
+  const auth = await authorize();
+  if ('error' in auth) return { error: auth.error };
+
+  // The field's option list stays authoritative for enum overrides (§4.6).
+  const { data: fieldRow } = await auth.supabase
+    .from('spec_fields')
+    .select('options')
+    .eq('id', head.data.fieldId)
+    .single();
+  if (!fieldRow) return { error: 'Field not found.' };
+
+  let value: unknown;
+  try {
+    value = builder(formData, fieldRow as { options: string[] | null });
+  } catch (e) {
+    return { error: e instanceof z.ZodError ? e.issues[0]!.message : 'Invalid value.' };
+  }
+
+  try {
+    await setComponentOverride(auth.supabase, {
+      workspaceId: auth.workspace.id,
+      productComponentId: head.data.productComponentId,
+      fieldId: head.data.fieldId as SpecFieldId,
+      type: head.data.type,
+      value,
+      setBy: auth.userId,
+    });
+  } catch (e) {
+    return { error: e instanceof z.ZodError ? e.issues[0]!.message : 'Could not save the override.' };
+  }
+  revalidatePath('/specs');
+  return {};
+}
+
+export async function clearOverrideAction(
+  _prev: SpecsFormState,
+  formData: FormData,
+): Promise<SpecsFormState> {
+  const parsed = z
+    .object({ productComponentId: z.string().uuid(), fieldId: z.string().uuid() })
+    .safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { error: 'Invalid override reference.' };
+
+  const auth = await authorize();
+  if ('error' in auth) return { error: auth.error };
+
+  try {
+    await clearComponentOverride(auth.supabase, {
+      productComponentId: parsed.data.productComponentId,
+      fieldId: parsed.data.fieldId as SpecFieldId,
+    });
+  } catch {
+    return { error: 'Could not remove the override.' };
+  }
+  revalidatePath('/specs');
   return {};
 }
 
