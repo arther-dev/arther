@@ -48,6 +48,17 @@ export {
   type WorkspaceScope,
 } from './guard';
 export {
+  commitImportSession,
+  createImportSession,
+  getImportSession,
+  listImportSessions,
+  loadCurrentSpecState,
+  updateImportSession,
+  type ImportInterpretation,
+  type ImportSessionRow,
+  type ImportSessionStatus,
+} from './import-sessions';
+export {
   acceptInvitation,
   createInvitation,
   getInvitation,

@@ -47,7 +47,11 @@ export default async function SpecsPage({
           title="No products yet"
           description="Products and their shared components live here — the system of record your documents are generated from."
           primaryAction={<Button>Add product</Button>}
-          secondaryAction={<Button variant="ghost">Import spreadsheet</Button>}
+          secondaryAction={
+            <Link className="ui-btn ui-btn--ghost" href="/specs/import">
+              Import spreadsheet
+            </Link>
+          }
         />
       </AppShell>
     );
@@ -100,6 +104,11 @@ export default async function SpecsPage({
         <EmptyState
           title="No products yet"
           description="Products and their shared components live here — the system of record your documents are generated from."
+          secondaryAction={
+            <Link className="ui-btn ui-btn--ghost" href="/specs/import">
+              Import spreadsheet
+            </Link>
+          }
         />
       </AppShell>
     );
@@ -153,6 +162,9 @@ export default async function SpecsPage({
       <div className="specs-content">
         <header className="specs-form--row">
           <h1 className="specs-title">{selected.name}</h1>
+          <Link className="ui-btn ui-btn--ghost" href={`/specs/import?product=${selected.id}`}>
+            Re-import spec sheet
+          </Link>
           <ArchiveToggle entity="products" id={selected.id} archived={false} label={selected.name} />
         </header>
 

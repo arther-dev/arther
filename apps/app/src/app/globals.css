@@ -348,3 +348,108 @@ body {
   word-break: break-all;
   color: var(--text-primary);
 }
+
+/* --- Import / Re-import (F7, Handoff 04 §B) --- */
+/* Full-canvas stepper flow: top bar stays, rail/navigator/inspector hidden. */
+.import-canvas {
+  max-width: 64rem;
+  margin: 0 auto;
+  padding: var(--space-xl) var(--space-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+  overflow-y: auto;
+}
+.import-stepper {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  gap: var(--space-md);
+  font: var(--type-label);
+  color: var(--text-tertiary);
+}
+.import-stepper__step {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+.import-stepper__step + .import-stepper__step::before {
+  content: '→';
+  color: var(--text-tertiary);
+  margin-right: var(--space-xs);
+}
+.import-stepper__step--current {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.import-stepper__step--done {
+  color: var(--text-secondary);
+}
+.import-upload {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  max-width: 28rem;
+}
+.import-dropzone {
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+  padding: var(--space-lg);
+  background: var(--bg-surface);
+  width: 100%;
+}
+.import-step {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+.import-step__footer {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+}
+.import-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  flex-wrap: wrap;
+}
+.import-row__include {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2xs);
+  font: var(--type-label);
+  color: var(--text-secondary);
+}
+.import-status {
+  font: var(--type-caption);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 1px var(--space-xs);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.import-status--changed,
+.import-status--type-conflict,
+.import-status--failed {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+.import-status--committed,
+.import-status--added {
+  color: var(--text-primary);
+}
+.import-warning {
+  border-left: 2px solid var(--border-strong);
+  padding-left: var(--space-md);
+}
+.import-summary {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2xs);
+  font-variant-numeric: tabular-nums;
+}
