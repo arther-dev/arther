@@ -248,6 +248,38 @@ body {
   padding: 0;
   flex-wrap: wrap;
 }
+
+/* --- Overrides + releases (F5.6/F5.7 slice) --- */
+.specs-override-chip {
+  display: inline-block;
+  padding: 0 var(--space-xs);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  font: var(--type-caption);
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.specs-form--inline {
+  display: inline-flex;
+  gap: var(--space-sm);
+  align-items: center;
+}
+.specs-release {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-md);
+  flex-wrap: wrap;
+  padding: var(--space-xs) 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.specs-release__tag {
+  font: var(--type-caption);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-xs);
+}
 .specs-checks__item {
   display: inline-flex;
   align-items: center;
