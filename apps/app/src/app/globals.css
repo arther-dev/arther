@@ -307,3 +307,38 @@ body {
   width: 100%;
   resize: none;
 }
+
+/* --- Field detail + feed (F6.1 panel content / F6.5) --- */
+.specs-field-link {
+  color: var(--text-primary);
+  text-decoration: none;
+  border-bottom: 1px dotted var(--border-strong);
+}
+.specs-field-link:hover {
+  color: var(--text-link);
+}
+.specs-field-link:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+.specs-detail {
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  padding: var(--space-lg);
+  background: var(--bg-surface);
+}
+.specs-feed {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+.specs-feed__item {
+  border-left: 2px solid var(--border-subtle);
+  padding-left: var(--space-md);
+}
+.specs-feed__body {
+  margin: var(--space-2xs) 0 0;
+}

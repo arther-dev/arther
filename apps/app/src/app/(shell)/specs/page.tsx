@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import {
   getActiveWorkspace,
+  listArchived,
+  listArchivedFields,
   listComponents,
   listFieldsForComponents,
   listFieldsForProduct,
@@ -10,11 +12,13 @@ import {
   listReleasesForProduct,
   listUnits,
 } from '@arther/db';
-import type { ComponentId, ProductId } from '@arther/types';
+import type { ComponentId, ProductId, SpecFieldId } from '@arther/types';
 import { AppShell, Button, EmptyState, Skeleton } from '@arther/ui';
 import { getSupabaseServer } from '../../../lib/supabase/server';
 import { AddFieldForm } from './AddFieldForm';
 import { AttachComponentForm } from './ComponentForms';
+import { ArchiveToggle } from './DetailForms';
+import { FieldDetail } from './FieldDetail';
 import { NewProductForm } from './NewProductForm';
 import { CreateReleaseForm, DeleteReleaseButton } from './ReleaseForms';
 import { CATEGORIES, FieldGrid, SpecsRail } from './shared';
@@ -22,7 +26,7 @@ import { CATEGORIES, FieldGrid, SpecsRail } from './shared';
 export default async function SpecsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ product?: string }>;
+  searchParams: Promise<{ product?: string; field?: string }>;
 }) {
   const supabase = await getSupabaseServer();
 
@@ -67,7 +71,7 @@ export default async function SpecsPage({
   }
 
   const products = await listProducts(supabase, workspace.id);
-  const { product } = await searchParams;
+  const { product, field } = await searchParams;
   const selectedId = (product ?? products[0]?.id) as ProductId | undefined;
   const selected = products.find((p) => p.id === selectedId);
 
@@ -101,67 +105,94 @@ export default async function SpecsPage({
     );
   }
 
-  const [fields, units, edges, components, overrides, releases] = await Promise.all([
-    listFieldsForProduct(supabase, selected.id),
-    listUnits(supabase, workspace.id),
-    listProductComponents(supabase, selected.id),
-    listComponents(supabase, workspace.id),
-    listOverridesForProduct(supabase, selected.id),
-    listReleasesForProduct(supabase, selected.id),
-  ]);
+  const [fields, units, edges, components, overrides, releases, archivedProducts, archivedFields] =
+    await Promise.all([
+      listFieldsForProduct(supabase, selected.id),
+      listUnits(supabase, workspace.id),
+      listProductComponents(supabase, selected.id),
+      listComponents(supabase, workspace.id),
+      listOverridesForProduct(supabase, selected.id),
+      listReleasesForProduct(supabase, selected.id),
+      listArchived(supabase, 'products', workspace.id),
+      listArchivedFields(supabase, { productId: selected.id }),
+    ]);
   const componentFields = await listFieldsForComponents(
     supabase,
     edges.map((e) => e.component_id as ComponentId),
   );
   const attachable = components.filter((c) => !edges.some((e) => e.component_id === c.id));
+  const detailBase = `/specs?product=${selected.id}&`;
+
+  // F6.2: the product tree, computed at read from the edges (invariant 3).
+  const childrenOf = (parentEdgeId: string | null) =>
+    edges.filter((e) => e.parent_component_id === parentEdgeId);
+  const renderEdge = (edge: (typeof edges)[number]) => (
+    <details key={edge.id} className="specs-component" open>
+      <summary className="specs-component__summary">
+        {edge.component_name}
+        <span className="specs-grid__meta">
+          {' '}
+          ×{edge.quantity}
+          {edge.usage_count > 1 ? ` · shared — used in ${edge.usage_count} products` : ''}
+        </span>
+      </summary>
+      <FieldGrid
+        fields={componentFields.get(edge.component_id) ?? []}
+        units={units}
+        components={components}
+        overrideContext={{ edgeId: edge.id, overrides }}
+        detailBase={detailBase}
+      />
+      <AddFieldForm ownerKind="component" ownerId={edge.component_id} categories={CATEGORIES} />
+      {childrenOf(edge.id).map(renderEdge)}
+    </details>
+  );
 
   return (
     <AppShell rail={<SpecsRail active="products" />} navigator={navigator}>
       <div className="specs-content">
-        <h1 className="specs-title">{selected.name}</h1>
+        <header className="specs-form--row">
+          <h1 className="specs-title">{selected.name}</h1>
+          <ArchiveToggle entity="products" id={selected.id} archived={false} label={selected.name} />
+        </header>
 
         <section className="specs-section">
           <h2 className="specs-section__title">Product fields</h2>
           {fields.length > 0 ? (
-            <FieldGrid fields={fields} units={units} components={components} />
+            <FieldGrid fields={fields} units={units} components={components} detailBase={detailBase} />
           ) : (
             <p className="specs-grid__meta">No product-level fields yet.</p>
           )}
           <AddFieldForm ownerKind="product" ownerId={selected.id} categories={CATEGORIES} />
+          {archivedFields.length > 0 ? (
+            <details className="specs-grid__meta">
+              <summary>{archivedFields.length} archived field{archivedFields.length > 1 ? 's' : ''}</summary>
+              <ul className="specs-form" aria-label="Archived fields">
+                {archivedFields.map((f) => (
+                  <li key={f.id} className="specs-form--row">
+                    {f.name}
+                    <ArchiveToggle entity="spec_fields" id={f.id} archived label={f.name} />
+                  </li>
+                ))}
+              </ul>
+            </details>
+          ) : null}
         </section>
 
         <section className="specs-section">
           <h2 className="specs-section__title">Components</h2>
-          {edges.map((edge) => (
-            <details key={edge.id} className="specs-component" open>
-              <summary className="specs-component__summary">
-                {edge.component_name}
-                <span className="specs-grid__meta">
-                  {' '}
-                  ×{edge.quantity}
-                  {edge.usage_count > 1 ? ` · shared — used in ${edge.usage_count} products` : ''}
-                </span>
-              </summary>
-              <FieldGrid
-                fields={componentFields.get(edge.component_id) ?? []}
-                units={units}
-                components={components}
-                overrideContext={{ edgeId: edge.id, overrides }}
-              />
-              <AddFieldForm
-                ownerKind="component"
-                ownerId={edge.component_id}
-                categories={CATEGORIES}
-              />
-            </details>
-          ))}
+          {childrenOf(null).map(renderEdge)}
           {edges.length === 0 ? (
             <p className="specs-grid__meta">
               No components attached — shared components carry one field history across every
               product that uses them.
             </p>
           ) : null}
-          <AttachComponentForm productId={selected.id} components={attachable} />
+          <AttachComponentForm
+            productId={selected.id}
+            components={attachable}
+            edges={edges.map((e) => ({ id: e.id, component_name: e.component_name }))}
+          />
           {attachable.length === 0 && components.length === 0 ? (
             <p className="specs-grid__meta">
               The <Link href="/specs/library" className="specs-value-button">Component Library</Link> is
@@ -194,6 +225,32 @@ export default async function SpecsPage({
           )}
           <CreateReleaseForm productId={selected.id} />
         </section>
+
+        {field ? (
+          <FieldDetail
+            supabase={supabase}
+            fieldId={field as SpecFieldId}
+            units={units}
+            components={components}
+            closeHref={`/specs?product=${selected.id}`}
+          />
+        ) : null}
+
+        {archivedProducts.length > 0 ? (
+          <details className="specs-grid__meta">
+            <summary>
+              {archivedProducts.length} archived product{archivedProducts.length > 1 ? 's' : ''}
+            </summary>
+            <ul className="specs-form" aria-label="Archived products">
+              {archivedProducts.map((p) => (
+                <li key={p.id} className="specs-form--row">
+                  {p.name}
+                  <ArchiveToggle entity="products" id={p.id} archived label={p.name} />
+                </li>
+              ))}
+            </ul>
+          </details>
+        ) : null}
       </div>
     </AppShell>
   );

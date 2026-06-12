@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { createCanDo } from '@arther/authz';
 import {
   addComponentToProduct,
+  addFieldComment,
   clearComponentOverride,
   createComponent,
   createProduct,
@@ -15,6 +16,7 @@ import {
   getActiveWorkspace,
   listReferenceEdges,
   membershipLookupFor,
+  setArchived,
   setComponentOverride,
   updateFieldValue,
 } from '@arther/db';
@@ -38,8 +40,10 @@ export interface SpecsFormState {
 /**
  * Every mutation routes through canDo (guardrail 1) with RLS behind it
  * (defence in depth) — the single-call-site rule the F3 acceptance greps for.
+ * 'spec.write' is editor-gated; 'comment.write' is every member's right
+ * (viewers comment — billing/collaboration specs), mirrored by the 0003 RLS.
  */
-async function authorize() {
+async function authorize(action: 'spec.write' | 'comment.write' = 'spec.write') {
   const supabase = await getSupabaseServer();
   if (!supabase) return { error: 'Not configured in this environment yet.' as const };
   const {
@@ -50,7 +54,7 @@ async function authorize() {
   if (!workspace) return { error: 'No workspace yet — create one first.' as const };
 
   const canDo = createCanDo(membershipLookupFor(supabase));
-  const allowed = await canDo({ id: user.id as UserId }, 'spec.write', {
+  const allowed = await canDo({ id: user.id as UserId }, action, {
     workspaceId: workspace.id,
   });
   if (!allowed) return { error: 'Viewers can’t edit specs — ask for an Editor seat.' as const };
@@ -410,6 +414,7 @@ export async function createComponentAction(
 const attachSchema = z.object({
   productId: z.string().uuid(),
   componentId: z.string().uuid({ message: 'Pick a component.' }),
+  parentEdgeId: z.string().uuid().optional().or(z.literal('')),
   quantity: z.coerce.number().int().positive().default(1),
 });
 
@@ -427,9 +432,73 @@ export async function attachComponentAction(
     workspaceId: auth.workspace.id,
     productId: parsed.data.productId as ProductId,
     componentId: parsed.data.componentId as ComponentId,
+    parentEdgeId: parsed.data.parentEdgeId || undefined,
     quantity: parsed.data.quantity,
     createdBy: auth.userId,
   });
   revalidatePath('/specs');
+  return {};
+}
+
+const commentSchema = z.object({
+  fieldId: z.string().uuid(),
+  body: z.string().trim().min(1, 'Write the comment first.'),
+});
+
+/** F5.8 — commenting is a member right (viewers included). */
+export async function addCommentAction(
+  _prev: SpecsFormState,
+  formData: FormData,
+): Promise<SpecsFormState> {
+  const parsed = commentSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { error: parsed.error.issues[0]!.message };
+
+  const auth = await authorize('comment.write');
+  if ('error' in auth) return { error: auth.error };
+
+  try {
+    await addFieldComment(auth.supabase, {
+      workspaceId: auth.workspace.id,
+      fieldId: parsed.data.fieldId as SpecFieldId,
+      body: parsed.data.body,
+      authorId: auth.userId,
+    });
+  } catch {
+    return { error: 'Could not post the comment.' };
+  }
+  revalidatePath('/specs');
+  revalidatePath('/specs/library');
+  return {};
+}
+
+const archiveSchema = z.object({
+  entity: z.enum(['products', 'components', 'spec_fields']),
+  id: z.string().uuid(),
+  archived: z.enum(['true', 'false']),
+});
+
+/** F5.10 — soft archive/restore; hard delete stays DB-guarded with no UI. */
+export async function setArchivedAction(
+  _prev: SpecsFormState,
+  formData: FormData,
+): Promise<SpecsFormState> {
+  const parsed = archiveSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { error: 'Invalid archive request.' };
+
+  const auth = await authorize();
+  if ('error' in auth) return { error: auth.error };
+
+  try {
+    await setArchived(auth.supabase, {
+      entity: parsed.data.entity,
+      id: parsed.data.id,
+      archived: parsed.data.archived === 'true',
+      userId: auth.userId,
+    });
+  } catch {
+    return { error: 'Could not change the archive state.' };
+  }
+  revalidatePath('/specs');
+  revalidatePath('/specs/library');
   return {};
 }

@@ -40,9 +40,12 @@ export function NewComponentForm() {
 export function AttachComponentForm({
   productId,
   components,
+  edges = [],
 }: {
   productId: string;
   components: ComponentRow[];
+  /** Existing edges of this product — "Nest under" targets (F6.2 tree). */
+  edges?: Array<{ id: string; component_name: string }>;
 }) {
   const [state, action, pending] = useActionState<SpecsFormState, FormData>(
     attachComponentAction,
@@ -67,6 +70,21 @@ export function AttachComponentForm({
           ))}
         </select>
       </div>
+      {edges.length > 0 ? (
+        <div className="ui-field">
+          <label className="ui-field__label" htmlFor="attach-parent">
+            Nest under
+          </label>
+          <select id="attach-parent" name="parentEdgeId" className="ui-field__input" defaultValue="">
+            <option value="">— top level —</option>
+            {edges.map((e) => (
+              <option key={e.id} value={e.id}>
+                {e.component_name}
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : null}
       <div className="ui-field">
         <label className="ui-field__label" htmlFor="attach-quantity">
           Qty

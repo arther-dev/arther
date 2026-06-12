@@ -56,12 +56,15 @@ export function FieldGrid({
   units,
   components = [],
   overrideContext,
+  detailBase,
 }: {
   fields: SpecFieldRow[];
   units: UnitRow[];
   /** Component Library options for reference pickers + name resolution. */
   components?: ComponentOption[];
   overrideContext?: OverrideContext;
+  /** When set, field names link to the detail panel: `${detailBase}field=<id>`. */
+  detailBase?: string;
 }) {
   let lastCategory = '';
   return (
@@ -104,6 +107,7 @@ export function FieldGrid({
               symbol={symbol}
               edgeId={overrideContext?.edgeId}
               override={override}
+              detailBase={detailBase}
             />
           );
         })}
@@ -120,6 +124,7 @@ function FieldRowWithHeader({
   symbol,
   edgeId,
   override,
+  detailBase,
 }: {
   header: React.ReactNode;
   field: SpecFieldRow;
@@ -128,6 +133,7 @@ function FieldRowWithHeader({
   symbol?: string;
   edgeId?: string;
   override: OverrideRow | null;
+  detailBase?: string;
 }) {
   const effective = override?.value ?? field.value;
   const globalSymbol = (() => {
@@ -147,7 +153,19 @@ function FieldRowWithHeader({
     <>
       {header}
       <tr>
-        <td>{field.name}</td>
+        <td>
+          {detailBase ? (
+            <Link
+              href={`${detailBase}field=${field.id}#field-detail`}
+              className="specs-field-link"
+              aria-label={`${field.name} — history and comments`}
+            >
+              {field.name}
+            </Link>
+          ) : (
+            field.name
+          )}
+        </td>
         <td>
           {referenced ? (
             <Link href="/specs/library" className="specs-value-button">
