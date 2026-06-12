@@ -47,3 +47,18 @@ export {
   scopedServiceQuery,
   type WorkspaceScope,
 } from './guard';
+export {
+  acceptInvitation,
+  createInvitation,
+  getInvitation,
+  listInvitations,
+  listMembers,
+  removeMember,
+  revokeInvitation,
+  transferOwnership,
+  updateMemberRole,
+  updateWorkspaceName,
+  type InvitationLookup,
+  type InvitationRow,
+  type MemberRow,
+} from './workspace';

@@ -408,3 +408,49 @@
   font: var(--type-caption);
   margin: 0;
 }
+
+/* --- Account menu (F4.5: Settings + Log out behind the avatar) --- */
+.ui-account-menu {
+  position: relative;
+}
+.ui-account-menu__trigger {
+  list-style: none;
+  cursor: pointer;
+}
+.ui-account-menu__trigger::-webkit-details-marker {
+  display: none;
+}
+.ui-account-menu__panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  min-width: 180px;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+  padding: var(--space-xs);
+  z-index: 30;
+}
+.ui-account-menu__item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: var(--space-sm) var(--space-md);
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font: var(--type-label);
+  text-decoration: none;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+}
+.ui-account-menu__item:hover {
+  background: var(--bg-active);
+}
+.ui-account-menu__item:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}

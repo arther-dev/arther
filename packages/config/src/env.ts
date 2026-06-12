@@ -26,6 +26,8 @@ const tierSchemas = {
     SUPABASE_ANON_KEY: z.string().min(1),
     SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
     SENTRY_DSN: z.string().url().optional(),
+    /** Public app origin for Supabase auth redirects (F2.1/F2.3). */
+    APP_URL: z.string().url().optional(),
   }),
   phase2Plus: z.object({
     ANTHROPIC_API_KEY: z.string().min(1),

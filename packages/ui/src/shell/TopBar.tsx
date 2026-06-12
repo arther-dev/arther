@@ -6,6 +6,8 @@ export interface TopBarProps {
   activeTab: string;
   /** Connectivity chip state (real state arrives with G5.3). */
   connectivity?: 'connected' | 'saving' | 'offline';
+  /** Account affordance (menu); falls back to the bare avatar button. */
+  account?: ReactNode;
   /** Slot for future tab-strip items beyond the active one. */
   children?: ReactNode;
 }
@@ -16,7 +18,7 @@ export interface TopBarProps {
  * persistence, launcher, overflow) is later work; this renders the frame with
  * the accessibility contract (aria-labels, ≥24px hit areas) in place.
  */
-export function TopBar({ activeTab, connectivity = 'connected', children }: TopBarProps) {
+export function TopBar({ activeTab, connectivity = 'connected', account, children }: TopBarProps) {
   const connectivityLabel =
     connectivity === 'connected' ? 'Connected' : connectivity === 'saving' ? 'Saving…' : 'Offline';
   return (
@@ -53,7 +55,7 @@ export function TopBar({ activeTab, connectivity = 'connected', children }: TopB
         >
           {connectivityLabel}
         </span>
-        <button type="button" className="ui-topbar__avatar" aria-label="Account" />
+        {account ?? <button type="button" className="ui-topbar__avatar" aria-label="Account" />}
       </div>
     </header>
   );

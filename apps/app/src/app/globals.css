@@ -342,3 +342,9 @@ body {
 .specs-feed__body {
   margin: var(--space-2xs) 0 0;
 }
+
+/* --- Settings (F4.5) --- */
+.specs-invite-link {
+  word-break: break-all;
+  color: var(--text-primary);
+}

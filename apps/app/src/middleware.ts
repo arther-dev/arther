@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 
-const AUTH_PATHS = ['/login', '/signup', '/forgot', '/reset', '/invite'];
+const AUTH_PATHS = ['/login', '/signup', '/forgot', '/reset', '/invite', '/auth'];
 
 /**
  * Session refresh + routing (F2.3, auth IA §4): unauthenticated users are
