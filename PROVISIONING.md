@@ -12,6 +12,31 @@ Everything reachable through the Supabase / Sentry connectors is done; the rest 
 dashboard access. Values below are **public-tier** (anon/publishable keys are RLS-guarded
 client keys; the DSN is a public ingest key). Secrets are never written to this repo.
 
+### Update — 2026-06-11 (verification session, after manual dashboard work)
+
+- **F0.3 Vercel: done.** Both projects exist on team `Arther` (renamed from “Arther's
+  projects”, same `team_T6BMoZyEWNHn7Iw1CELDGh3R`): `arther-app`
+  (`prj_fCxwQATb2Q7FIdepAj1FfMSc0Wu9`, production deploy READY at
+  `arther-app.vercel.app`) and `arther-portal`. Env vars confirmed present on the
+  project (build log lists all of `SUPABASE_URL/ANON_KEY/SERVICE_ROLE_KEY`,
+  `SENTRY_DSN/ORG/PROJECT/AUTH_TOKEN`) — which also closes the two “Manual” secret
+  items below. Note: `SENTRY_AUTH_TOKEN` is **Production-only**; add it (+ORG/PROJECT)
+  to Preview per step 2 so preview builds get source maps too.
+- **F0.4 acceptance: PASSED (2026-06-11, second run).** First run (`/sentry-check?go=1`
+  on production) reached Sentry (ARTHER-APP-1/2) but with **minified frames**: Turborepo
+  strict env mode stripped the undeclared `SENTRY_*`/`SUPABASE_*` vars from `app#build`
+  (`[@sentry/nextjs] No auth token provided. Will not upload source maps`), and pnpm
+  blocked the `@sentry/cli` install script. Fixed in repo (`turbo.json` build
+  `env`/`passThroughEnv` + `@sentry/cli` in `pnpm.onlyBuiltDependencies`, PR #10); the
+  PR's preview build then logged `Successfully uploaded source maps` ×3 (node/edge/client)
+  and the re-fired probe produced **ARTHER-APP-3 with fully source-mapped frames**
+  (`page.tsx:16:11 (SentryCheck)` + source context). Production gets source maps on the
+  first deploy that includes the fix. Preview also serves the app over HTTPS on a real
+  URL (auth middleware gates `/design-tokens` → login card, HSTS on) — F0.3 step 3 ✓.
+- **Auth settings (step 3): still unverified** — not readable via connector and
+  `*.supabase.co` is outside this session's network allowlist; confirm in the
+  dashboard (email confirmation on, Google OAuth, site URL = Vercel app URL).
+
 **F0.2 Supabase — done (except auth config + service keys):**
 
 | | dev | prod |
@@ -25,14 +50,15 @@ client keys; the DSN is a public ingest key). Secrets are never written to this 
   dashboard (Project Settings → API Keys) or via MCP `get_publishable_keys`; dev publishable:
   `sb_publishable_r77jBVfZtza3EZ9DNXMtTg_JXh2IA0D`, prod publishable:
   `sb_publishable_K0zsgmzdDhD9RXKGhD9kOQ_PS6yD6cj`.
-- ☐ **Manual:** `SUPABASE_SERVICE_ROLE_KEY` per project (dashboard → API Keys; secret — `.env`/Vercel only).
+- ☒ **Manual:** `SUPABASE_SERVICE_ROLE_KEY` per project (dashboard → API Keys; secret —
+  `.env`/Vercel only). *Done — present in Vercel env (2026-06-11 update).*
 - ☐ **Manual:** Auth settings per project (step 3): email+password with confirmation, Google OAuth, site URL.
 - ☐ **Blocked on plan:** PITR/backups (step 4) — org is on the **free** plan; PITR requires a paid plan. Decide before real prod data.
 
-**F0.3 Vercel — manual remainder:** the Vercel connector exposes no project-creation or
-env-var tools, so the two-project repo import below (with per-app Root Directory + env
-vars) must be done in the Vercel dashboard. Team exists: “Arther's projects”
-(`team_T6BMoZyEWNHn7Iw1CELDGh3R`).
+**F0.3 Vercel — done (2026-06-11 update):** the two-project repo import (per-app Root
+Directory + env vars) was done by hand in the Vercel dashboard — the connector exposes
+no project-creation or env-var tools. Team: “Arther” (formerly “Arther's projects”,
+`team_T6BMoZyEWNHn7Iw1CELDGh3R`).
 
 **F0.4 Sentry — done (except auth token):** project `arther/arther-app` created
 (platform `javascript-nextjs`, team `arther`).
@@ -40,8 +66,11 @@ vars) must be done in the Vercel dashboard. Team exists: “Arther's projects”
 - `SENTRY_DSN` / `NEXT_PUBLIC_SENTRY_DSN`:
   `https://14850d72b17273e6952325e82272067d@o4511544438226944.ingest.us.sentry.io/4511544541249536`
 - `SENTRY_ORG=arther` · `SENTRY_PROJECT=arther-app`
-- ☐ **Manual:** `SENTRY_AUTH_TOKEN` (step 3) — org settings → Auth Tokens; secret, Vercel env only.
-- ☐ Acceptance test (step 4) runs once a Vercel preview deploy exists.
+- ☒ **Manual:** `SENTRY_AUTH_TOKEN` (step 3) — org settings → Auth Tokens; secret, Vercel
+  env only. *Done — set on Production (2026-06-11 update); add to Preview too.*
+- ☒ Acceptance test (step 4): **passed 2026-06-11** — ARTHER-APP-3 on the PR #10
+  preview deploy, source-mapped frames (`page.tsx:16:11 (SentryCheck)`). First attempt
+  was unmapped (turbo strict env — fixed in repo, see status update above).
 
 ## F0.2 — Supabase
 
