@@ -267,6 +267,8 @@ export interface ProductComponentEdge {
   id: string;
   component_id: ComponentId;
   component_name: string;
+  /** Nesting WITHIN this product's tree — references another edge (0003). */
+  parent_component_id: string | null;
   quantity: number;
   /** Across the whole workspace — drives the shared-component badge. */
   usage_count: number;
@@ -279,7 +281,9 @@ export async function listProductComponents(
 ): Promise<ProductComponentEdge[]> {
   const { data, error } = await client
     .from('product_components')
-    .select('id, component_id, quantity, components!inner(name, product_components(count))')
+    .select(
+      'id, component_id, parent_component_id, quantity, components!inner(name, product_components(count))',
+    )
     .eq('product_id', productId)
     .order('display_order');
   if (error) throw new Error(`listProductComponents: ${error.message}`);
@@ -292,6 +296,7 @@ export async function listProductComponents(
       id: (row as { id: string }).id,
       component_id: (row as { component_id: string }).component_id as ComponentId,
       component_name: c.name,
+      parent_component_id: (row as { parent_component_id: string | null }).parent_component_id,
       quantity: (row as { quantity: number }).quantity,
       usage_count: c.product_components?.[0]?.count ?? 0,
     };
@@ -304,6 +309,8 @@ export async function addComponentToProduct(
     workspaceId: WorkspaceId;
     productId: ProductId;
     componentId: ComponentId;
+    /** Nest under an existing edge of the same product (F5.3/F6.2 tree). */
+    parentEdgeId?: string;
     quantity?: number;
     createdBy: UserId;
   },
@@ -312,6 +319,7 @@ export async function addComponentToProduct(
     workspace_id: input.workspaceId,
     product_id: input.productId,
     component_id: input.componentId,
+    parent_component_id: input.parentEdgeId ?? null,
     quantity: input.quantity ?? 1,
     created_by: input.createdBy,
   });
@@ -507,6 +515,163 @@ export async function clearComponentOverride(
     .eq('product_component_id', input.productComponentId)
     .eq('field_id', input.fieldId);
   if (error) throw new Error(`clearComponentOverride: ${error.message}`);
+}
+
+export interface FieldCommentRow {
+  id: string;
+  field_id: SpecFieldId;
+  /** Version current when the comment was made — the "at this comment" marker. */
+  field_version_id: string | null;
+  value_snapshot: FieldValue | null;
+  author_id: UserId | null;
+  body: string;
+  parent_comment_id: string | null;
+  created_at: string;
+  edited_at: string | null;
+}
+
+export async function listFieldComments(
+  client: SupabaseClient,
+  fieldId: SpecFieldId,
+): Promise<FieldCommentRow[]> {
+  const { data, error } = await client
+    .from('field_comments')
+    .select(
+      'id, field_id, field_version_id, value_snapshot, author_id, body, parent_comment_id, created_at, edited_at',
+    )
+    .eq('field_id', fieldId)
+    .order('created_at', { ascending: false });
+  if (error) throw new Error(`listFieldComments: ${error.message}`);
+  return (data ?? []) as FieldCommentRow[];
+}
+
+/**
+ * F5.8: the version context (current version + value snapshot) is captured
+ * server-side at insert so "at this comment" can never drift from what the
+ * author was looking at. Commenting is a viewer right (canDo 'comment.write';
+ * the 0003 policy is member-wide, not editor-gated).
+ */
+export async function addFieldComment(
+  client: SupabaseClient,
+  input: {
+    workspaceId: WorkspaceId;
+    fieldId: SpecFieldId;
+    body: string;
+    authorId: UserId;
+    parentCommentId?: string;
+  },
+): Promise<void> {
+  const { data: field, error: fieldError } = await client
+    .from('spec_fields')
+    .select('current_version_id, value')
+    .eq('id', input.fieldId)
+    .single();
+  if (fieldError || !field) throw new Error(`addFieldComment: field not found`);
+  const { error } = await client.from('field_comments').insert({
+    workspace_id: input.workspaceId,
+    field_id: input.fieldId,
+    field_version_id: field.current_version_id,
+    value_snapshot: field.value,
+    author_id: input.authorId,
+    body: input.body,
+    parent_comment_id: input.parentCommentId ?? null,
+  });
+  if (error) throw new Error(`addFieldComment: ${error.message}`);
+}
+
+/** One field with owner + archive state — the detail panel's subject. */
+export async function getSpecField(
+  client: SupabaseClient,
+  fieldId: SpecFieldId,
+): Promise<SpecFieldRow | null> {
+  const { data, error } = await client
+    .from('spec_fields')
+    .select(FIELD_COLUMNS)
+    .eq('id', fieldId)
+    .maybeSingle();
+  if (error) throw new Error(`getSpecField: ${error.message}`);
+  return (data as SpecFieldRow | null) ?? null;
+}
+
+/** Display names for feed attribution (id → name/email). */
+export async function listUsersByIds(
+  client: SupabaseClient,
+  ids: UserId[],
+): Promise<Map<UserId, { name: string | null; email: string }>> {
+  const map = new Map<UserId, { name: string | null; email: string }>();
+  if (ids.length === 0) return map;
+  const { data, error } = await client
+    .from('users')
+    .select('id, name, email')
+    .in('id', [...new Set(ids)]);
+  if (error) throw new Error(`listUsersByIds: ${error.message}`);
+  for (const row of data ?? []) {
+    map.set(row.id as UserId, { name: row.name as string | null, email: row.email as string });
+  }
+  return map;
+}
+
+/**
+ * F5.10 archive lifecycle — soft archive/restore on every spec entity. Hard
+ * delete stays DB-guarded (zero-reference rule, invariant 7) and has no UI.
+ */
+export async function setArchived(
+  client: SupabaseClient,
+  input: {
+    entity: 'products' | 'components' | 'spec_fields';
+    id: string;
+    archived: boolean;
+    userId: UserId;
+  },
+): Promise<void> {
+  const { error } = await client
+    .from(input.entity)
+    .update({
+      archived_at: input.archived ? new Date().toISOString() : null,
+      archived_by: input.archived ? input.userId : null,
+      updated_by: input.userId,
+    })
+    .eq('id', input.id);
+  if (error) throw new Error(`setArchived(${input.entity}): ${error.message}`);
+}
+
+export interface ArchivedRow {
+  id: string;
+  name: string;
+  archived_at: string;
+}
+
+/** Archived items for the restore disclosures (F5.10). */
+export async function listArchived(
+  client: SupabaseClient,
+  entity: 'products' | 'components',
+  workspaceId: WorkspaceId,
+): Promise<ArchivedRow[]> {
+  const { data, error } = await client
+    .from(entity)
+    .select('id, name, archived_at')
+    .eq('workspace_id', workspaceId)
+    .not('archived_at', 'is', null)
+    .order('archived_at', { ascending: false });
+  if (error) throw new Error(`listArchived(${entity}): ${error.message}`);
+  return (data ?? []) as ArchivedRow[];
+}
+
+export async function listArchivedFields(
+  client: SupabaseClient,
+  owner: { productId?: ProductId; componentIds?: ComponentId[] },
+): Promise<Array<ArchivedRow & { component_id: ComponentId | null }>> {
+  if (!owner.productId && (owner.componentIds?.length ?? 0) === 0) return [];
+  let query = client
+    .from('spec_fields')
+    .select('id, name, archived_at, component_id')
+    .not('archived_at', 'is', null)
+    .order('archived_at', { ascending: false });
+  if (owner.productId) query = query.eq('product_id', owner.productId);
+  if (owner.componentIds?.length) query = query.in('component_id', owner.componentIds);
+  const { data, error } = await query;
+  if (error) throw new Error(`listArchivedFields: ${error.message}`);
+  return (data ?? []) as Array<ArchivedRow & { component_id: ComponentId | null }>;
 }
 
 /**
