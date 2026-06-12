@@ -200,19 +200,25 @@ export async function inviteMemberAction(
 
   const resendKey = process.env.RESEND_API_KEY;
   if (resendKey) {
+    // RESEND_FROM must be on a domain verified in Resend to reach arbitrary
+    // recipients; the onboarding default only delivers to the account owner.
+    const from = process.env.RESEND_FROM ?? 'Arther <onboarding@resend.dev>';
+    const subject = `You're invited to ${auth.workspace.name} on Arther`;
+    const line = `${auth.workspace.name} invited you to join as ${parsed.data.role}.`;
     try {
       await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: { Authorization: `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          from: 'Arther <onboarding@resend.dev>',
+          from,
           to: [parsed.data.email],
-          subject: `You're invited to ${auth.workspace.name} on Arther`,
-          text: `${auth.workspace.name} invited you to join as ${parsed.data.role}. Accept within 7 days: ${inviteUrl}`,
+          subject,
+          text: `${line} Accept within 7 days: ${inviteUrl}`,
+          html: `<p>${line}</p><p><a href="${inviteUrl}">Accept your invitation</a> — the link expires in 7 days.</p>`,
         }),
       });
     } catch {
-      // The invitation row exists either way — the link below still works.
+      // The invitation row exists either way — the copyable link still works.
     }
   }
 
