@@ -383,3 +383,28 @@
   color: var(--text-tertiary);
   margin: 0;
 }
+
+/* --- SpecChart (table-field preview; Phase 2 Chart block renders through it) --- */
+.ui-chart {
+  margin: 0;
+  display: inline-flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+.ui-chart__axis {
+  stroke: var(--border-subtle);
+  stroke-width: 1;
+}
+.ui-chart__tick {
+  fill: var(--text-tertiary);
+  font: var(--type-caption);
+}
+.ui-chart__caption {
+  color: var(--text-tertiary);
+  font: var(--type-caption);
+}
+.ui-chart__empty {
+  color: var(--text-tertiary);
+  font: var(--type-caption);
+  margin: 0;
+}

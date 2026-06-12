@@ -6,6 +6,7 @@ import {
   type FieldType,
   type FieldValue,
   type ProductId,
+  type ReferenceEdge,
   type ReleaseId,
   type SpecFieldId,
   type UnitId,
@@ -85,6 +86,9 @@ export async function createProduct(
 export interface SpecFieldRow {
   id: SpecFieldId;
   workspace_id: WorkspaceId;
+  /** Exactly one owner is set (0003 XOR check). */
+  component_id: ComponentId | null;
+  product_id: ProductId | null;
   name: string;
   type: FieldType;
   value: FieldValue | null;
@@ -99,7 +103,7 @@ export interface SpecFieldRow {
 }
 
 const FIELD_COLUMNS =
-  'id, workspace_id, name, type, value, unit_id, options, category, source, conditions, display_order, archived_at';
+  'id, workspace_id, component_id, product_id, name, type, value, unit_id, options, category, source, conditions, display_order, archived_at';
 
 export async function listFieldsForProduct(
   client: SupabaseClient,
@@ -124,7 +128,7 @@ export async function listFieldsForComponents(
   if (componentIds.length === 0) return result;
   const { data, error } = await client
     .from('spec_fields')
-    .select(`${FIELD_COLUMNS}, component_id`)
+    .select(FIELD_COLUMNS)
     .in('component_id', componentIds)
     .is('archived_at', null)
     .order('category')
@@ -503,6 +507,32 @@ export async function clearComponentOverride(
     .eq('product_component_id', input.productComponentId)
     .eq('field_id', input.fieldId);
   if (error) throw new Error(`clearComponentOverride: ${error.message}`);
+}
+
+/**
+ * The workspace's reference-field graph (F5.9): one edge per component-owned
+ * reference field that has a value. Product-owned reference fields cannot
+ * close a cycle (products are never reference targets) and are excluded.
+ * `field_id` lets the caller drop the edge being re-pointed before checking.
+ */
+export async function listReferenceEdges(
+  client: SupabaseClient,
+  workspaceId: WorkspaceId,
+): Promise<Array<ReferenceEdge & { field_id: SpecFieldId }>> {
+  const { data, error } = await client
+    .from('spec_fields')
+    .select('id, component_id, value')
+    .eq('workspace_id', workspaceId)
+    .eq('type', 'reference')
+    .not('component_id', 'is', null)
+    .not('value', 'is', null)
+    .is('archived_at', null);
+  if (error) throw new Error(`listReferenceEdges: ${error.message}`);
+  return (data ?? []).map((row) => ({
+    field_id: row.id as SpecFieldId,
+    from: row.component_id as string,
+    to: (row.value as { component_id: string }).component_id,
+  }));
 }
 
 /** Membership lookup for canDo (@arther/authz) over the user-JWT client. */

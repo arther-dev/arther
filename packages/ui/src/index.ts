@@ -19,3 +19,4 @@ export { Divider } from './components/Divider';
 export { Skeleton } from './components/Skeleton';
 export { StatusPill, type StatusPillProps } from './components/StatusPill';
 export { statusPillVariants, type StatusPillVariantProps } from './components/status-pill-variants';
+export { SpecChart, type SpecChartProps, type SpecChartColumn } from './components/SpecChart';

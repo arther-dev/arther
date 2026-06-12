@@ -78,7 +78,11 @@ export default async function LibraryPage() {
                   : ' · not used yet'}
               </span>
             </h2>
-            <FieldGrid fields={componentFields.get(component.id) ?? []} units={units} />
+            <FieldGrid
+              fields={componentFields.get(component.id) ?? []}
+              units={units}
+              components={components}
+            />
             <AddFieldForm ownerKind="component" ownerId={component.id} categories={CATEGORIES} />
           </section>
         ))}

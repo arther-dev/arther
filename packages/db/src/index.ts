@@ -15,6 +15,7 @@ export {
   listOverridesForProduct,
   listProductComponents,
   listProducts,
+  listReferenceEdges,
   listReleases,
   listReleasesForProduct,
   listUnits,

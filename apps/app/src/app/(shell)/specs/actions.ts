@@ -13,6 +13,7 @@ import {
   createSpecField,
   deleteRelease,
   getActiveWorkspace,
+  listReferenceEdges,
   membershipLookupFor,
   setComponentOverride,
   updateFieldValue,
@@ -20,6 +21,7 @@ import {
 import {
   fieldTypeSchema,
   isOverridableFieldType,
+  wouldCreateReferenceCycle,
   type ComponentId,
   type ProductId,
   type ReleaseId,
@@ -162,6 +164,21 @@ const valueBuilders: Record<string, (form: FormData, field: { options: string[] 
     selected: f.getAll('selected').map(String),
     options: field.options ?? [],
   }),
+  // The mini-spreadsheet serializes its draft to one JSON value; the full
+  // tableValueSchema (roles, units, row shape) re-validates in updateFieldValue.
+  table: (f) => {
+    const raw = z.string().min(1, 'The table is empty.').parse(f.get('tableJson'));
+    try {
+      return JSON.parse(raw) as unknown;
+    } catch {
+      throw new z.ZodError([
+        { code: z.ZodIssueCode.custom, message: 'Could not read the table data.', path: [] },
+      ]);
+    }
+  },
+  reference: (f) => ({
+    component_id: z.string().uuid({ message: 'Pick a component.' }).parse(f.get('componentId')),
+  }),
 };
 
 export async function updateFieldValueAction(
@@ -179,10 +196,11 @@ export async function updateFieldValueAction(
   const auth = await authorize();
   if ('error' in auth) return { error: auth.error };
 
-  // The field's option list is authoritative for enum values (spec §4.6).
+  // The field's option list is authoritative for enum values (spec §4.6);
+  // component_id identifies the owner for the reference cycle check.
   const { data: fieldRow } = await auth.supabase
     .from('spec_fields')
-    .select('options')
+    .select('options, component_id')
     .eq('id', head.data.fieldId)
     .single();
   if (!fieldRow) return { error: 'Field not found.' };
@@ -192,6 +210,21 @@ export async function updateFieldValueAction(
     value = builder(formData, fieldRow as { options: string[] | null });
   } catch (e) {
     return { error: e instanceof z.ZodError ? e.issues[0]!.message : 'Invalid value.' };
+  }
+
+  // F5.9: circular references are rejected at save. Only component-owned
+  // reference fields can close a loop — products are never reference targets.
+  const ownerComponentId = (fieldRow as { component_id: string | null }).component_id;
+  if (head.data.type === 'reference' && ownerComponentId) {
+    const target = (value as { component_id: string }).component_id;
+    const edges = await listReferenceEdges(auth.supabase, auth.workspace.id);
+    const existing = edges.filter((e) => e.field_id !== head.data.fieldId);
+    if (wouldCreateReferenceCycle(existing, { from: ownerComponentId, to: target })) {
+      return {
+        error:
+          'That reference would create a loop — the selected component already references this one (directly or through a chain).',
+      };
+    }
   }
 
   try {
