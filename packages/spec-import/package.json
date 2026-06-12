@@ -1,5 +1,5 @@
 {
-  "name": "@arther/db",
+  "name": "@arther/spec-import",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -12,10 +12,9 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@arther/config": "workspace:*",
-    "@arther/spec-import": "workspace:*",
     "@arther/types": "workspace:*",
-    "@supabase/supabase-js": "^2.49.0"
+    "exceljs": "^4.4.0",
+    "zod": "^3.24.0"
   },
   "devDependencies": {
     "typescript": "^5.8.0",

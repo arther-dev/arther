@@ -124,6 +124,27 @@ Code is already wired in `apps/app` (`instrumentation.ts`, `instrumentation-clie
    with readable (source-mapped) stack frames. The portal app gets the same wiring at
    Phase 3 C6.
 
+## F7 / M3 — AI import activation (Anthropic)
+
+Code side shipped 2026-06-12 (F7 PR): `@arther/ai-gateway` (the single Claude call
+site, ADR-007), the `@arther/spec-import` pipeline, migration 0015, and the
+`/specs/import` flow. Status:
+
+- ☒ Migration **0015** (`commit_import_session`) applied to dev + prod via MCP (2026-06-12).
+- ☒ Storage: **`spec-imports`** bucket (private, 15 MB limit) + workspace-scoped policies
+  (editor upload / member read on the `{workspace_id}/{session_id}/{file}` prefix)
+  created on dev + prod via MCP (2026-06-12). No update/delete policies — uploads are
+  the import audit trail.
+- ☐ **Manual:** `ANTHROPIC_API_KEY` (console.anthropic.com → API Keys) → Vercel
+  `arther-app` env (Preview + Production; server-side only) + local `.env`. Until it
+  exists the import flow degrades honestly ("AI interpretation isn't provisioned yet")
+  and keeps the upload for retry.
+- Model selection is backend config (architecture §7): `ai-gateway` defaults to
+  `claude-opus-4-8`.
+- Trigger.dev (ADR-006 durable import job) stays deferred to G1: interpretation runs
+  synchronously in the upload server action (`maxDuration = 300`). Wrap the same
+  pipeline in a `packages/jobs` task when Trigger.dev is provisioned.
+
 ## After provisioning
 
 - Fill local `.env` from `.env.example` (local dev talks to `arther-dev`).

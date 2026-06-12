@@ -12,7 +12,9 @@
   "dependencies": {
     "@arther/authz": "workspace:*",
     "@arther/config": "workspace:*",
+    "@arther/ai-gateway": "workspace:*",
     "@arther/db": "workspace:*",
+    "@arther/spec-import": "workspace:*",
     "@arther/types": "workspace:*",
     "@arther/ui": "workspace:*",
     "@sentry/nextjs": "^10.57.0",

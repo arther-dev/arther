@@ -2,7 +2,20 @@ import type { NextConfig } from 'next';
 import { withSentryConfig } from '@sentry/nextjs';
 
 const nextConfig: NextConfig = {
-  transpilePackages: ['@arther/authz', '@arther/config', '@arther/db', '@arther/types', '@arther/ui'],
+  transpilePackages: [
+    '@arther/ai-gateway',
+    '@arther/authz',
+    '@arther/config',
+    '@arther/db',
+    '@arther/spec-import',
+    '@arther/types',
+    '@arther/ui',
+  ],
+  // Spreadsheet uploads go through a server action (F7.1); spec workbooks
+  // are routinely a few MB.
+  experimental: {
+    serverActions: { bodySizeLimit: '20mb' },
+  },
 };
 
 // Source-map upload activates only when SENTRY_AUTH_TOKEN/ORG/PROJECT exist
