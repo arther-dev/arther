@@ -2,6 +2,7 @@
 
 import { usePathname } from 'next/navigation';
 import { TopBar } from '@arther/ui';
+import { AccountMenu } from './AccountMenu';
 
 /** The active tab = the mode, derived from the route segment (Handoff 02 §3). */
 const MODE_TITLES: Array<[prefix: string, title: string]> = [
@@ -17,5 +18,5 @@ const MODE_TITLES: Array<[prefix: string, title: string]> = [
 export function ShellTopBar() {
   const pathname = usePathname() ?? '/';
   const activeTab = MODE_TITLES.find(([prefix]) => pathname.startsWith(prefix))?.[1] ?? 'Arther';
-  return <TopBar activeTab={activeTab} />;
+  return <TopBar activeTab={activeTab} account={<AccountMenu />} />;
 }

@@ -17,6 +17,16 @@ const NOT_PROVISIONED =
 /** Generic by design: no account enumeration (auth IA §6). */
 const INVALID_CREDENTIALS = 'Email or password is incorrect.';
 
+/** Public base URL for Supabase redirects (APP_URL in Vercel; localhost in dev). */
+function appUrl(): string {
+  return process.env.APP_URL ?? 'http://localhost:3000';
+}
+
+/** All Supabase links route through the PKCE exchange, then on to `next`. */
+function callbackUrl(next: string): string {
+  return `${appUrl()}/auth/callback?next=${encodeURIComponent(next)}`;
+}
+
 function fieldErrors(parsed: z.SafeParseError<unknown>): Record<string, string> {
   const out: Record<string, string> = {};
   for (const issue of parsed.error.issues) {
@@ -57,7 +67,11 @@ export async function signUp(_prev: AuthFormState, formData: FormData): Promise<
   const { error } = await supabase.auth.signUp({
     email: parsed.data.email,
     password: parsed.data.password,
-    options: { data: { full_name: parsed.data.name } },
+    options: {
+      data: { full_name: parsed.data.name },
+      // Confirmation link → PKCE exchange → first-run workspace creation.
+      emailRedirectTo: callbackUrl('/welcome'),
+    },
   });
   // "Email already registered" responses are intentionally not distinguished
   // from success (no enumeration); Supabase sends the appropriate email.
@@ -83,7 +97,10 @@ export async function requestPasswordReset(
   const supabase = await getSupabaseServer();
   if (!supabase) return { error: NOT_PROVISIONED };
 
-  await supabase.auth.resetPasswordForEmail(parsed.data.email);
+  await supabase.auth.resetPasswordForEmail(parsed.data.email, {
+    // Recovery link → PKCE exchange (session established) → new-password form.
+    redirectTo: callbackUrl('/reset/update'),
+  });
   // Always confirm — whether or not the account exists (no enumeration).
   return { done: true };
 }
@@ -147,13 +164,44 @@ export async function createWorkspace(
   redirect('/dashboard');
 }
 
+/** F4.3 acceptance: email/expiry/revocation are re-checked by the 0014 RPC. */
+export async function acceptInviteAction(
+  _prev: AuthFormState,
+  formData: FormData,
+): Promise<AuthFormState> {
+  const parsed = z
+    .object({ invitationId: z.string().uuid() })
+    .safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { error: 'Invalid invitation link.' };
+
+  const supabase = await getSupabaseServer();
+  if (!supabase) return { error: NOT_PROVISIONED };
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { error: 'Log in (or sign up) with the invited email first, then open this link again.' };
+  }
+
+  const { error } = await supabase.rpc('accept_workspace_invitation', {
+    p_invitation_id: parsed.data.invitationId,
+  });
+  if (error) {
+    if (error.message.includes('different email')) {
+      return { error: 'This invitation was sent to a different email address.' };
+    }
+    return { error: 'This invitation is no longer valid — ask for a new one.' };
+  }
+  redirect('/dashboard');
+}
+
 export async function continueWithGoogle(): Promise<AuthFormState> {
   const supabase = await getSupabaseServer();
   if (!supabase) return { error: NOT_PROVISIONED };
 
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
-    options: { redirectTo: `${process.env.APP_URL ?? 'http://localhost:3000'}/dashboard` },
+    options: { redirectTo: callbackUrl('/dashboard') },
   });
   if (error || !data.url) return { error: 'Google sign-in is unavailable right now.' };
   redirect(data.url);

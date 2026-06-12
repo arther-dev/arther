@@ -15,7 +15,8 @@ test.describe('app shell frame (Handoff 02)', () => {
     await expect(page.getByRole('button', { name: 'Search (⌘K)' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Notifications' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Ask Arther (⌘J)' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Account' })).toBeVisible();
+    // The account control is the menu's <summary> trigger since F4.5.
+    await expect(page.getByLabel('Account')).toBeVisible();
     await expect(page.getByRole('status')).toHaveText('Connected');
   });
 

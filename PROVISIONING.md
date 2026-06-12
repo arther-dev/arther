@@ -33,9 +33,13 @@ client keys; the DSN is a public ingest key). Secrets are never written to this 
   (`page.tsx:16:11 (SentryCheck)` + source context). Production gets source maps on the
   first deploy that includes the fix. Preview also serves the app over HTTPS on a real
   URL (auth middleware gates `/design-tokens` → login card, HSTS on) — F0.3 step 3 ✓.
-- **Auth settings (step 3): still unverified** — not readable via connector and
-  `*.supabase.co` is outside this session's network allowlist; confirm in the
-  dashboard (email confirmation on, Google OAuth, site URL = Vercel app URL).
+- **Auth settings (step 3): done 2026-06-12 (owner-confirmed, dashboards).** Both
+  projects: email+password with confirmation required, Google OAuth (one Google
+  client; both `…supabase.co/auth/v1/callback` URIs registered), Site URL +
+  redirect allowlist → `https://arther-app.vercel.app` (+ localhost + preview
+  wildcard), `APP_URL` set in Vercel (Preview + Production). App-side PKCE
+  callback (`/auth/callback`) ships with the F2/F4 PR — links dead-ended
+  before it.
 
 **F0.2 Supabase — done (except auth config + service keys):**
 
