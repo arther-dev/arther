@@ -3,6 +3,7 @@
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { slugifyWorkspaceName, workspaceSlugSchema } from '@arther/types';
+import { appOrigin } from '../../lib/origin';
 import { getSupabaseServer } from '../../lib/supabase/server';
 
 export interface AuthFormState {
@@ -17,14 +18,9 @@ const NOT_PROVISIONED =
 /** Generic by design: no account enumeration (auth IA §6). */
 const INVALID_CREDENTIALS = 'Email or password is incorrect.';
 
-/** Public base URL for Supabase redirects (APP_URL in Vercel; localhost in dev). */
-function appUrl(): string {
-  return process.env.APP_URL ?? 'http://localhost:3000';
-}
-
-/** All Supabase links route through the PKCE exchange, then on to `next`. */
-function callbackUrl(next: string): string {
-  return `${appUrl()}/auth/callback?next=${encodeURIComponent(next)}`;
+/** Every Supabase link routes through the PKCE exchange, then on to `next`. */
+async function callbackUrl(next: string): Promise<string> {
+  return `${await appOrigin()}/auth/callback?next=${encodeURIComponent(next)}`;
 }
 
 function fieldErrors(parsed: z.SafeParseError<unknown>): Record<string, string> {
@@ -70,7 +66,7 @@ export async function signUp(_prev: AuthFormState, formData: FormData): Promise<
     options: {
       data: { full_name: parsed.data.name },
       // Confirmation link → PKCE exchange → first-run workspace creation.
-      emailRedirectTo: callbackUrl('/welcome'),
+      emailRedirectTo: await callbackUrl('/welcome'),
     },
   });
   // "Email already registered" responses are intentionally not distinguished
@@ -99,7 +95,7 @@ export async function requestPasswordReset(
 
   await supabase.auth.resetPasswordForEmail(parsed.data.email, {
     // Recovery link → PKCE exchange (session established) → new-password form.
-    redirectTo: callbackUrl('/reset/update'),
+    redirectTo: await callbackUrl('/reset/update'),
   });
   // Always confirm — whether or not the account exists (no enumeration).
   return { done: true };
@@ -201,7 +197,7 @@ export async function continueWithGoogle(): Promise<AuthFormState> {
 
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
-    options: { redirectTo: callbackUrl('/dashboard') },
+    options: { redirectTo: await callbackUrl('/dashboard') },
   });
   if (error || !data.url) return { error: 'Google sign-in is unavailable right now.' };
   redirect(data.url);

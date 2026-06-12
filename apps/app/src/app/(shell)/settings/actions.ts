@@ -15,6 +15,7 @@ import {
   updateWorkspaceName,
 } from '@arther/db';
 import type { UserId, WorkspaceId } from '@arther/types';
+import { appOrigin } from '../../../lib/origin';
 import { getSupabaseServer } from '../../../lib/supabase/server';
 
 export interface SettingsFormState {
@@ -195,7 +196,7 @@ export async function inviteMemberAction(
     return { error: 'Could not create the invitation.' };
   }
 
-  const inviteUrl = `${process.env.APP_URL ?? 'http://localhost:3000'}/invite/${invitationId}`;
+  const inviteUrl = `${await appOrigin()}/invite/${invitationId}`;
 
   const resendKey = process.env.RESEND_API_KEY;
   if (resendKey) {
