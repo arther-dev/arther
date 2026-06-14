@@ -2,8 +2,10 @@
 
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
+import { rateLimit } from '@arther/rate-limit';
 import { slugifyWorkspaceName, workspaceSlugSchema } from '@arther/types';
 import { appOrigin } from '../../lib/origin';
+import { clientIp } from '../../lib/request';
 import { getSupabaseServer } from '../../lib/supabase/server';
 
 export interface AuthFormState {
@@ -17,6 +19,19 @@ const NOT_PROVISIONED =
   'Authentication is not configured in this environment yet — see PROVISIONING.md.';
 /** Generic by design: no account enumeration (auth IA §6). */
 const INVALID_CREDENTIALS = 'Email or password is incorrect.';
+
+/**
+ * F8.2 — throttle the unauthenticated auth surfaces by client IP (brute force,
+ * signup spam, password-reset email bombing). Returns the form error to short
+ * the action, or null when within budget. Called once auth is known to be
+ * provisioned and just before the real Supabase call — the abuse vector is
+ * that call, and an unprovisioned environment shouldn't consume budget.
+ */
+async function authThrottle(): Promise<AuthFormState | null> {
+  const { success, retryAfterSeconds } = await rateLimit('auth', await clientIp());
+  if (success) return null;
+  return { error: `Too many attempts — please wait ${retryAfterSeconds}s and try again.` };
+}
 
 /** Every Supabase link routes through the PKCE exchange, then on to `next`. */
 async function callbackUrl(next: string): Promise<string> {
@@ -44,6 +59,9 @@ export async function logIn(_prev: AuthFormState, formData: FormData): Promise<A
   const supabase = await getSupabaseServer();
   if (!supabase) return { error: NOT_PROVISIONED };
 
+  const throttled = await authThrottle();
+  if (throttled) return throttled;
+
   const { error } = await supabase.auth.signInWithPassword(parsed.data);
   if (error) return { error: INVALID_CREDENTIALS };
   redirect('/dashboard');
@@ -59,6 +77,9 @@ export async function signUp(_prev: AuthFormState, formData: FormData): Promise<
 
   const supabase = await getSupabaseServer();
   if (!supabase) return { error: NOT_PROVISIONED };
+
+  const throttled = await authThrottle();
+  if (throttled) return throttled;
 
   const { error } = await supabase.auth.signUp({
     email: parsed.data.email,
@@ -93,6 +114,9 @@ export async function requestPasswordReset(
   const supabase = await getSupabaseServer();
   if (!supabase) return { error: NOT_PROVISIONED };
 
+  const throttled = await authThrottle();
+  if (throttled) return throttled;
+
   await supabase.auth.resetPasswordForEmail(parsed.data.email, {
     // Recovery link → PKCE exchange (session established) → new-password form.
     redirectTo: await callbackUrl('/reset/update'),
@@ -120,6 +144,9 @@ export async function resetPassword(
 
   const supabase = await getSupabaseServer();
   if (!supabase) return { error: NOT_PROVISIONED };
+
+  const throttled = await authThrottle();
+  if (throttled) return throttled;
 
   const { error } = await supabase.auth.updateUser({ password: parsed.data.password });
   if (error) return { error: 'This reset link is invalid or has expired — request a new one.' };
@@ -194,6 +221,9 @@ export async function acceptInviteAction(
 export async function continueWithGoogle(): Promise<AuthFormState> {
   const supabase = await getSupabaseServer();
   if (!supabase) return { error: NOT_PROVISIONED };
+
+  const throttled = await authThrottle();
+  if (throttled) return throttled;
 
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: 'google',

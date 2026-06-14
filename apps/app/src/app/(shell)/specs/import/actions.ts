@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { createCanDo } from '@arther/authz';
 import { createAiGateway } from '@arther/ai-gateway';
+import { rateLimit } from '@arther/rate-limit';
 import {
   commitImportSession,
   createImportSession,
@@ -80,6 +81,12 @@ export async function uploadAndInterpretAction(
 
   const auth = await authorize();
   if ('error' in auth) return { error: auth.error };
+
+  // F8.2 — cap interpretations per member; each one is a paid AI call.
+  const throttle = await rateLimit('import', auth.userId);
+  if (!throttle.success) {
+    return { error: `Too many imports in a short window — wait ${throttle.retryAfterSeconds}s and retry.` };
+  }
 
   const bytes = new Uint8Array(await file.arrayBuffer());
   let workbook: ParsedWorkbook;
@@ -219,6 +226,12 @@ export async function retryInterpretationAction(
 
   const auth = await authorize();
   if ('error' in auth) return { error: auth.error };
+
+  // F8.2 — re-interpretation is the same paid AI call; throttle it too.
+  const throttle = await rateLimit('import', auth.userId);
+  if (!throttle.success) {
+    return { error: `Too many imports in a short window — wait ${throttle.retryAfterSeconds}s and retry.` };
+  }
 
   const session = await getImportSession(auth.supabase, parsed.data.sessionId);
   if (!session) return { error: 'Import session not found.' };
