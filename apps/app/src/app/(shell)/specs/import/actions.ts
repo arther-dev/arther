@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { createCanDo } from '@arther/authz';
-import { AiOutputError, createAiGateway } from '@arther/ai-gateway';
+import { createAiGateway } from '@arther/ai-gateway';
 import {
   commitImportSession,
   createImportSession,
@@ -194,12 +194,14 @@ async function interpretAndPropose(
       userId: auth.userId,
     });
   } catch (e) {
+    // Surface the real cause: log the full error for Vercel runtime logs, and
+    // persist a concise reason so the owner sees what actually failed instead
+    // of a generic "Interpretation failed".
+    console.error('[import] interpretation failed for session', sessionId, e);
+    const detail = e instanceof Error ? e.message : String(e);
     await updateImportSession(auth.supabase, sessionId, {
       status: 'failed',
-      error:
-        e instanceof AiOutputError
-          ? `${e.message} Retry the interpretation — your upload is kept.`
-          : 'Interpretation failed. Retry the interpretation — your upload is kept.',
+      error: `Interpretation failed: ${detail.slice(0, 400)} — retry; your upload is kept.`,
       userId: auth.userId,
     });
   }

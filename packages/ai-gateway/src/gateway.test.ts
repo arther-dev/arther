@@ -4,28 +4,39 @@ import {
   AiNotProvisionedError,
   AiOutputError,
   createAiGateway,
+  type MessageBlock,
   type MessagesClient,
 } from './index';
 
 const schema = z.strictObject({ answer: z.number() });
 
+/** A fake SDK client returning one final message (tool-use path). */
 function fakeClient(final: {
   stop_reason?: string | null;
-  text?: string;
+  content?: MessageBlock[];
   usage?: { input_tokens: number; output_tokens: number };
+  throwOnStream?: Error;
 }): MessagesClient {
   return {
     messages: {
-      stream: () => ({
-        finalMessage: async () => ({
-          model: 'claude-test',
-          stop_reason: final.stop_reason ?? 'end_turn',
-          content: final.text === undefined ? [] : [{ type: 'text', text: final.text }],
-          usage: final.usage ?? { input_tokens: 10, output_tokens: 5 },
-        }),
-      }),
+      stream: () => {
+        if (final.throwOnStream) throw final.throwOnStream;
+        return {
+          finalMessage: async () => ({
+            model: 'claude-test',
+            stop_reason: final.stop_reason ?? 'tool_use',
+            content: final.content ?? [],
+            usage: final.usage ?? { input_tokens: 10, output_tokens: 5 },
+          }),
+        };
+      },
     },
   };
+}
+
+/** The model's structured answer arrives as a forced tool_use block. */
+function toolUse(input: unknown): MessageBlock {
+  return { type: 'tool_use', name: 'record_result', input };
 }
 
 describe('createAiGateway', () => {
@@ -37,51 +48,53 @@ describe('createAiGateway', () => {
     ).rejects.toBeInstanceOf(AiNotProvisionedError);
   });
 
-  it('parses valid structured output through the caller schema', async () => {
+  it('parses the forced tool call through the caller schema', async () => {
     const usages: Array<{ model: string }> = [];
     const gateway = createAiGateway({
       apiKey: 'test',
-      client: fakeClient({ text: '{"answer": 42}' }),
+      client: fakeClient({ content: [toolUse({ answer: 42 })] }),
       onUsage: (u) => usages.push(u),
     });
-    const result = await gateway.structured({
-      schema,
-      system: 's',
-      user: 'u',
-    });
+    const result = await gateway.structured({ schema, system: 's', user: 'u' });
     expect(result).toEqual({ answer: 42 });
     expect(usages).toEqual([{ model: 'claude-test', inputTokens: 10, outputTokens: 5 }]);
   });
 
-  it('rejects schema-invalid output with a typed, retryable error', async () => {
+  it('rejects schema-invalid tool input with a typed, retryable error', async () => {
     const gateway = createAiGateway({
       apiKey: 'test',
-      client: fakeClient({ text: '{"answer": "not a number"}' }),
+      client: fakeClient({ content: [toolUse({ answer: 'not a number' })] }),
     });
     await expect(
       gateway.structured({ schema, system: 's', user: 'u' }),
     ).rejects.toBeInstanceOf(AiOutputError);
   });
 
-  it('surfaces refusals and truncation as typed errors', async () => {
-    for (const stop of ['refusal', 'max_tokens']) {
-      const gateway = createAiGateway({
-        apiKey: 'test',
-        client: fakeClient({ stop_reason: stop, text: '{}' }),
-      });
-      await expect(
-        gateway.structured({ schema, system: 's', user: 'u' }),
-      ).rejects.toBeInstanceOf(AiOutputError);
-    }
+  it('surfaces refusals and missing tool calls as typed errors', async () => {
+    const refusal = createAiGateway({
+      apiKey: 'test',
+      client: fakeClient({ stop_reason: 'refusal', content: [] }),
+    });
+    await expect(
+      refusal.structured({ schema, system: 's', user: 'u' }),
+    ).rejects.toBeInstanceOf(AiOutputError);
+
+    const noTool = createAiGateway({
+      apiKey: 'test',
+      client: fakeClient({ stop_reason: 'end_turn', content: [{ type: 'text', text: 'hi' }] }),
+    });
+    await expect(
+      noTool.structured({ schema, system: 's', user: 'u' }),
+    ).rejects.toBeInstanceOf(AiOutputError);
   });
 
-  it('rejects non-JSON output', async () => {
+  it('wraps a thrown SDK/API error so the reason is never swallowed', async () => {
     const gateway = createAiGateway({
       apiKey: 'test',
-      client: fakeClient({ text: 'here is your answer: 42' }),
+      client: fakeClient({ throwOnStream: new Error('400 output_config: bad schema') }),
     });
     await expect(
       gateway.structured({ schema, system: 's', user: 'u' }),
-    ).rejects.toBeInstanceOf(AiOutputError);
+    ).rejects.toThrow(/400 output_config/);
   });
 });
