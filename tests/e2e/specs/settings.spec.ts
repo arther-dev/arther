@@ -28,4 +28,11 @@ test.describe('workspace settings + account menu', () => {
     await page.goto(`${APP}/invite/${crypto.randomUUID()}`);
     await expect(page.getByRole('heading', { name: /isn’t valid/ })).toBeVisible();
   });
+
+  test('document types renders the unprovisioned baseline (G0.1)', async ({ page }) => {
+    await page.goto(`${APP}/settings/document-types`);
+    await expect(page.getByRole('heading', { name: 'Document types' })).toBeVisible();
+    await expect(page.getByText(/once the environment is provisioned/i)).toBeVisible();
+    await expect(page.locator('.ui-tab-chip--active')).toHaveText('Settings');
+  });
 });
