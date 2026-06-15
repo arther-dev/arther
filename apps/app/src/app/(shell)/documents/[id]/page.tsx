@@ -69,6 +69,10 @@ export default async function DocumentPage({ params }: { params: Promise<{ id: s
           <span className={`import-status import-status--${tree.revision.state}`}>
             {tree.revision.state}
           </span>
+          <span style={{ flex: 1 }} />
+          <Link className="ui-btn ui-btn--primary" href={`/documents/${tree.document.id}/edit`}>
+            Edit
+          </Link>
         </header>
         {tree.blocks.length > 0 ? (
           <BlockRenderer blocks={tree.blocks.map((b) => b.content)} />
