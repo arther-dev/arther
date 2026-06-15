@@ -8,6 +8,7 @@ import {
   addComponentToProduct,
   addFieldComment,
   clearComponentOverride,
+  DbRuleError,
   createComponent,
   createProduct,
   createRelease,
@@ -274,7 +275,8 @@ export async function createReleaseAction(
       notes: parsed.data.notes || undefined,
     });
   } catch (e) {
-    return { error: e instanceof Error ? e.message : 'Could not create the release.' };
+    // F8.5 — only surface DB-authored rule messages; raw errors stay generic.
+    return { error: e instanceof DbRuleError ? e.message : 'Could not create the release.' };
   }
   revalidatePath('/specs');
   revalidatePath('/specs/releases');

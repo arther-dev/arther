@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { rpcError } from './errors';
 import {
   isOverridableFieldType,
   parseFieldValue,
@@ -432,7 +433,7 @@ export async function createRelease(
     p_tag: input.tag,
     p_notes: input.notes ?? null,
   });
-  if (error) throw new Error(`createRelease: ${error.message}`);
+  if (error) throw rpcError('createRelease', error);
   return data as ReleaseId;
 }
 
@@ -442,7 +443,7 @@ export async function createRelease(
  */
 export async function deleteRelease(client: SupabaseClient, releaseId: ReleaseId): Promise<void> {
   const { error } = await client.from('product_releases').delete().eq('id', releaseId);
-  if (error) throw new Error(`deleteRelease: ${error.message}`);
+  if (error) throw rpcError('deleteRelease', error);
 }
 
 export interface OverrideRow {

@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ProductId, UserId, WorkspaceId } from '@arther/types';
+import { rpcError } from './errors';
 import type {
   CurrentSpecState,
   ExistingField,
@@ -137,7 +138,7 @@ export async function commitImportSession(
   const { data, error } = await client.rpc('commit_import_session', {
     p_session_id: sessionId,
   });
-  if (error) throw new Error(`commitImportSession: ${error.message}`);
+  if (error) throw rpcError('commitImportSession', error);
   return data as ProductId;
 }
 
