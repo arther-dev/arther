@@ -1,6 +1,21 @@
 export { createServiceClient, createUserClient } from './client';
 export { DbRuleError, rpcError } from './errors';
 export {
+  createDocumentType,
+  createSection,
+  deleteSection,
+  forkDocumentType,
+  getDocumentType,
+  listDocumentTypes,
+  reorderSections,
+  setDocumentTypeArchived,
+  updateDocumentType,
+  updateSection,
+  type DocumentTypeDetail,
+  type DocumentTypeRow,
+  type DocumentTypeSectionRow,
+} from './document-types';
+export {
   addComponentToProduct,
   addFieldComment,
   clearComponentOverride,
