@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyDecisions, EMPTY_DECISIONS } from './decisions';
+import { applyDecisions, EMPTY_DECISIONS, importDecisionsSchema } from './decisions';
 import type { InterpretedImport } from './interpretation';
 import { normalizeImport, resolveUnit, type UnitRegistryEntry } from './normalize';
 import { parseCsv, renderWorkbookForPrompt, type ParsedWorkbook } from './parse';
@@ -366,6 +366,38 @@ describe('applyDecisions', () => {
       fields: { 'p.f0': { unitId: null } },
     });
     expect(adjusted.productFields.find((f) => f.key === 'p.f0')!.value).toBeNull();
+  });
+});
+
+describe('importDecisionsSchema (F8.5 write-boundary validation)', () => {
+  it('accepts well-formed decisions and defaults missing maps', () => {
+    expect(importDecisionsSchema.parse({})).toEqual({ components: {}, fields: {} });
+    const ok = importDecisionsSchema.safeParse({
+      components: { c0: { skip: true, name: 'Stator' } },
+      fields: { 'p.f0': { name: 'Voltage', category: 'Electrical' } },
+    });
+    expect(ok.success).toBe(true);
+  });
+
+  it('rejects over-long renamed names and categories', () => {
+    const long = 'x'.repeat(201);
+    expect(
+      importDecisionsSchema.safeParse({ components: { c0: { name: long } }, fields: {} }).success,
+    ).toBe(false);
+    expect(
+      importDecisionsSchema.safeParse({ components: {}, fields: { 'p.f0': { category: long } } })
+        .success,
+    ).toBe(false);
+  });
+
+  it('rejects unknown keys and non-uuid unit ids', () => {
+    expect(
+      importDecisionsSchema.safeParse({ components: { c0: { bogus: 1 } }, fields: {} }).success,
+    ).toBe(false);
+    expect(
+      importDecisionsSchema.safeParse({ components: {}, fields: { 'p.f0': { unitId: 'nope' } } })
+        .success,
+    ).toBe(false);
   });
 });
 

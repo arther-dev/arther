@@ -3,7 +3,13 @@
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { rateLimit } from '@arther/rate-limit';
-import { slugifyWorkspaceName, workspaceSlugSchema } from '@arther/types';
+import {
+  emailField,
+  requiredText,
+  slugifyWorkspaceName,
+  TEXT_LIMITS,
+  workspaceSlugSchema,
+} from '@arther/types';
 import { appOrigin } from '../../lib/origin';
 import { clientIp } from '../../lib/request';
 import { getSupabaseServer } from '../../lib/supabase/server';
@@ -48,8 +54,11 @@ function fieldErrors(parsed: z.SafeParseError<unknown>): Record<string, string> 
 }
 
 const credentialsSchema = z.object({
-  email: z.string().email('Enter a valid email address.'),
-  password: z.string().min(8, 'Password must be at least 8 characters.'),
+  email: emailField(),
+  password: z
+    .string()
+    .min(8, 'Password must be at least 8 characters.')
+    .max(TEXT_LIMITS.password, 'Password is too long.'),
 });
 
 export async function logIn(_prev: AuthFormState, formData: FormData): Promise<AuthFormState> {
@@ -68,7 +77,7 @@ export async function logIn(_prev: AuthFormState, formData: FormData): Promise<A
 }
 
 const signUpSchema = credentialsSchema.extend({
-  name: z.string().min(1, 'Enter your name.'),
+  name: requiredText('Enter your name.'),
 });
 
 export async function signUp(_prev: AuthFormState, formData: FormData): Promise<AuthFormState> {
@@ -102,7 +111,7 @@ export async function logOut(): Promise<void> {
   redirect('/login');
 }
 
-const emailSchema = z.object({ email: z.string().email('Enter a valid email address.') });
+const emailSchema = z.object({ email: emailField() });
 
 export async function requestPasswordReset(
   _prev: AuthFormState,
@@ -127,8 +136,11 @@ export async function requestPasswordReset(
 
 const resetSchema = z
   .object({
-    password: z.string().min(8, 'Password must be at least 8 characters.'),
-    confirm: z.string(),
+    password: z
+      .string()
+      .min(8, 'Password must be at least 8 characters.')
+      .max(TEXT_LIMITS.password, 'Password is too long.'),
+    confirm: z.string().max(TEXT_LIMITS.password),
   })
   .refine((v) => v.password === v.confirm, {
     path: ['confirm'],
@@ -154,7 +166,7 @@ export async function resetPassword(
 }
 
 const createWorkspaceSchema = z.object({
-  name: z.string().min(1, 'Name your workspace.'),
+  name: requiredText('Name your workspace.'),
 });
 
 export async function createWorkspace(
