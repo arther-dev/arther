@@ -31,6 +31,8 @@ export type BlockId = Branded<string, 'BlockId'>;
 export type BlockSpecReferenceId = Branded<string, 'BlockSpecReferenceId'>;
 export type BlockBriefReferenceId = Branded<string, 'BlockBriefReferenceId'>;
 export type PlaceholderBriefReferenceId = Branded<string, 'PlaceholderBriefReferenceId'>;
+export type GenerationRunId = Branded<string, 'GenerationRunId'>;
+export type GenerationRunSectionId = Branded<string, 'GenerationRunSectionId'>;
 
 const uuid = z.string().uuid();
 export const userIdSchema = uuid.transform((v) => v as UserId);
@@ -61,3 +63,5 @@ export const blockBriefReferenceIdSchema = uuid.transform((v) => v as BlockBrief
 export const placeholderBriefReferenceIdSchema = uuid.transform(
   (v) => v as PlaceholderBriefReferenceId,
 );
+export const generationRunIdSchema = uuid.transform((v) => v as GenerationRunId);
+export const generationRunSectionIdSchema = uuid.transform((v) => v as GenerationRunSectionId);

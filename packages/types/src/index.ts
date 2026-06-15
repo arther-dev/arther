@@ -12,3 +12,4 @@ export * from './table-paste';
 export * from './brief';
 export * from './block-content';
 export * from './document';
+export * from './generation-run';
