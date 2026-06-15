@@ -132,6 +132,13 @@ export default async function GeneratePage({
             </li>
           ))}
         </ol>
+        {runData.run.document_id ? (
+          <p className="specs-form--row">
+            <Link className="ui-btn ui-btn--primary" href={`/documents/${runData.run.document_id}`}>
+              Open draft
+            </Link>
+          </p>
+        ) : null}
         <p className="specs-grid__meta">
           <Link href={`/specs?product=${selected.id}`}>← Back to {selected.name}</Link>
         </p>

@@ -5,6 +5,7 @@ const nextConfig: NextConfig = {
   transpilePackages: [
     '@arther/ai-gateway',
     '@arther/authz',
+    '@arther/block-renderer',
     '@arther/config',
     '@arther/db',
     '@arther/rate-limit',
