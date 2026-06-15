@@ -99,6 +99,16 @@ export {
   type StaleSpecReference,
 } from './documents';
 export {
+  createGenerationRun,
+  getGenerationRun,
+  listGenerationRunsForProduct,
+  setGenerationRunStatus,
+  setGenerationSectionStatus,
+  type GenerationRunRow,
+  type GenerationRunSectionRow,
+  type GenerationRunWithSections,
+} from './generation-runs';
+export {
   assertWorkspaceScope,
   MissingWorkspaceScopeError,
   scopedServiceQuery,
