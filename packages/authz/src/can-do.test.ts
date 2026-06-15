@@ -21,6 +21,7 @@ describe('canDo', () => {
   const matrix: Array<[Action, Record<WorkspaceRole, boolean>]> = [
     ['workspace.manage', { owner: true, admin: true, member: false, viewer: false }],
     ['member.invite', { owner: true, admin: true, member: false, viewer: false }],
+    ['doctype.manage', { owner: true, admin: true, member: false, viewer: false }],
     ['spec.write', { owner: true, admin: true, member: true, viewer: false }],
     ['doc.generate', { owner: true, admin: true, member: true, viewer: false }],
     ['doc.publish', { owner: true, admin: true, member: true, viewer: false }],

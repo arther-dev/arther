@@ -136,6 +136,17 @@ export default async function SettingsPage() {
           </table>
         </section>
 
+        <section className="specs-section">
+          <h2 className="specs-section__title">Document types</h2>
+          <p className="specs-grid__meta">
+            Generation schemas — datasheets, manuals, guides. Fork a built-in to customise it or
+            create your own.
+          </p>
+          <Link className="specs-field-link" href="/settings/document-types">
+            Manage document types →
+          </Link>
+        </section>
+
         {canManage ? (
           <section className="specs-section">
             <h2 className="specs-section__title">Invitations</h2>

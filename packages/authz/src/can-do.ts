@@ -18,6 +18,7 @@ export type Action =
   | 'comment.write'
   | 'workspace.manage'
   | 'workspace.delete'
+  | 'doctype.manage'
   | 'member.invite'
   | (string & {});
 
@@ -50,6 +51,7 @@ export function createCanDo(membership: MembershipLookup) {
     switch (action) {
       case 'workspace.manage':
       case 'member.invite':
+      case 'doctype.manage': // Document Types / Brand / Quality are a Settings admin surface
         return m.role === 'owner' || m.role === 'admin';
       case 'spec.write':
       case 'doc.generate':
