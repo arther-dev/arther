@@ -47,6 +47,7 @@ export function DocumentEditor({
   const [selected, setSelected] = useState<string | null>(null);
   const [showOutline, setShowOutline] = useState(true);
   const [showProps, setShowProps] = useState(true);
+  const [mode, setMode] = useState<'edit' | 'preview'>('edit');
   const { enqueue, status: saveStatus, offline } = useSaveQueue<BlockContent>((id, content) =>
     updateBlockContentAction(id, content).then((r) => r.ok),
   );
@@ -131,7 +132,7 @@ export function DocumentEditor({
   return (
     <AppShell
       navigator={
-        showOutline ? (
+        mode === 'edit' && showOutline ? (
           <nav className="editor-outline" aria-label="Outline">
             {outline.length === 0 ? (
               <p className="specs-grid__meta">No sections yet.</p>
@@ -161,7 +162,7 @@ export function DocumentEditor({
         ) : undefined
       }
       inspector={
-        showProps ? (
+        mode === 'edit' && showProps ? (
           <div className="editor-props">
             <h2 className="specs-section__title">Properties</h2>
             {selectedBlock ? (
@@ -214,35 +215,64 @@ export function DocumentEditor({
             {saveLabel}
           </span>
           <span style={{ flex: 1 }} />
-          <Button size="sm" variant="primary" disabled={offline} onClick={addParagraph}>
-            + Paragraph
+          <Button
+            size="sm"
+            variant={mode === 'edit' ? 'secondary' : 'ghost'}
+            aria-pressed={mode === 'edit'}
+            onClick={() => setMode('edit')}
+          >
+            Edit
           </Button>
           <Button
             size="sm"
-            variant={showOutline ? 'secondary' : 'ghost'}
-            aria-pressed={showOutline}
-            onClick={() => setShowOutline((v) => !v)}
+            variant={mode === 'preview' ? 'secondary' : 'ghost'}
+            aria-pressed={mode === 'preview'}
+            onClick={() => setMode('preview')}
           >
-            Outline
+            Preview
           </Button>
-          <Button
-            size="sm"
-            variant={showProps ? 'secondary' : 'ghost'}
-            aria-pressed={showProps}
-            onClick={() => setShowProps((v) => !v)}
-          >
-            Properties
-          </Button>
+          {mode === 'edit' ? (
+            <>
+              <Button size="sm" variant="primary" disabled={offline} onClick={addParagraph}>
+                + Paragraph
+              </Button>
+              <Button
+                size="sm"
+                variant={showOutline ? 'secondary' : 'ghost'}
+                aria-pressed={showOutline}
+                onClick={() => setShowOutline((v) => !v)}
+              >
+                Outline
+              </Button>
+              <Button
+                size="sm"
+                variant={showProps ? 'secondary' : 'ghost'}
+                aria-pressed={showProps}
+                onClick={() => setShowProps((v) => !v)}
+              >
+                Properties
+              </Button>
+            </>
+          ) : null}
           <Link className="ui-btn ui-btn--ghost" href={`/documents/${documentId}`}>
             Done
           </Link>
         </header>
 
-        <div className="editor-canvas" aria-label="Document canvas" style={{ maxWidth: 760 }}>
-          {blocks.length === 0 ? (
-            <p className="specs-grid__meta">This draft has no blocks yet.</p>
-          ) : (
-            blocks.map((b) => {
+        {mode === 'preview' ? (
+          <article className="br-document" aria-label="Document preview" style={{ maxWidth: 760 }}>
+            {blocks.length === 0 ? (
+              <p className="specs-grid__meta">This draft has no blocks yet.</p>
+            ) : (
+              <BlockRenderer blocks={blocks.map((b) => b.content)} />
+            )}
+          </article>
+        ) : (
+          <div className="editor-canvas" aria-label="Document canvas" style={{ maxWidth: 760 }}>
+            {blocks.length === 0 ? (
+              <p className="specs-grid__meta">This draft has no blocks yet.</p>
+            ) : (
+              blocks.map((b) => {
               const c = b.content;
               if (c.type === 'paragraph' || c.type === 'heading' || c.type === 'callout') {
                 return (
@@ -280,8 +310,9 @@ export function DocumentEditor({
                 </div>
               );
             })
-          )}
-        </div>
+            )}
+          </div>
+        )}
       </div>
     </AppShell>
   );
