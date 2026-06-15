@@ -100,6 +100,10 @@ export default async function SettingsPage() {
             Portal address: <code>{workspace.slug}</code> — the slug is permanent (portal
             subdomain).
           </p>
+          <p className="specs-grid__meta">
+            <Link href="/settings/document-types">Document types →</Link> — the generation schemas
+            this workspace produces documents from.
+          </p>
         </section>
 
         <section className="specs-section">

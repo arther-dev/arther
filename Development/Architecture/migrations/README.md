@@ -39,6 +39,7 @@ SQL migrations for the [architecture](../arther-architecture.md): conventions, i
 | `0014_membership_governance.sql` | Owner rules trigger (**exactly one owner**), atomic `transfer_workspace_ownership()` (definer, GUC-scoped bypass), `get/accept_workspace_invitation()` definer RPCs for the RLS-blind invitee (F4.3/F4.4). |
 | `0015_import_commit.sql` | `commit_import_session()` — F7.6: applies a reviewed import plan atomically (product → components → edges → fields → values via 0012) and auto-creates the import release via 0013; invoker rights, editor RLS governs. |
 | `0016_workspace_purge.sql` | F8.7 workspace deletion: `purge_deleted_workspaces()` — the single sanctioned hard delete (`session_replication_role = replica` disables the immutability/archive guards on the cascade), service-role only; `get_pending_workspace_deletion()` — definer read so a soft-deleted (RLS-hidden) tenant still surfaces its restore affordance to members. Soft-delete columns + request/cancel RPCs live in 0002. |
+| `0017_document_type_fork.sql` | G0.1 Document Types: `fork_document_type()` — atomically copies a built-in (or readable) type + its sections + approval roles into a workspace as an editable copy (invoker rights; `forked_from` links back to the source); `guard_document_type_hard_delete()` — archive-when-referenced (a type with documents/published snapshots can't be hard-deleted, the friendly form of the 0005 FK restrict). Type/section/brand/quality tables live in 0004. |
 
 The assistant (Ask Arther) is session-scoped and adds no tables.
 
