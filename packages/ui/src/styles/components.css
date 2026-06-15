@@ -43,6 +43,13 @@
 .ui-btn--ghost:hover:not(:disabled) {
   background: var(--bg-raised);
 }
+.ui-btn--danger {
+  border-color: var(--safety-warn-border);
+  color: var(--safety-warn-text);
+}
+.ui-btn--danger:hover:not(:disabled) {
+  background: var(--safety-warn-bg);
+}
 .ui-btn--sm {
   height: 28px;
   padding: 0 var(--space-md);

@@ -38,6 +38,7 @@ SQL migrations for the [architecture](../arther-architecture.md): conventions, i
 | `0013_releases_overrides.sql` | `create_product_release()` — atomic snapshot pinning current FieldVersions (F5.7, invoker rights); release delete policy + document-lineage guard (§3.8); type-change-while-overridden guard + override integrity guard (§3.5). |
 | `0014_membership_governance.sql` | Owner rules trigger (**exactly one owner**), atomic `transfer_workspace_ownership()` (definer, GUC-scoped bypass), `get/accept_workspace_invitation()` definer RPCs for the RLS-blind invitee (F4.3/F4.4). |
 | `0015_import_commit.sql` | `commit_import_session()` — F7.6: applies a reviewed import plan atomically (product → components → edges → fields → values via 0012) and auto-creates the import release via 0013; invoker rights, editor RLS governs. |
+| `0016_workspace_purge.sql` | F8.7 workspace deletion: `purge_deleted_workspaces()` — the single sanctioned hard delete (`session_replication_role = replica` disables the immutability/archive guards on the cascade), service-role only; `get_pending_workspace_deletion()` — definer read so a soft-deleted (RLS-hidden) tenant still surfaces its restore affordance to members. Soft-delete columns + request/cancel RPCs live in 0002. |
 
 The assistant (Ask Arther) is session-scoped and adds no tables.
 

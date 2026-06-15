@@ -5,11 +5,13 @@ import { z } from 'zod';
 import { createCanDo } from '@arther/authz';
 import { rateLimit } from '@arther/rate-limit';
 import {
+  cancelWorkspaceDeletion,
   createInvitation,
   getActiveWorkspace,
   listMembers,
   membershipLookupFor,
   removeMember,
+  requestWorkspaceDeletion,
   revokeInvitation,
   transferOwnership,
   updateMemberRole,
@@ -249,6 +251,78 @@ export async function revokeInvitationAction(
     await revokeInvitation(auth.supabase, parsed.data.invitationId);
   } catch {
     return { error: 'Could not revoke the invitation.' };
+  }
+  revalidatePath('/settings');
+  return { done: true };
+}
+
+/**
+ * F8.7 Danger Zone — request soft deletion. Owner-only (the 0002 RPC re-checks),
+ * and the typed slug must match so deletion is never a one-click accident. The
+ * 14-day grace + restore lives in the RPC; this just gates and dispatches.
+ */
+export async function requestWorkspaceDeletionAction(
+  _prev: SettingsFormState,
+  formData: FormData,
+): Promise<SettingsFormState> {
+  const parsed = z
+    .object({ confirmSlug: z.string().trim().min(1) })
+    .safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { error: 'Type the workspace address to confirm.' };
+
+  const auth = await authorizeManage();
+  if ('error' in auth) return { error: auth.error };
+  if (auth.workspace.role !== 'owner') {
+    return { error: 'Only the workspace owner can delete the workspace.' };
+  }
+  if (parsed.data.confirmSlug.toLowerCase() !== auth.workspace.slug.toLowerCase()) {
+    return { error: 'That doesn’t match the workspace address.' };
+  }
+
+  try {
+    await requestWorkspaceDeletion(auth.supabase, auth.workspace.id);
+  } catch (e) {
+    return {
+      error:
+        e instanceof Error && e.message.includes('only the workspace owner')
+          ? 'Only the workspace owner can delete the workspace.'
+          : 'Could not schedule the workspace for deletion.',
+    };
+  }
+  revalidatePath('/settings');
+  return { done: true };
+}
+
+/**
+ * F8.7 — restore a workspace inside its grace window. The active workspace is
+ * RLS-hidden once soft-deleted, so the id comes from the banner (the 0016
+ * definer lookup surfaced it) and the 0002 RPC enforces owner-only.
+ */
+export async function cancelWorkspaceDeletionAction(
+  _prev: SettingsFormState,
+  formData: FormData,
+): Promise<SettingsFormState> {
+  const parsed = z
+    .object({ workspaceId: z.string().uuid() })
+    .safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { error: 'Invalid workspace reference.' };
+
+  const supabase = await getSupabaseServer();
+  if (!supabase) return { error: 'Not configured in this environment yet.' };
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: 'Not signed in.' };
+
+  try {
+    await cancelWorkspaceDeletion(supabase, parsed.data.workspaceId as WorkspaceId);
+  } catch (e) {
+    return {
+      error:
+        e instanceof Error && e.message.includes('only the workspace owner')
+          ? 'Only the workspace owner can restore the workspace.'
+          : 'Could not restore the workspace — the grace period may have expired.',
+    };
   }
   revalidatePath('/settings');
   return { done: true };

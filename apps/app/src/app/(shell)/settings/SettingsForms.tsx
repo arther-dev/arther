@@ -1,13 +1,15 @@
 'use client';
 
-import { useActionState } from 'react';
+import { useActionState, useState } from 'react';
 import type { InvitationRow, MemberRow } from '@arther/db';
 import { Button, TextField } from '@arther/ui';
 import {
+  cancelWorkspaceDeletionAction,
   changeRoleAction,
   inviteMemberAction,
   removeMemberAction,
   renameWorkspaceAction,
+  requestWorkspaceDeletionAction,
   revokeInvitationAction,
   transferOwnershipAction,
   type SettingsFormState,
@@ -174,6 +176,90 @@ export function InviteForm() {
         </p>
       ) : null}
     </form>
+  );
+}
+
+/**
+ * F8.7 Danger Zone — owner-only soft delete. The typed slug must match before
+ * the submit enables, so deletion is a deliberate two-step (the server re-checks
+ * both the slug and owner role). Recovery is a 14-day grace + restore.
+ */
+export function DeleteWorkspaceForm({ slug }: { slug: string }) {
+  const [state, action, pending] = useActionState<SettingsFormState, FormData>(
+    requestWorkspaceDeletionAction,
+    {},
+  );
+  const [confirm, setConfirm] = useState('');
+  const matches = confirm.trim().toLowerCase() === slug.toLowerCase();
+  return (
+    <form
+      action={action}
+      className="specs-form"
+      noValidate
+      onSubmit={(e) => {
+        if (
+          !window.confirm(
+            'Delete this workspace? It is hidden immediately and permanently removed after a 14-day grace period. You can restore it until then.',
+          )
+        ) {
+          e.preventDefault();
+        }
+      }}
+    >
+      <TextField
+        id="confirm-slug"
+        name="confirmSlug"
+        label={`Type ${slug} to confirm`}
+        value={confirm}
+        onChange={(e) => setConfirm(e.target.value)}
+        error={state.error}
+        autoComplete="off"
+      />
+      <Button type="submit" size="sm" variant="danger" disabled={pending || !matches}>
+        {pending ? 'Scheduling…' : 'Delete workspace'}
+      </Button>
+    </form>
+  );
+}
+
+/**
+ * Shown when the active workspace is pending deletion — the only window in which
+ * the owner can restore it. Non-owners see the countdown without the control.
+ */
+export function RestoreWorkspaceBanner({
+  workspaceId,
+  name,
+  purgeAfter,
+  canRestore,
+}: {
+  workspaceId: string;
+  name: string;
+  purgeAfter: string;
+  canRestore: boolean;
+}) {
+  const [state, action, pending] = useActionState<SettingsFormState, FormData>(
+    cancelWorkspaceDeletionAction,
+    {},
+  );
+  const when = new Date(purgeAfter).toLocaleString();
+  return (
+    <section className="specs-section" role="alert">
+      <h2 className="specs-section__title">Workspace scheduled for deletion</h2>
+      <p>
+        <strong>{name}</strong> is hidden and will be permanently removed on {when}.
+      </p>
+      {canRestore ? (
+        <form action={action} className="specs-form--inline">
+          <input type="hidden" name="workspaceId" value={workspaceId} />
+          <Button type="submit" size="sm" disabled={pending}>
+            {pending ? 'Restoring…' : 'Restore workspace'}
+          </Button>
+          {state.error ? <span className="ui-field__error">{state.error}</span> : null}
+        </form>
+      ) : (
+        <p className="specs-grid__meta">Only the workspace owner can restore it.</p>
+      )}
+    </section>
   );
 }
 

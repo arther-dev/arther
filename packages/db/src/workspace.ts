@@ -162,3 +162,54 @@ export async function acceptInvitation(
   if (error) throw new Error(`acceptInvitation: ${error.message}`);
   return data as WorkspaceId;
 }
+
+/**
+ * Workspace deletion (F8.7) — soft delete with a 14-day grace period. The 0002
+ * RPC is owner-only and sets deleted_at/purge_after; the tenancy helpers then
+ * hide the tenant from every member at once (data model §10). Reversible via
+ * cancelWorkspaceDeletion() until the grace period expires; the
+ * purge_deleted_workspaces job hard-deletes after.
+ */
+export async function requestWorkspaceDeletion(
+  client: SupabaseClient,
+  workspaceId: WorkspaceId,
+): Promise<void> {
+  const { error } = await client.rpc('request_workspace_deletion', {
+    p_workspace_id: workspaceId,
+  });
+  if (error) throw new Error(`requestWorkspaceDeletion: ${error.message}`);
+}
+
+/** Owner-only (0002 RPC); restores a workspace still inside its grace window. */
+export async function cancelWorkspaceDeletion(
+  client: SupabaseClient,
+  workspaceId: WorkspaceId,
+): Promise<void> {
+  const { error } = await client.rpc('cancel_workspace_deletion', {
+    p_workspace_id: workspaceId,
+  });
+  if (error) throw new Error(`cancelWorkspaceDeletion: ${error.message}`);
+}
+
+export interface PendingWorkspaceDeletion {
+  id: WorkspaceId;
+  name: string;
+  slug: string;
+  purge_after: string;
+  /** The caller's role — only the owner sees the restore control. */
+  role: WorkspaceRole;
+}
+
+/**
+ * The caller's pending-deletion workspace, if any (0016 definer read). A
+ * soft-deleted workspace is hidden from every RLS path, so the Settings restore
+ * banner needs this definer lookup to surface it at all.
+ */
+export async function getPendingWorkspaceDeletion(
+  client: SupabaseClient,
+): Promise<PendingWorkspaceDeletion | null> {
+  const { data, error } = await client.rpc('get_pending_workspace_deletion');
+  if (error) throw new Error(`getPendingWorkspaceDeletion: ${error.message}`);
+  const row = Array.isArray(data) ? data[0] : data;
+  return (row as PendingWorkspaceDeletion | undefined) ?? null;
+}
