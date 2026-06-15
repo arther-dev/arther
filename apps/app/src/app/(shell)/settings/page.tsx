@@ -171,6 +171,16 @@ export default async function SettingsPage() {
           </section>
         ) : null}
 
+        {canManage ? (
+          <section className="specs-section">
+            <h2 className="specs-section__title">Branding</h2>
+            <p className="specs-grid__meta">
+              <Link href="/settings/brand-profiles">Brand profiles</Link> — logo, palette,
+              typography, voice, and glossary applied when generating and publishing documents.
+            </p>
+          </section>
+        ) : null}
+
         {workspace.role === 'owner' ? (
           <section className="specs-section">
             <h2 className="specs-section__title">Danger zone</h2>
