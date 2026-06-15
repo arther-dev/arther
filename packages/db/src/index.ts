@@ -108,6 +108,7 @@ export {
   type GenerationRunSectionRow,
   type GenerationRunWithSections,
 } from './generation-runs';
+export { listPreflightFields } from './generation-preflight';
 export {
   assertWorkspaceScope,
   MissingWorkspaceScopeError,
