@@ -10,16 +10,23 @@ import type { NormalizedImport } from './normalize';
  * commit can't drift apart.
  */
 
+// F8.5 — these mirror the spec-name/category ceilings in @arther/types
+// (kept local so this package stays dependency-light); decisions are validated
+// at the write boundary (the review actions parse through this schema before
+// persisting), not only on read.
+const NAME_MAX = 200;
+const CATEGORY_MAX = 200;
+
 export const componentDecisionSchema = z.strictObject({
     skip: z.boolean().optional(),
-    name: z.string().trim().min(1).optional(),
+    name: z.string().trim().min(1).max(NAME_MAX).optional(),
   });
 
 export const fieldDecisionSchema = z.strictObject({
     skip: z.boolean().optional(),
-    name: z.string().trim().min(1).optional(),
+    name: z.string().trim().min(1).max(NAME_MAX).optional(),
     unitId: z.string().uuid().nullable().optional(),
-    category: z.string().trim().min(1).optional(),
+    category: z.string().trim().min(1).max(CATEGORY_MAX).optional(),
   });
 
 export const importDecisionsSchema = z.strictObject({
