@@ -6,6 +6,7 @@ import { BlockRenderer, buildOutline } from '@arther/block-renderer';
 import { type BlockContent } from '@arther/types';
 import { AppShell, Button } from '@arther/ui';
 import { updateBlockContentAction } from './actions';
+import { BlockProperties } from './BlockProperties';
 import { RichTextEditor } from './RichTextEditor';
 
 /**
@@ -112,22 +113,27 @@ export function DocumentEditor({
           <div className="editor-props">
             <h2 className="specs-section__title">Properties</h2>
             {selectedBlock ? (
-              <dl className="specs-form">
-                <div className="specs-form--row">
-                  <dt>Type</dt>
-                  <dd>{selectedBlock.type}</dd>
-                </div>
-                <div className="specs-form--row">
-                  <dt>Source</dt>
-                  <dd>{selectedBlock.source}</dd>
-                </div>
-              </dl>
+              <>
+                <dl className="specs-form">
+                  <div className="specs-form--row">
+                    <dt>Type</dt>
+                    <dd>{selectedBlock.type}</dd>
+                  </div>
+                  <div className="specs-form--row">
+                    <dt>Source</dt>
+                    <dd>{selectedBlock.source}</dd>
+                  </div>
+                </dl>
+                <BlockProperties
+                  key={selectedBlock.id}
+                  content={selectedBlock.content}
+                  onCommit={(c) => persist(selectedBlock.id, c)}
+                />
+              </>
             ) : (
               <p className="specs-grid__meta">Select a block to see its properties.</p>
             )}
-            <p className="specs-grid__meta">
-              Prose edits save on blur. Per-type property editors land in G4.2.
-            </p>
+            <p className="specs-grid__meta">Prose text edits in the canvas; structure here.</p>
           </div>
         ) : undefined
       }
