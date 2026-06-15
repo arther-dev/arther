@@ -130,6 +130,9 @@ importers:
       '@anthropic-ai/sdk':
         specifier: ^0.104.0
         version: 0.104.1(zod@3.25.76)
+      '@arther/types':
+        specifier: workspace:*
+        version: link:../types
       zod:
         specifier: ^3.24.0
         version: 3.25.76
