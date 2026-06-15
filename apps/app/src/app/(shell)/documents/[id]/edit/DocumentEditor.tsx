@@ -13,6 +13,7 @@ import {
 } from './actions';
 import { BlockProperties } from './BlockProperties';
 import { RichTextEditor } from './RichTextEditor';
+import { useSaveQueue } from './useSaveQueue';
 
 /**
  * G4.1/G4.3 — the three-panel block editor: Outline (navigator) · canvas
@@ -46,7 +47,18 @@ export function DocumentEditor({
   const [selected, setSelected] = useState<string | null>(null);
   const [showOutline, setShowOutline] = useState(true);
   const [showProps, setShowProps] = useState(true);
-  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const { enqueue, status: saveStatus, offline } = useSaveQueue<BlockContent>((id, content) =>
+    updateBlockContentAction(id, content).then((r) => r.ok),
+  );
+
+  const saveLabel =
+    saveStatus === 'offline'
+      ? 'Offline — edits queued'
+      : saveStatus === 'saving' || saveStatus === 'pending'
+        ? 'Saving…'
+        : saveStatus === 'error'
+          ? 'Save failed — will retry'
+          : 'All changes saved';
 
   const outline = buildOutline(blocks);
   const selectedBlock = blocks.find((b) => b.id === selected) ?? null;
@@ -69,20 +81,17 @@ export function DocumentEditor({
     return () => window.removeEventListener('keydown', onKey);
   }, [showOutline, showProps]);
 
-  async function persist(blockId: string, content: BlockContent) {
+  // Content edits debounce through the offline-safe queue (G5.1/G5.2).
+  function persist(blockId: string, content: BlockContent) {
     setBlocks((prev) => prev.map((b) => (b.id === blockId ? { ...b, content } : b)));
-    setSaveState('saving');
-    const res = await updateBlockContentAction(blockId, content);
-    setSaveState(res.ok ? 'saved' : 'error');
+    enqueue(blockId, content);
   }
 
+  // Structural ops are immediate, not queued — blocked offline (G5.5).
   async function addParagraph() {
-    setSaveState('saving');
+    if (offline) return;
     const res = await addBlockAfterAction({ revisionId, documentId, afterBlockId: selected });
-    if (!res.ok || !res.block || !res.orderedIds) {
-      setSaveState('error');
-      return;
-    }
+    if (!res.ok || !res.block || !res.orderedIds) return;
     const block = res.block;
     const order = res.orderedIds;
     setBlocks((prev) => {
@@ -90,34 +99,26 @@ export function DocumentEditor({
       return order.map((id) => byId.get(id)).filter((b): b is EditorBlock => Boolean(b));
     });
     setSelected(block.id);
-    setSaveState('saved');
   }
 
   async function removeSelected() {
-    if (!selected) return;
+    if (!selected || offline) return;
     const id = selected;
-    setSaveState('saving');
     const res = await deleteBlockAction(id);
-    if (!res.ok) {
-      setSaveState('error');
-      return;
-    }
+    if (!res.ok) return;
     setBlocks((prev) => prev.filter((b) => b.id !== id));
     setSelected(null);
-    setSaveState('saved');
   }
 
   async function moveSelected(direction: -1 | 1) {
-    if (!selected) return;
+    if (!selected || offline) return;
     const idx = blocks.findIndex((b) => b.id === selected);
     const target = idx + direction;
     if (idx < 0 || target < 0 || target >= blocks.length) return;
     const next = [...blocks];
     [next[idx], next[target]] = [next[target]!, next[idx]!];
     setBlocks(next);
-    setSaveState('saving');
-    const res = await reorderBlocksAction(next.map((b) => b.id));
-    setSaveState(res.ok ? 'saved' : 'error');
+    await reorderBlocksAction(next.map((b) => b.id));
   }
 
   const blockStyle = (id: string): CSSProperties => ({
@@ -181,13 +182,13 @@ export function DocumentEditor({
                   onCommit={(c) => persist(selectedBlock.id, c)}
                 />
                 <div className="specs-form--row" style={{ marginTop: 12, gap: 4 }}>
-                  <Button size="sm" variant="ghost" onClick={() => moveSelected(-1)}>
+                  <Button size="sm" variant="ghost" disabled={offline} onClick={() => moveSelected(-1)}>
                     Move up
                   </Button>
-                  <Button size="sm" variant="ghost" onClick={() => moveSelected(1)}>
+                  <Button size="sm" variant="ghost" disabled={offline} onClick={() => moveSelected(1)}>
                     Move down
                   </Button>
-                  <Button size="sm" variant="danger" onClick={removeSelected}>
+                  <Button size="sm" variant="danger" disabled={offline} onClick={removeSelected}>
                     Delete
                   </Button>
                 </div>
@@ -204,13 +205,16 @@ export function DocumentEditor({
         <header className="specs-form--row">
           <h1 className="specs-title">{title}</h1>
           <span className={`import-status import-status--${state}`}>{state}</span>
-          {saveState !== 'idle' ? (
-            <span className="specs-grid__meta" aria-live="polite">
-              {saveState === 'saving' ? 'Saving…' : saveState === 'saved' ? 'Saved' : 'Save failed'}
-            </span>
-          ) : null}
+          <span
+            className="specs-grid__meta"
+            aria-live="polite"
+            data-save-status={saveStatus}
+          >
+            {offline ? '● ' : ''}
+            {saveLabel}
+          </span>
           <span style={{ flex: 1 }} />
-          <Button size="sm" variant="primary" onClick={addParagraph}>
+          <Button size="sm" variant="primary" disabled={offline} onClick={addParagraph}>
             + Paragraph
           </Button>
           <Button
