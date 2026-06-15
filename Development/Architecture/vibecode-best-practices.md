@@ -16,7 +16,7 @@ A pre-launch audit checklist for AI-assisted (vibe-coded) apps. Work through eac
 - [ ] Development and production environments are separate
 - [ ] Environment variables set in production (not hardcoded, not in public files)
 - [ ] `.env` files are in `.gitignore`
-- [ ] Security headers configured (Content-Security-Policy, X-Frame-Options, etc.)
+- [x] ✅ Security headers configured (Content-Security-Policy, X-Frame-Options, etc.) — F8.3: nonce-based `strict-dynamic` CSP + HSTS/`X-Frame-Options: DENY`/nosniff/Referrer-Policy/Permissions-Policy/COOP on both apps via `@arther/config/security`; verified by 6 E2E header assertions across both prod builds
 
 **If unsure about security headers**, run this prompt against the codebase:
 > "Review my app as a security specialist and make sure I have strong security headers and a solid baseline security posture"

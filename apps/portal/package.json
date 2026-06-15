@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@arther/config": "workspace:*",
     "@arther/types": "workspace:*",
     "next": "^15.3.0",
     "react": "^19.1.0",
