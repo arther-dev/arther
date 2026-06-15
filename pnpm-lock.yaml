@@ -93,6 +93,9 @@ importers:
 
   apps/portal:
     dependencies:
+      '@arther/config':
+        specifier: workspace:*
+        version: link:../../packages/config
       '@arther/types':
         specifier: workspace:*
         version: link:../../packages/types
