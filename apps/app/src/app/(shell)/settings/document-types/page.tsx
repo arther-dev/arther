@@ -2,7 +2,9 @@ import Link from 'next/link';
 import {
   getActiveWorkspace,
   getDocumentType,
+  listApprovalRoles,
   listDocumentTypes,
+  listMembers,
   type DocumentTypeDetail,
 } from '@arther/db';
 import { AppShell, EmptyState } from '@arther/ui';
@@ -16,6 +18,7 @@ import {
   RenameDocumentTypeForm,
   SectionRowControls,
 } from './DocumentTypeForms';
+import { ApprovalRolesEditor } from './ApprovalRoleForms';
 
 /**
  * Document Types — the generation-schema admin surface (G0.1/G0.2, generator
@@ -75,6 +78,11 @@ export default async function DocumentTypesPage({
 
   // The detail editor only applies to editable workspace types; built-ins fork.
   if (detail && !detail.built_in && detail.workspace_id === workspace.id) {
+    const roles = await listApprovalRoles(supabase, detail.id);
+    const members = (await listMembers(supabase, workspace.id)).map((m) => ({
+      id: m.id,
+      label: m.name ?? m.email,
+    }));
     return (
       <AppShell>
         <div className="specs-content">
@@ -141,6 +149,10 @@ export default async function DocumentTypesPage({
             )}
             {canManage ? <AddSectionDisclosure documentTypeId={detail.id} /> : null}
           </section>
+
+          {canManage ? (
+            <ApprovalRolesEditor documentTypeId={detail.id} roles={roles} members={members} />
+          ) : null}
         </div>
       </AppShell>
     );
