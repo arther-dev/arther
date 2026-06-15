@@ -60,6 +60,18 @@ export {
   type ImportSessionStatus,
 } from './import-sessions';
 export {
+  archiveBrandProfile,
+  createBrandProfile,
+  getBrandProfile,
+  listArchivedBrandProfiles,
+  listBrandProfiles,
+  restoreBrandProfile,
+  setDefaultBrandProfile,
+  updateBrandProfile,
+  type BrandProfileInput,
+  type BrandProfileRow,
+} from './brand-profiles';
+export {
   acceptInvitation,
   cancelWorkspaceDeletion,
   createInvitation,
