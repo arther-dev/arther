@@ -1,8 +1,10 @@
 import Link from 'next/link';
 import {
   getActiveWorkspace,
+  getEntityBrief,
   listArchived,
   listArchivedFields,
+  listBriefKeyUsage,
   listComponents,
   listFieldsForComponents,
   listFieldsForProduct,
@@ -11,11 +13,19 @@ import {
   listProducts,
   listReleasesForProduct,
   listUnits,
+  listUsersByIds,
 } from '@arther/db';
-import type { ComponentId, ProductId, SpecFieldId } from '@arther/types';
+import {
+  briefFragmentKeySchema,
+  type ComponentId,
+  type ProductId,
+  type SpecFieldId,
+  type UserId,
+} from '@arther/types';
 import { AppShell, Button, EmptyState, Skeleton } from '@arther/ui';
 import { getSupabaseServer } from '../../../lib/supabase/server';
 import { AddFieldForm } from './AddFieldForm';
+import { BriefPanel } from './BriefPanel';
 import { AttachComponentForm } from './ComponentForms';
 import { ArchiveToggle } from './DetailForms';
 import { FieldDetail } from './FieldDetail';
@@ -26,7 +36,7 @@ import { CATEGORIES, FieldGrid, SpecsRail } from './shared';
 export default async function SpecsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ product?: string; field?: string }>;
+  searchParams: Promise<{ product?: string; field?: string; tab?: string; fragment?: string }>;
 }) {
   const supabase = await getSupabaseServer();
 
@@ -75,7 +85,10 @@ export default async function SpecsPage({
   }
 
   const products = await listProducts(supabase, workspace.id);
-  const { product, field } = await searchParams;
+  const { product, field, tab, fragment } = await searchParams;
+  const briefTab = tab === 'brief';
+  // F8.5: a malformed ?fragment= degrades to the fragment list, never a 500.
+  const expandedKey = fragment ? briefFragmentKeySchema.safeParse(fragment).data : undefined;
   const selectedId = (product ?? products[0]?.id) as ProductId | undefined;
   const selected = products.find((p) => p.id === selectedId);
 
@@ -132,6 +145,16 @@ export default async function SpecsPage({
   const attachable = components.filter((c) => !edges.some((e) => e.component_id === c.id));
   const detailBase = `/specs?product=${selected.id}&`;
 
+  // G0.6: brief data is only needed on the Product Brief tab.
+  const brief = briefTab ? await getEntityBrief(supabase, 'product', selected.id) : null;
+  const briefUsage = briefTab ? await listBriefKeyUsage(supabase, workspace.id) : [];
+  const briefEditorIds = (brief?.fragments.map((f) => f.updated_by).filter(Boolean) ??
+    []) as UserId[];
+  const briefEditors = await listUsersByIds(supabase, briefEditorIds);
+  const briefEditorNames = new Map<string, string>(
+    [...briefEditors.entries()].map(([id, u]) => [id, u.name ?? u.email]),
+  );
+
   // F6.2: the product tree, computed at read from the edges (invariant 3).
   const childrenOf = (parentEdgeId: string | null) =>
     edges.filter((e) => e.parent_component_id === parentEdgeId);
@@ -168,6 +191,35 @@ export default async function SpecsPage({
           <ArchiveToggle entity="products" id={selected.id} archived={false} label={selected.name} />
         </header>
 
+        <nav className="specs-tabs" aria-label="Product view">
+          <Link
+            className={`specs-tabs__tab${briefTab ? '' : ' specs-tabs__tab--active'}`}
+            href={`/specs?product=${selected.id}`}
+            aria-current={briefTab ? undefined : 'page'}
+          >
+            Spec Fields
+          </Link>
+          <Link
+            className={`specs-tabs__tab${briefTab ? ' specs-tabs__tab--active' : ''}`}
+            href={`/specs?product=${selected.id}&tab=brief`}
+            aria-current={briefTab ? 'page' : undefined}
+          >
+            Product Brief
+          </Link>
+        </nav>
+
+        {briefTab ? (
+          <BriefPanel
+            entityType="product"
+            entityId={selected.id}
+            fragments={brief?.fragments ?? []}
+            keyUsage={briefUsage}
+            expandedKey={expandedKey}
+            basePath={`/specs?product=${selected.id}&tab=brief`}
+            editorNames={briefEditorNames}
+          />
+        ) : (
+          <>
         <section className="specs-section">
           <h2 className="specs-section__title">Product fields</h2>
           {fields.length > 0 ? (
@@ -237,8 +289,10 @@ export default async function SpecsPage({
           )}
           <CreateReleaseForm productId={selected.id} />
         </section>
+          </>
+        )}
 
-        {field ? (
+        {!briefTab && field ? (
           <FieldDetail
             supabase={supabase}
             fieldId={field as SpecFieldId}

@@ -58,6 +58,15 @@ export {
   type UnitRow,
 } from './spec';
 export {
+  deleteBriefFragment,
+  getEntityBrief,
+  listBriefKeyUsage,
+  upsertBriefFragment,
+  type BriefFragmentRow,
+  type BriefKeyUsage,
+  type EntityBrief,
+} from './briefs';
+export {
   assertWorkspaceScope,
   MissingWorkspaceScopeError,
   scopedServiceQuery,
