@@ -181,6 +181,16 @@ export default async function SettingsPage() {
           </section>
         ) : null}
 
+        {canManage ? (
+          <section className="specs-section">
+            <h2 className="specs-section__title">Quality standards</h2>
+            <p className="specs-grid__meta">
+              <Link href="/settings/quality-standards">Quality standards</Link> — the editorial
+              discipline (length limits, required elements, voice rules) the generator is held to.
+            </p>
+          </section>
+        ) : null}
+
         {workspace.role === 'owner' ? (
           <section className="specs-section">
             <h2 className="specs-section__title">Danger zone</h2>
