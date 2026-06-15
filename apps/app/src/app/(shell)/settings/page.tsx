@@ -103,6 +103,17 @@ export default async function SettingsPage() {
         </section>
 
         <section className="specs-section">
+          <h2 className="specs-section__title">Generation</h2>
+          <p className="specs-grid__meta">
+            <Link href="/settings/document-types" className="specs-field-link">
+              Document types
+            </Link>{' '}
+            — the generation schemas Arther uses to produce documents. Brand profiles and quality
+            standards follow.
+          </p>
+        </section>
+
+        <section className="specs-section">
           <h2 className="specs-section__title">Members</h2>
           <table className="specs-grid">
             <thead>

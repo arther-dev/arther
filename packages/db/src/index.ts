@@ -60,6 +60,19 @@ export {
   type ImportSessionStatus,
 } from './import-sessions';
 export {
+  createDocumentType,
+  forkDocumentType,
+  getDocumentTypeDetail,
+  listArchivedDocumentTypes,
+  listDocumentTypes,
+  setDocumentTypeArchived,
+  updateDocumentType,
+  type DocumentTypeApprovalRoleRow,
+  type DocumentTypeDetail,
+  type DocumentTypeRow,
+  type DocumentTypeSectionRow,
+} from './document-types';
+export {
   acceptInvitation,
   cancelWorkspaceDeletion,
   createInvitation,
