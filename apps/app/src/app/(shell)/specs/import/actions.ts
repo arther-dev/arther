@@ -29,6 +29,7 @@ import {
   type PlannedMutation,
 } from '@arther/spec-import';
 import { parseFieldValue, type ProductId, type UserId } from '@arther/types';
+import { checkRateLimit } from '../../../../lib/rate-limit';
 import { getSupabaseServer } from '../../../../lib/supabase/server';
 import { CATEGORIES } from '../shared';
 import { parseDecisions, recomputePlan } from './plan';
@@ -80,6 +81,10 @@ export async function uploadAndInterpretAction(
 
   const auth = await authorize();
   if ('error' in auth) return { error: auth.error };
+
+  // Each interpretation spends Anthropic tokens — bound runs per editor (F8.2).
+  const limited = await checkRateLimit('import:run', auth.userId);
+  if (limited) return { error: limited };
 
   const bytes = new Uint8Array(await file.arrayBuffer());
   let workbook: ParsedWorkbook;
@@ -219,6 +224,10 @@ export async function retryInterpretationAction(
 
   const auth = await authorize();
   if ('error' in auth) return { error: auth.error };
+
+  // Retry re-runs interpretation (more Anthropic tokens) — same bound (F8.2).
+  const limited = await checkRateLimit('import:run', auth.userId);
+  if (limited) return { error: limited };
 
   const session = await getImportSession(auth.supabase, parsed.data.sessionId);
   if (!session) return { error: 'Import session not found.' };

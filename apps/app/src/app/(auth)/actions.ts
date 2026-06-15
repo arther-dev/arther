@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { slugifyWorkspaceName, workspaceSlugSchema } from '@arther/types';
 import { appOrigin } from '../../lib/origin';
+import { checkRateLimit, clientIp } from '../../lib/rate-limit';
 import { getSupabaseServer } from '../../lib/supabase/server';
 
 export interface AuthFormState {
@@ -41,6 +42,9 @@ export async function logIn(_prev: AuthFormState, formData: FormData): Promise<A
   const parsed = credentialsSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { fieldErrors: fieldErrors(parsed) };
 
+  const limited = await checkRateLimit('auth:signin', await clientIp());
+  if (limited) return { error: limited };
+
   const supabase = await getSupabaseServer();
   if (!supabase) return { error: NOT_PROVISIONED };
 
@@ -56,6 +60,9 @@ const signUpSchema = credentialsSchema.extend({
 export async function signUp(_prev: AuthFormState, formData: FormData): Promise<AuthFormState> {
   const parsed = signUpSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { fieldErrors: fieldErrors(parsed) };
+
+  const limited = await checkRateLimit('auth:signup', await clientIp());
+  if (limited) return { error: limited };
 
   const supabase = await getSupabaseServer();
   if (!supabase) return { error: NOT_PROVISIONED };
@@ -90,6 +97,9 @@ export async function requestPasswordReset(
   const parsed = emailSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { fieldErrors: fieldErrors(parsed) };
 
+  const limited = await checkRateLimit('auth:reset', await clientIp());
+  if (limited) return { error: limited };
+
   const supabase = await getSupabaseServer();
   if (!supabase) return { error: NOT_PROVISIONED };
 
@@ -117,6 +127,9 @@ export async function resetPassword(
 ): Promise<AuthFormState> {
   const parsed = resetSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { fieldErrors: fieldErrors(parsed) };
+
+  const limited = await checkRateLimit('auth:reset', await clientIp());
+  if (limited) return { error: limited };
 
   const supabase = await getSupabaseServer();
   if (!supabase) return { error: NOT_PROVISIONED };
@@ -170,6 +183,9 @@ export async function acceptInviteAction(
     .safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { error: 'Invalid invitation link.' };
 
+  const limited = await checkRateLimit('auth:invite-accept', await clientIp());
+  if (limited) return { error: limited };
+
   const supabase = await getSupabaseServer();
   if (!supabase) return { error: NOT_PROVISIONED };
   const {
@@ -192,6 +208,9 @@ export async function acceptInviteAction(
 }
 
 export async function continueWithGoogle(): Promise<AuthFormState> {
+  const limited = await checkRateLimit('auth:oauth', await clientIp());
+  if (limited) return { error: limited };
+
   const supabase = await getSupabaseServer();
   if (!supabase) return { error: NOT_PROVISIONED };
 

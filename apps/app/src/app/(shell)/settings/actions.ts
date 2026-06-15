@@ -16,6 +16,7 @@ import {
 } from '@arther/db';
 import type { UserId, WorkspaceId } from '@arther/types';
 import { appOrigin } from '../../../lib/origin';
+import { checkRateLimit } from '../../../lib/rate-limit';
 import { getSupabaseServer } from '../../../lib/supabase/server';
 
 export interface SettingsFormState {
@@ -177,6 +178,11 @@ export async function inviteMemberAction(
 
   const auth = await authorizeManage();
   if ('error' in auth) return { error: auth.error };
+
+  // Bound invite volume per admin (F8.2) — caps both accidental loops and
+  // using the workspace as a spam relay through Resend.
+  const limited = await checkRateLimit('invite:create', auth.userId);
+  if (limited) return { error: limited };
 
   // Inviting an existing member is a no-op worth a friendly message.
   const members = await listMembers(auth.supabase, auth.workspace.id as WorkspaceId);
