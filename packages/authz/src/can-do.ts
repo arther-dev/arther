@@ -13,6 +13,7 @@ export type Action =
   | 'spec.read'
   | 'spec.write'
   | 'doc.read'
+  | 'doc.write'
   | 'doc.generate'
   | 'doc.publish'
   | 'comment.write'
@@ -52,6 +53,7 @@ export function createCanDo(membership: MembershipLookup) {
       case 'member.invite':
         return m.role === 'owner' || m.role === 'admin';
       case 'spec.write':
+      case 'doc.write':
       case 'doc.generate':
       case 'doc.publish':
         return m.role !== 'viewer'; // Editor seats only

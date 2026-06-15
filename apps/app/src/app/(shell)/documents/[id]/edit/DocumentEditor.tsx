@@ -1,18 +1,20 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type CSSProperties } from 'react';
 import Link from 'next/link';
 import { BlockRenderer, buildOutline } from '@arther/block-renderer';
 import { type BlockContent } from '@arther/types';
 import { AppShell, Button } from '@arther/ui';
+import { updateBlockContentAction } from './actions';
+import { RichTextEditor } from './RichTextEditor';
 
 /**
- * G4.1 — the three-panel block editor shell (Handoff 02/03 editor IA), mapped
- * onto the app shell's regions: Outline (navigator) · canvas (content) ·
- * Properties (inspector). Selection drives the inspector; panels toggle with the
- * toolbar or the keybindings (⌥⌘\\ outline, ⌥⌘⇧\\ properties, ⌘\\ focus). The
- * canvas renders read-only through the shared block-renderer — in-place rich-text
- * editing (G4.3) and per-type property editors (G4.2) fill this frame next.
+ * G4.1/G4.3 — the three-panel block editor: Outline (navigator) · canvas
+ * (content) · Properties (inspector), on the app shell's regions. Prose blocks
+ * (paragraph/heading/callout) are edited in place via TipTap (G4.3, spec tokens
+ * as atoms); other block types render read-only through the shared renderer
+ * until their property editors land (G4.2). Edits persist on blur (G5 layers
+ * debounced auto-save + offline queue on top).
  */
 export interface EditorBlock {
   id: string;
@@ -25,16 +27,19 @@ export function DocumentEditor({
   documentId,
   title,
   state,
-  blocks,
+  blocks: initialBlocks,
 }: {
   documentId: string;
   title: string;
   state: string;
   blocks: EditorBlock[];
 }) {
+  const [blocks, setBlocks] = useState(initialBlocks);
   const [selected, setSelected] = useState<string | null>(null);
   const [showOutline, setShowOutline] = useState(true);
   const [showProps, setShowProps] = useState(true);
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+
   const outline = buildOutline(blocks);
   const selectedBlock = blocks.find((b) => b.id === selected) ?? null;
 
@@ -55,6 +60,20 @@ export function DocumentEditor({
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [showOutline, showProps]);
+
+  async function persist(blockId: string, content: BlockContent) {
+    setBlocks((prev) => prev.map((b) => (b.id === blockId ? { ...b, content } : b)));
+    setSaveState('saving');
+    const res = await updateBlockContentAction(blockId, content);
+    setSaveState(res.ok ? 'saved' : 'error');
+  }
+
+  const blockStyle = (id: string): CSSProperties => ({
+    cursor: 'pointer',
+    borderRadius: 6,
+    padding: '2px 8px',
+    outline: selected === id ? '2px solid var(--accent, #7aa2f7)' : '2px solid transparent',
+  });
 
   return (
     <AppShell
@@ -107,7 +126,7 @@ export function DocumentEditor({
               <p className="specs-grid__meta">Select a block to see its properties.</p>
             )}
             <p className="specs-grid__meta">
-              Per-type property editors land in G4.2; in-place editing in G4.3.
+              Prose edits save on blur. Per-type property editors land in G4.2.
             </p>
           </div>
         ) : undefined
@@ -117,6 +136,11 @@ export function DocumentEditor({
         <header className="specs-form--row">
           <h1 className="specs-title">{title}</h1>
           <span className={`import-status import-status--${state}`}>{state}</span>
+          {saveState !== 'idle' ? (
+            <span className="specs-grid__meta" aria-live="polite">
+              {saveState === 'saving' ? 'Saving…' : saveState === 'saved' ? 'Saved' : 'Save failed'}
+            </span>
+          ) : null}
           <span style={{ flex: 1 }} />
           <Button
             size="sm"
@@ -143,33 +167,44 @@ export function DocumentEditor({
           {blocks.length === 0 ? (
             <p className="specs-grid__meta">This draft has no blocks yet.</p>
           ) : (
-            blocks.map((b) => (
-              <div
-                key={b.id}
-                id={`block-${b.id}`}
-                role="button"
-                tabIndex={0}
-                aria-pressed={selected === b.id}
-                onClick={() => setSelected(b.id)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    setSelected(b.id);
-                  }
-                }}
-                style={{
-                  cursor: 'pointer',
-                  borderRadius: 6,
-                  padding: '2px 8px',
-                  outline:
-                    selected === b.id
-                      ? '2px solid var(--accent, #7aa2f7)'
-                      : '2px solid transparent',
-                }}
-              >
-                <BlockRenderer blocks={[b.content]} />
-              </div>
-            ))
+            blocks.map((b) => {
+              const c = b.content;
+              if (c.type === 'paragraph' || c.type === 'heading' || c.type === 'callout') {
+                return (
+                  <div
+                    key={b.id}
+                    id={`block-${b.id}`}
+                    className={`editor-block editor-block--${c.type}`}
+                    onClick={() => setSelected(b.id)}
+                    style={blockStyle(b.id)}
+                  >
+                    <RichTextEditor
+                      value={c.content}
+                      onSave={(rt) => persist(b.id, { ...c, content: rt })}
+                    />
+                  </div>
+                );
+              }
+              return (
+                <div
+                  key={b.id}
+                  id={`block-${b.id}`}
+                  role="button"
+                  tabIndex={0}
+                  aria-pressed={selected === b.id}
+                  onClick={() => setSelected(b.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      setSelected(b.id);
+                    }
+                  }}
+                  style={blockStyle(b.id)}
+                >
+                  <BlockRenderer blocks={[c]} />
+                </div>
+              );
+            })
           )}
         </div>
       </div>
