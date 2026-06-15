@@ -109,6 +109,7 @@ export {
   type GenerationRunWithSections,
 } from './generation-runs';
 export { listPreflightFields } from './generation-preflight';
+export { commitGeneration, type GenerationCommitBlock } from './generation-commit';
 export {
   assertWorkspaceScope,
   MissingWorkspaceScopeError,
