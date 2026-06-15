@@ -105,22 +105,25 @@ describe('generation runs (G1.4)', () => {
     );
   });
 
-  it('an authenticated client cannot insert or update a section', async () => {
+  it('an authenticated client cannot insert a section, and an update is a silent no-op', async () => {
     await expectDenied(
       () => editor`
         insert into public.generation_run_sections (workspace_id, run_id, name, display_order, status)
         values (${ws}, ${runId}, 'Injected', 9, 'succeeded')
       `,
     );
-    await expectDenied(
-      () => editor`update public.generation_run_sections set status = 'succeeded' where id = ${sectionIds[0]!}`,
-    );
+    // No UPDATE policy exists, so an authenticated update sees zero rows and
+    // changes nothing (Postgres does not raise — it just affects 0 rows). The
+    // guarantee holds either way: the section is unmodified.
+    await editor`update public.generation_run_sections set status = 'succeeded' where id = ${sectionIds[0]!}`;
+    const after = await admin`select status from public.generation_run_sections where id = ${sectionIds[0]!}`;
+    expect(after[0]!.status).toBe('pending');
   });
 
-  it('an authenticated client cannot update a run’s status', async () => {
-    await expectDenied(
-      () => editor`update public.generation_runs set status = 'succeeded' where id = ${runId}`,
-    );
+  it('an authenticated client cannot change a run’s status (silent no-op)', async () => {
+    await editor`update public.generation_runs set status = 'succeeded' where id = ${runId}`;
+    const after = await admin`select status from public.generation_runs where id = ${runId}`;
+    expect(after[0]!.status).toBe('running');
   });
 
   it('service-role section transitions — status, tokens, produced blocks — persist and read back', async () => {
