@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { createCanDo } from '@arther/authz';
+import { rateLimit } from '@arther/rate-limit';
 import {
   createInvitation,
   getActiveWorkspace,
@@ -177,6 +178,12 @@ export async function inviteMemberAction(
 
   const auth = await authorizeManage();
   if ('error' in auth) return { error: auth.error };
+
+  // F8.2 — cap invitations per inviter so the email path can't be a spam relay.
+  const throttle = await rateLimit('invitation', auth.userId);
+  if (!throttle.success) {
+    return { error: `Too many invitations just now — wait ${throttle.retryAfterSeconds}s and try again.` };
+  }
 
   // Inviting an existing member is a no-op worth a friendly message.
   const members = await listMembers(auth.supabase, auth.workspace.id as WorkspaceId);

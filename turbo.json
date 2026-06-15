@@ -12,7 +12,12 @@
         "SENTRY_ORG",
         "SENTRY_PROJECT"
       ],
-      "passThroughEnv": ["SENTRY_AUTH_TOKEN", "SUPABASE_SERVICE_ROLE_KEY"]
+      "passThroughEnv": [
+        "SENTRY_AUTH_TOKEN",
+        "SUPABASE_SERVICE_ROLE_KEY",
+        "UPSTASH_REDIS_REST_URL",
+        "UPSTASH_REDIS_REST_TOKEN"
+      ]
     },
     "lint": {},
     "typecheck": {

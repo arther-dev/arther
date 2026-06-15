@@ -7,6 +7,7 @@ const nextConfig: NextConfig = {
     '@arther/authz',
     '@arther/config',
     '@arther/db',
+    '@arther/rate-limit',
     '@arther/spec-import',
     '@arther/types',
     '@arther/ui',
