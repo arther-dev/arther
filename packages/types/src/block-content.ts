@@ -83,7 +83,8 @@ export const inlineSpecTokenNodeSchema = z.strictObject({
   /** null for unitless fields (booleans, enums) — the display value carries the text. */
   unit_id: idString.nullable(),
   product_id: idString,
-  component_id: idString,
+  /** null for product-owned fields, which have no component. */
+  component_id: idString.nullable(),
 });
 
 const linkNodeSchema = z.strictObject({

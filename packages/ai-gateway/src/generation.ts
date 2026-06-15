@@ -30,7 +30,7 @@ export interface ResolverEntry {
   displayValue: string;
   unitId: string | null;
   productId: string;
-  componentId: string;
+  componentId: string | null;
 }
 
 /** Map field ids to their resolved current version — the `FieldResolver` the assembler calls. */

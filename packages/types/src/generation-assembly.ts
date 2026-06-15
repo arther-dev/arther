@@ -46,7 +46,8 @@ export interface ResolvedField {
   /** null for unitless fields. */
   unitId: string | null;
   productId: string;
-  componentId: string;
+  /** null for product-owned fields. */
+  componentId: string | null;
 }
 
 export type FieldResolver = (fieldId: string) => ResolvedField | null;
@@ -92,8 +93,8 @@ function resolveRich(
       field_version_id: resolved.fieldVersionId,
       display_value: resolved.displayValue,
       unit_id: resolved.unitId,
-      product_id: node.product_id,
-      component_id: node.component_id,
+      product_id: resolved.productId,
+      component_id: resolved.componentId,
     });
   }
   return { alignment: content.alignment, nodes };
