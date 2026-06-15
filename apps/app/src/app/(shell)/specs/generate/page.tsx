@@ -79,32 +79,59 @@ export default async function GeneratePage({
     );
   }
 
-  // After confirm: the queued run.
+  // After confirm: the run outcome.
   if (run) {
     const runData = await getGenerationRun(supabase, run as GenerationRunId);
-    const progress = runData ? summarizeRunProgress(runData.sections) : null;
+    if (!runData) {
+      return (
+        <main className="import-canvas">
+          <h1 className="specs-title">Generation</h1>
+          <p className="specs-grid__meta">That run isn’t visible.</p>
+          <p className="specs-grid__meta">
+            <Link href={`/specs?product=${selected.id}`}>← Back to {selected.name}</Link>
+          </p>
+        </main>
+      );
+    }
+    const progress = summarizeRunProgress(runData.sections);
+    const status = runData.run.status;
+    const heading =
+      status === 'succeeded'
+        ? 'Draft created'
+        : status === 'partial'
+          ? 'Draft created — some sections need attention'
+          : status === 'failed'
+            ? 'Generation failed'
+            : status === 'running'
+              ? 'Generating…'
+              : 'Generation queued';
     return (
       <main className="import-canvas">
-        <h1 className="specs-title">Generation queued</h1>
-        {runData && progress ? (
-          <>
-            <p className="specs-grid__meta">
-              {progress.total} section{progress.total === 1 ? '' : 's'} queued for{' '}
-              <strong>{selected.name}</strong>. The generation pipeline (G2.2) processes queued
-              runs — until it’s wired, this run stays <code>queued</code>.
-            </p>
-            <ol className="specs-form" aria-label="Queued sections">
-              {runData.sections.map((s) => (
-                <li key={s.id} className="specs-form--row">
-                  {s.name}
-                  <span className={`import-status import-status--${s.status}`}>{s.status}</span>
-                </li>
-              ))}
-            </ol>
-          </>
+        <h1 className="specs-title">{heading}</h1>
+        {status === 'queued' ? (
+          <p className="ui-field__error">
+            Generation isn’t provisioned in this environment — set ANTHROPIC_API_KEY
+            (PROVISIONING.md) and generate again.
+          </p>
+        ) : status === 'failed' ? (
+          <p className="ui-field__error">{runData.run.error ?? 'Generation failed.'}</p>
         ) : (
-          <p className="specs-grid__meta">That run isn’t visible.</p>
+          <p className="specs-grid__meta">
+            {progress.byStatus.succeeded} of {progress.total} section
+            {progress.total === 1 ? '' : 's'} generated for <strong>{selected.name}</strong>
+            {status === 'succeeded' || status === 'partial'
+              ? ' — the draft is saved. The block editor (G4) opens it next.'
+              : '.'}
+          </p>
         )}
+        <ol className="specs-form" aria-label="Sections">
+          {runData.sections.map((s) => (
+            <li key={s.id} className="specs-form--row">
+              {s.name}
+              <span className={`import-status import-status--${s.status}`}>{s.status}</span>
+            </li>
+          ))}
+        </ol>
         <p className="specs-grid__meta">
           <Link href={`/specs?product=${selected.id}`}>← Back to {selected.name}</Link>
         </p>
