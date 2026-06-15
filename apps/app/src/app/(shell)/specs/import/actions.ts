@@ -9,6 +9,7 @@ import { rateLimit } from '@arther/rate-limit';
 import {
   commitImportSession,
   createImportSession,
+  DbRuleError,
   getImportSession,
   getActiveWorkspace,
   listUnits,
@@ -395,7 +396,9 @@ export async function commitImportAction(
   try {
     productId = await commitImportSession(auth.supabase, loaded.session.id);
   } catch (e) {
-    return { error: e instanceof Error ? e.message : 'Commit failed — nothing was applied.' };
+    // F8.5 — commit rule violations (P0001) are author-written and safe to
+    // show; any other failure stays generic so no DB internals leak.
+    return { error: e instanceof DbRuleError ? e.message : 'Commit failed — nothing was applied.' };
   }
   revalidatePath('/specs');
   revalidatePath('/specs/releases');
