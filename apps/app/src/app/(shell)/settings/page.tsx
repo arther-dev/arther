@@ -103,6 +103,14 @@ export default async function SettingsPage() {
         </section>
 
         <section className="specs-section">
+          <h2 className="specs-section__title">Generation</h2>
+          <p className="specs-grid__meta">
+            <Link href="/settings/document-types">Document Types</Link> — the generation schemas
+            that shape how documents are produced.
+          </p>
+        </section>
+
+        <section className="specs-section">
           <h2 className="specs-section__title">Members</h2>
           <table className="specs-grid">
             <thead>

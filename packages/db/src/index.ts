@@ -43,6 +43,19 @@ export {
   type UnitRow,
 } from './spec';
 export {
+  archiveDocumentType,
+  createDocumentType,
+  createSection,
+  deleteSection,
+  forkDocumentType,
+  listDocumentTypes,
+  reorderSections,
+  updateDocumentType,
+  updateSection,
+  type DocumentTypeRow,
+  type DocumentTypeSectionRow,
+} from './document-types';
+export {
   assertWorkspaceScope,
   MissingWorkspaceScopeError,
   scopedServiceQuery,
