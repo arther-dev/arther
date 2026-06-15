@@ -20,6 +20,7 @@ import {
 } from '@arther/db';
 import {
   buildInterpretationPrompt,
+  importDecisionsSchema,
   interpretedImportSchema,
   normalizeImport,
   parseWorkbook,
@@ -273,6 +274,20 @@ async function loadProposed(
   return { session, decisions: parseDecisions(session) };
 }
 
+/**
+ * F8.5 — the review forms feed user-controlled names/categories into the
+ * decisions object; re-validate it through the schema at the WRITE boundary
+ * (not only on read) so an over-long or malformed entry can never be persisted
+ * to `import_sessions.decisions`.
+ */
+function validateDecisions(decisions: ImportDecisions): ImportDecisions | null {
+  const parsed = importDecisionsSchema.safeParse(decisions);
+  return parsed.success ? parsed.data : null;
+}
+
+const DECISIONS_INVALID =
+  'A review entry was too long or invalid — shorten any renamed names/categories and retry.';
+
 /** Structural review (F7.4 step 1): skip/rename components. */
 export async function saveStructuralDecisionsAction(
   _prev: ImportFormState,
@@ -298,8 +313,10 @@ export async function saveStructuralDecisionsAction(
       ...(name && name !== component.name ? { name } : {}),
     };
   }
+  const safe = validateDecisions(decisions);
+  if (!safe) return { error: DECISIONS_INVALID };
   await updateImportSession(auth.supabase, loaded.session.id, {
-    decisions,
+    decisions: safe,
     userId: auth.userId,
   });
   revalidatePath(`/specs/import/${loaded.session.id}`);
@@ -344,8 +361,10 @@ export async function saveFieldDecisionsAction(
     if (category && category !== field.category) decision.category = category;
     decisions.fields[field.key] = decision;
   }
+  const safe = validateDecisions(decisions);
+  if (!safe) return { error: DECISIONS_INVALID };
   await updateImportSession(auth.supabase, loaded.session.id, {
-    decisions,
+    decisions: safe,
     userId: auth.userId,
   });
   revalidatePath(`/specs/import/${loaded.session.id}`);

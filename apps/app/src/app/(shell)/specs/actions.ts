@@ -23,6 +23,9 @@ import {
 import {
   fieldTypeSchema,
   isOverridableFieldType,
+  optionalText,
+  requiredText,
+  TEXT_LIMITS,
   wouldCreateReferenceCycle,
   type ComponentId,
   type ProductId,
@@ -61,7 +64,7 @@ async function authorize(action: 'spec.write' | 'comment.write' = 'spec.write') 
   return { supabase, userId: user.id as UserId, workspace };
 }
 
-const productSchema = z.object({ name: z.string().trim().min(1, 'Name the product.') });
+const productSchema = z.object({ name: requiredText('Name the product.') });
 
 export async function createProductAction(
   _prev: SpecsFormState,
@@ -86,11 +89,11 @@ const fieldSchema = z
   .object({
     ownerKind: z.enum(['product', 'component']),
     ownerId: z.string().uuid(),
-    name: z.string().trim().min(1, 'Name the field.'),
+    name: requiredText('Name the field.'),
     type: fieldTypeSchema,
-    category: z.string().trim().min(1),
+    category: requiredText('Categorise the field.', TEXT_LIMITS.category),
     unitId: z.string().uuid().optional().or(z.literal('')),
-    options: z.string().trim().optional(),
+    options: optionalText(TEXT_LIMITS.options),
   })
   .superRefine((v, ctx) => {
     if ((v.type === 'enum' || v.type === 'multi_enum') && !parseOptions(v.options).length) {
@@ -247,9 +250,9 @@ export async function updateFieldValueAction(
 
 const releaseSchema = z.object({
   productId: z.string().uuid(),
-  name: z.string().trim().min(1, 'Name the release.'),
-  tag: z.string().trim().min(1, 'Tag the release (e.g. v2.1).'),
-  notes: z.string().trim().optional(),
+  name: requiredText('Name the release.'),
+  tag: requiredText('Tag the release (e.g. v2.1).', TEXT_LIMITS.tag),
+  notes: optionalText(TEXT_LIMITS.notes),
 });
 
 /** Releases are explicit user action only — never automatic on edits (§3.8). */
@@ -387,7 +390,7 @@ export async function clearOverrideAction(
 }
 
 const componentSchema = z.object({
-  name: z.string().trim().min(1, 'Name the component.'),
+  name: requiredText('Name the component.'),
   componentType: z.enum(['assembly', 'module', 'part']).default('part'),
 });
 
@@ -442,7 +445,7 @@ export async function attachComponentAction(
 
 const commentSchema = z.object({
   fieldId: z.string().uuid(),
-  body: z.string().trim().min(1, 'Write the comment first.'),
+  body: requiredText('Write the comment first.', TEXT_LIMITS.comment),
 });
 
 /** F5.8 — commenting is a member right (viewers included). */

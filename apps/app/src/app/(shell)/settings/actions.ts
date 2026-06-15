@@ -17,7 +17,7 @@ import {
   updateMemberRole,
   updateWorkspaceName,
 } from '@arther/db';
-import type { UserId, WorkspaceId } from '@arther/types';
+import { emailField, requiredText, type UserId, type WorkspaceId } from '@arther/types';
 import { appOrigin } from '../../../lib/origin';
 import { getSupabaseServer } from '../../../lib/supabase/server';
 
@@ -52,7 +52,7 @@ export async function renameWorkspaceAction(
   formData: FormData,
 ): Promise<SettingsFormState> {
   const parsed = z
-    .object({ name: z.string().trim().min(1, 'Name the workspace.') })
+    .object({ name: requiredText('Name the workspace.') })
     .safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { error: parsed.error.issues[0]!.message };
 
@@ -162,7 +162,7 @@ export async function transferOwnershipAction(
 }
 
 const inviteSchema = z.object({
-  email: z.string().email('Enter a valid email address.'),
+  email: emailField(),
   role: z.enum(['admin', 'member']),
 });
 
