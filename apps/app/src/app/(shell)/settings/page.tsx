@@ -1,20 +1,27 @@
 import Link from 'next/link';
-import { getActiveWorkspace, listInvitations, listMembers } from '@arther/db';
+import {
+  getActiveWorkspace,
+  getPendingWorkspaceDeletion,
+  listInvitations,
+  listMembers,
+} from '@arther/db';
 import { AppShell, EmptyState } from '@arther/ui';
 import { getSupabaseServer } from '../../../lib/supabase/server';
 import {
+  DeleteWorkspaceForm,
   InviteForm,
   MemberControls,
   RenameWorkspaceForm,
+  RestoreWorkspaceBanner,
   RevokeInvitationButton,
 } from './SettingsForms';
 
 /**
  * Workspace Settings (F4.5): name (editable, owner/admin) · immutable slug ·
  * members with role/remove/transfer (F4.2/F4.4) · invitations with accept
- * links + revoke (F4.3). No rail — Settings is one of the rail-less modes
- * (Handoff 02 region matrix). Logo upload follows with Storage; the Danger
- * Zone surface ships with F8.7.
+ * links + revoke (F4.3). The owner-only Danger Zone (F8.7) soft-deletes the
+ * workspace (14-day grace + restore). No rail — Settings is one of the rail-less
+ * modes (Handoff 02 region matrix). Logo upload follows with Storage.
  */
 export default async function SettingsPage() {
   const supabase = await getSupabaseServer();
@@ -35,6 +42,24 @@ export default async function SettingsPage() {
   } = await supabase.auth.getUser();
   const workspace = await getActiveWorkspace(supabase);
   if (!workspace || !user) {
+    // A soft-deleted workspace is RLS-hidden, so getActiveWorkspace returns null
+    // even for its owner — the restore window (F8.7) is the one place it resurfaces.
+    const pending = user ? await getPendingWorkspaceDeletion(supabase) : null;
+    if (pending) {
+      return (
+        <AppShell>
+          <div className="specs-content">
+            <h1 className="specs-title">Workspace settings</h1>
+            <RestoreWorkspaceBanner
+              workspaceId={pending.id}
+              name={pending.name}
+              purgeAfter={pending.purge_after}
+              canRestore={pending.role === 'owner'}
+            />
+          </div>
+        </AppShell>
+      );
+    }
     return (
       <AppShell>
         <EmptyState
@@ -131,6 +156,18 @@ export default async function SettingsPage() {
               <p className="specs-grid__meta">No pending invitations.</p>
             )}
             <InviteForm />
+          </section>
+        ) : null}
+
+        {workspace.role === 'owner' ? (
+          <section className="specs-section">
+            <h2 className="specs-section__title">Danger zone</h2>
+            <p className="specs-grid__meta">
+              Deleting hides the workspace immediately and permanently removes it — every
+              product, document, and published portal — after a 14-day grace period. You can
+              restore it from here until then.
+            </p>
+            <DeleteWorkspaceForm slug={workspace.slug} />
           </section>
         ) : null}
       </div>

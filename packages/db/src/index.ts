@@ -60,11 +60,14 @@ export {
 } from './import-sessions';
 export {
   acceptInvitation,
+  cancelWorkspaceDeletion,
   createInvitation,
   getInvitation,
+  getPendingWorkspaceDeletion,
   listInvitations,
   listMembers,
   removeMember,
+  requestWorkspaceDeletion,
   revokeInvitation,
   transferOwnership,
   updateMemberRole,
@@ -72,4 +75,5 @@ export {
   type InvitationLookup,
   type InvitationRow,
   type MemberRow,
+  type PendingWorkspaceDeletion,
 } from './workspace';
