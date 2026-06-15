@@ -288,6 +288,27 @@ body {
   color: var(--text-primary);
 }
 
+/* --- Document Type section editor (G0.2) --- */
+.ui-field__checkbox {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-xs);
+  font: var(--type-label);
+  color: var(--text-primary);
+}
+.specs-blocktype-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: var(--space-xs);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: var(--space-sm);
+  margin: 0;
+}
+.specs-blocktype-grid legend {
+  padding: 0 var(--space-xs);
+}
+
 /* --- Table mini-spreadsheet (F6.3) --- */
 .specs-table-editor {
   border: 1px solid var(--border-subtle);

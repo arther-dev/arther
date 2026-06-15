@@ -19,6 +19,8 @@ export type UnitId = Branded<string, 'UnitId'>;
 export type ReleaseId = Branded<string, 'ReleaseId'>;
 export type DocumentId = Branded<string, 'DocumentId'>;
 export type BrandProfileId = Branded<string, 'BrandProfileId'>;
+export type DocumentTypeId = Branded<string, 'DocumentTypeId'>;
+export type DocumentTypeSectionId = Branded<string, 'DocumentTypeSectionId'>;
 
 const uuid = z.string().uuid();
 export const userIdSchema = uuid.transform((v) => v as UserId);
@@ -33,3 +35,5 @@ export const unitIdSchema = uuid.transform((v) => v as UnitId);
 export const releaseIdSchema = uuid.transform((v) => v as ReleaseId);
 export const documentIdSchema = uuid.transform((v) => v as DocumentId);
 export const brandProfileIdSchema = uuid.transform((v) => v as BrandProfileId);
+export const documentTypeIdSchema = uuid.transform((v) => v as DocumentTypeId);
+export const documentTypeSectionIdSchema = uuid.transform((v) => v as DocumentTypeSectionId);

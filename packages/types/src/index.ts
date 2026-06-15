@@ -1,6 +1,7 @@
 export * from './ids';
 export * from './text';
 export * from './brand-profile';
+export * from './document-types';
 export * from './workspace';
 export * from './field-values';
 export * from './format';
