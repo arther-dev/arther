@@ -26,6 +26,11 @@ export type DocumentTypeId = Branded<string, 'DocumentTypeId'>;
 export type DocumentTypeSectionId = Branded<string, 'DocumentTypeSectionId'>;
 export type ApprovalRoleId = Branded<string, 'ApprovalRoleId'>;
 export type ApprovalRoleAssignmentId = Branded<string, 'ApprovalRoleAssignmentId'>;
+export type DocumentRevisionId = Branded<string, 'DocumentRevisionId'>;
+export type BlockId = Branded<string, 'BlockId'>;
+export type BlockSpecReferenceId = Branded<string, 'BlockSpecReferenceId'>;
+export type BlockBriefReferenceId = Branded<string, 'BlockBriefReferenceId'>;
+export type PlaceholderBriefReferenceId = Branded<string, 'PlaceholderBriefReferenceId'>;
 
 const uuid = z.string().uuid();
 export const userIdSchema = uuid.transform((v) => v as UserId);
@@ -48,4 +53,11 @@ export const documentTypeSectionIdSchema = uuid.transform((v) => v as DocumentTy
 export const approvalRoleIdSchema = uuid.transform((v) => v as ApprovalRoleId);
 export const approvalRoleAssignmentIdSchema = uuid.transform(
   (v) => v as ApprovalRoleAssignmentId,
+);
+export const documentRevisionIdSchema = uuid.transform((v) => v as DocumentRevisionId);
+export const blockIdSchema = uuid.transform((v) => v as BlockId);
+export const blockSpecReferenceIdSchema = uuid.transform((v) => v as BlockSpecReferenceId);
+export const blockBriefReferenceIdSchema = uuid.transform((v) => v as BlockBriefReferenceId);
+export const placeholderBriefReferenceIdSchema = uuid.transform(
+  (v) => v as PlaceholderBriefReferenceId,
 );
