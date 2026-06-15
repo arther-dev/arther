@@ -89,6 +89,7 @@ export {
   listStaleSpecReferences,
   loadDocumentTree,
   loadRevisionBlocks,
+  reorderBlocks,
   setDocumentArchived,
   updateBlock,
   type BlockRow,
