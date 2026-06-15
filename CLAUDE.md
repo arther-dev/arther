@@ -26,12 +26,29 @@ Before picking a task, every run MUST, in order:
 3. Use a task-scoped branch and reuse it on re-runs of the same task — never open a fresh
    random branch for work already in flight.
 
-When you open the PR, **enable auto-merge** (the routine's merge method) so it lands on
-`main` automatically once CI is green and the owner approves — that, not the open PR, is
-what lets the next run see the task as done. *(Auto-merge needs the repo's "Allow
-auto-merge" setting on, plus a branch-protection rule requiring the three CI checks and an
-owner review.)* Append the §10 session-log row **after** opening the PR — it is
-documentation, not the dedup mechanism; the dedup mechanism is steps 2 + auto-merge.
+**Enable auto-merge** so the PR lands on `main` automatically once CI is green and the
+owner approves — that, not the open PR, is what lets the next run see the task as done.
+Auto-merge is a *"wait for an unmet merge requirement, then merge"* feature, so it only
+engages when such a requirement exists. Two things must be true:
+
+1. **Repo + branch protection (owner-only, one-time).** The repo's "Allow auto-merge"
+   setting must be on **and** `main` must have a branch-protection rule requiring an
+   approving review **plus** the three CI checks (`Lint · typecheck · test · build`,
+   `Playwright E2E (app + portal)`, `Migrations · smoke · RLS probe`). The **required
+   review is what makes auto-merge usable** — without it, a green PR is immediately
+   mergeable (`clean`) and GitHub refuses to arm auto-merge ("merge directly").
+2. **Enable it in the right window.** GitHub only accepts the enable call while the PR is
+   `blocked` — CI green **and** the required review still pending. It is **refused** while
+   checks are still running (`unstable`) and once the PR is `clean`. So the routine MUST:
+   - wait for CI to go green, then call enable-auto-merge (not immediately on open, when
+     checks are pending — that call always fails);
+   - **retry** if it's refused as `unstable` (checks still finishing);
+   - if it's refused as `clean`, the **branch-protection required-review rule is missing** —
+     do not silently move on; note it in the PR/session log so the owner can add the rule
+     (until then PRs need a manual mobile merge and the routine cannot self-land work).
+
+Append the §10 session-log row **after** opening the PR — it is documentation, not the
+dedup mechanism; the dedup mechanism is steps 2 + auto-merge.
 
 > Why this section exists: an hourly run with no open-PR check kept re-picking the same
 > task from an unchanged `main`, producing **seven** duplicate PRs for one task. The
