@@ -185,6 +185,9 @@ export default async function SpecsPage({
       <div className="specs-content">
         <header className="specs-form--row">
           <h1 className="specs-title">{selected.name}</h1>
+          <Link className="ui-btn ui-btn--primary" href={`/specs/generate?product=${selected.id}`}>
+            Generate document
+          </Link>
           <Link className="ui-btn ui-btn--ghost" href={`/specs/import?product=${selected.id}`}>
             Re-import spec sheet
           </Link>
