@@ -10,3 +10,4 @@ export * from './format';
 export * from './reference-graph';
 export * from './table-paste';
 export * from './brief';
+export * from './block-content';
