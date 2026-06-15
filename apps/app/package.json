@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@arther/authz": "workspace:*",
+    "@arther/block-renderer": "workspace:*",
     "@arther/config": "workspace:*",
     "@arther/ai-gateway": "workspace:*",
     "@arther/db": "workspace:*",

@@ -35,6 +35,9 @@ importers:
       '@arther/authz':
         specifier: workspace:*
         version: link:../../packages/authz
+      '@arther/block-renderer':
+        specifier: workspace:*
+        version: link:../../packages/block-renderer
       '@arther/config':
         specifier: workspace:*
         version: link:../../packages/config
@@ -158,10 +161,29 @@ importers:
         version: 3.2.6(@types/node@22.19.21)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)
 
   packages/block-renderer:
+    dependencies:
+      '@arther/types':
+        specifier: workspace:*
+        version: link:../types
     devDependencies:
+      '@types/react':
+        specifier: ^19.1.0
+        version: 19.2.17
+      '@types/react-dom':
+        specifier: ^19.1.0
+        version: 19.2.3(@types/react@19.2.17)
+      react:
+        specifier: ^19.1.0
+        version: 19.2.7
+      react-dom:
+        specifier: ^19.1.0
+        version: 19.2.7(react@19.2.7)
       typescript:
         specifier: ^5.8.0
         version: 5.9.3
+      vitest:
+        specifier: ^3.1.0
+        version: 3.2.6(@types/node@22.19.21)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)
 
   packages/config:
     dependencies:
