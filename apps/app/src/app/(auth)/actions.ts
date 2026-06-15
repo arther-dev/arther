@@ -199,6 +199,12 @@ export async function acceptInviteAction(
 
   const supabase = await getSupabaseServer();
   if (!supabase) return { error: NOT_PROVISIONED };
+
+  // F8.2 — token-guessing is the abuse vector here; throttle by IP under the
+  // shared auth budget, like every other unauthenticated auth surface.
+  const throttled = await authThrottle();
+  if (throttled) return throttled;
+
   const {
     data: { user },
   } = await supabase.auth.getUser();
