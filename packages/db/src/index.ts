@@ -16,6 +16,16 @@ export {
   type DocumentTypeSectionRow,
 } from './document-types';
 export {
+  assignApprovalRole,
+  createApprovalRole,
+  deleteApprovalRole,
+  listApprovalRoles,
+  unassignApprovalRole,
+  updateApprovalRole,
+  type ApprovalRoleAssignmentRow,
+  type ApprovalRoleRow,
+} from './approval-roles';
+export {
   addComponentToProduct,
   addFieldComment,
   clearComponentOverride,
