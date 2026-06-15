@@ -305,6 +305,21 @@ export async function deleteBlock(client: SupabaseClient, blockId: BlockId): Pro
   if (error) throw new Error(`deleteBlock: ${error.message}`);
 }
 
+/** Rewrite `display_order` to the given block order (0-based) — the reorder spine (G4.6). */
+export async function reorderBlocks(
+  client: SupabaseClient,
+  orderedBlockIds: BlockId[],
+  userId: UserId,
+): Promise<void> {
+  for (let i = 0; i < orderedBlockIds.length; i += 1) {
+    const { error } = await client
+      .from('blocks')
+      .update({ display_order: i, last_edited_by: userId, last_edited_at: new Date().toISOString() })
+      .eq('id', orderedBlockIds[i]!);
+    if (error) throw new Error(`reorderBlocks: ${error.message}`);
+  }
+}
+
 // --- Reference tables (G3.3) --------------------------------------------------
 
 export async function addSpecReference(

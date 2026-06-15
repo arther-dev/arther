@@ -63,6 +63,7 @@ export default async function EditDocumentPage({ params }: { params: Promise<{ i
   return (
     <DocumentEditor
       documentId={tree.document.id}
+      revisionId={tree.revision.id}
       title={tree.document.title}
       state={tree.revision.state}
       blocks={tree.blocks.map((b) => ({

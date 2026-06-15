@@ -5,7 +5,12 @@ import Link from 'next/link';
 import { BlockRenderer, buildOutline } from '@arther/block-renderer';
 import { type BlockContent } from '@arther/types';
 import { AppShell, Button } from '@arther/ui';
-import { updateBlockContentAction } from './actions';
+import {
+  addBlockAfterAction,
+  deleteBlockAction,
+  reorderBlocksAction,
+  updateBlockContentAction,
+} from './actions';
 import { BlockProperties } from './BlockProperties';
 import { RichTextEditor } from './RichTextEditor';
 
@@ -26,11 +31,13 @@ export interface EditorBlock {
 
 export function DocumentEditor({
   documentId,
+  revisionId,
   title,
   state,
   blocks: initialBlocks,
 }: {
   documentId: string;
+  revisionId: string;
   title: string;
   state: string;
   blocks: EditorBlock[];
@@ -66,6 +73,50 @@ export function DocumentEditor({
     setBlocks((prev) => prev.map((b) => (b.id === blockId ? { ...b, content } : b)));
     setSaveState('saving');
     const res = await updateBlockContentAction(blockId, content);
+    setSaveState(res.ok ? 'saved' : 'error');
+  }
+
+  async function addParagraph() {
+    setSaveState('saving');
+    const res = await addBlockAfterAction({ revisionId, documentId, afterBlockId: selected });
+    if (!res.ok || !res.block || !res.orderedIds) {
+      setSaveState('error');
+      return;
+    }
+    const block = res.block;
+    const order = res.orderedIds;
+    setBlocks((prev) => {
+      const byId = new Map<string, EditorBlock>([...prev, block].map((b) => [b.id, b]));
+      return order.map((id) => byId.get(id)).filter((b): b is EditorBlock => Boolean(b));
+    });
+    setSelected(block.id);
+    setSaveState('saved');
+  }
+
+  async function removeSelected() {
+    if (!selected) return;
+    const id = selected;
+    setSaveState('saving');
+    const res = await deleteBlockAction(id);
+    if (!res.ok) {
+      setSaveState('error');
+      return;
+    }
+    setBlocks((prev) => prev.filter((b) => b.id !== id));
+    setSelected(null);
+    setSaveState('saved');
+  }
+
+  async function moveSelected(direction: -1 | 1) {
+    if (!selected) return;
+    const idx = blocks.findIndex((b) => b.id === selected);
+    const target = idx + direction;
+    if (idx < 0 || target < 0 || target >= blocks.length) return;
+    const next = [...blocks];
+    [next[idx], next[target]] = [next[target]!, next[idx]!];
+    setBlocks(next);
+    setSaveState('saving');
+    const res = await reorderBlocksAction(next.map((b) => b.id));
     setSaveState(res.ok ? 'saved' : 'error');
   }
 
@@ -129,6 +180,17 @@ export function DocumentEditor({
                   content={selectedBlock.content}
                   onCommit={(c) => persist(selectedBlock.id, c)}
                 />
+                <div className="specs-form--row" style={{ marginTop: 12, gap: 4 }}>
+                  <Button size="sm" variant="ghost" onClick={() => moveSelected(-1)}>
+                    Move up
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => moveSelected(1)}>
+                    Move down
+                  </Button>
+                  <Button size="sm" variant="danger" onClick={removeSelected}>
+                    Delete
+                  </Button>
+                </div>
               </>
             ) : (
               <p className="specs-grid__meta">Select a block to see its properties.</p>
@@ -148,6 +210,9 @@ export function DocumentEditor({
             </span>
           ) : null}
           <span style={{ flex: 1 }} />
+          <Button size="sm" variant="primary" onClick={addParagraph}>
+            + Paragraph
+          </Button>
           <Button
             size="sm"
             variant={showOutline ? 'secondary' : 'ghost'}
