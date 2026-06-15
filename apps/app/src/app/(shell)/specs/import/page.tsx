@@ -65,7 +65,7 @@ export default async function ImportPage({
         next screens; committing creates a named release. Re-imports are diff-first and never
         delete anything.
       </p>
-      <UploadForm products={products} preselectedProductId={product} />
+      <UploadForm products={products} preselectedProductId={products.find((p) => p.id === product)?.id} />
 
       {sessions.length > 0 ? (
         <section className="specs-section">

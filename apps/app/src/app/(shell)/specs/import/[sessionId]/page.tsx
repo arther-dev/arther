@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { z } from 'zod';
 import { getActiveWorkspace, getImportSession, listUnits, type UnitRow } from '@arther/db';
 import type {
   ImportPlan,
@@ -33,8 +34,11 @@ export default async function ImportSessionPage({
     );
   }
   const workspace = await getActiveWorkspace(supabase);
+  // F8.5 — a non-uuid segment would 500 against the uuid-typed lookup; validate
+  // at the boundary and route malformed ids to the not-found state below.
   const { sessionId } = await params;
-  const session = workspace ? await getImportSession(supabase, sessionId) : null;
+  const validSessionId = z.string().uuid().safeParse(sessionId).success ? sessionId : null;
+  const session = workspace && validSessionId ? await getImportSession(supabase, validSessionId) : null;
   if (!workspace || !session) {
     return (
       <main className="import-canvas">

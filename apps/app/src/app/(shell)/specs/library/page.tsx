@@ -7,7 +7,7 @@ import {
   listFieldsForComponents,
   listUnits,
 } from '@arther/db';
-import type { ComponentId, SpecFieldId } from '@arther/types';
+import { specFieldIdSchema, type ComponentId } from '@arther/types';
 import { AppShell, EmptyState } from '@arther/ui';
 import { getSupabaseServer } from '../../../../lib/supabase/server';
 import { AddFieldForm } from '../AddFieldForm';
@@ -56,7 +56,10 @@ export default async function LibraryPage({
     );
   }
 
+  // F8.5 — validate the untrusted `field` param at the boundary (a non-uuid
+  // would otherwise 500 against the uuid-typed lookup); invalid → no panel.
   const { field } = await searchParams;
+  const fieldId = specFieldIdSchema.safeParse(field).data;
   const [components, units, archivedComponents] = await Promise.all([
     listComponents(supabase, workspace.id),
     listUnits(supabase, workspace.id),
@@ -127,10 +130,10 @@ export default async function LibraryPage({
         ))}
         <NewComponentForm />
 
-        {field ? (
+        {fieldId ? (
           <FieldDetail
             supabase={supabase}
-            fieldId={field as SpecFieldId}
+            fieldId={fieldId}
             units={units}
             components={components}
             closeHref="/specs/library"

@@ -12,7 +12,7 @@ import {
   listReleasesForProduct,
   listUnits,
 } from '@arther/db';
-import type { ComponentId, ProductId, SpecFieldId } from '@arther/types';
+import { productIdSchema, specFieldIdSchema, type ComponentId } from '@arther/types';
 import { AppShell, Button, EmptyState, Skeleton } from '@arther/ui';
 import { getSupabaseServer } from '../../../lib/supabase/server';
 import { AddFieldForm } from './AddFieldForm';
@@ -75,9 +75,13 @@ export default async function SpecsPage({
   }
 
   const products = await listProducts(supabase, workspace.id);
+  // F8.5 — untrusted route params are validated at the boundary (a malformed
+  // value would otherwise reach a uuid-typed `.eq()` and 500). Bad/absent ids
+  // fall back to the first product / no detail panel.
   const { product, field } = await searchParams;
-  const selectedId = (product ?? products[0]?.id) as ProductId | undefined;
+  const selectedId = productIdSchema.safeParse(product).data ?? products[0]?.id;
   const selected = products.find((p) => p.id === selectedId);
+  const fieldId = specFieldIdSchema.safeParse(field).data;
 
   const navigator = (
     <nav className="specs-nav" aria-label="Products">
@@ -238,10 +242,10 @@ export default async function SpecsPage({
           <CreateReleaseForm productId={selected.id} />
         </section>
 
-        {field ? (
+        {fieldId ? (
           <FieldDetail
             supabase={supabase}
-            fieldId={field as SpecFieldId}
+            fieldId={fieldId}
             units={units}
             components={components}
             closeHref={`/specs?product=${selected.id}`}
