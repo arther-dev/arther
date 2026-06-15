@@ -60,6 +60,7 @@ export const textMarkSchema = z
     message: 'color is only valid on text_color or highlight marks',
     path: ['color'],
   });
+export type TextMark = z.infer<typeof textMarkSchema>;
 
 export const TEXT_ALIGNMENTS = ['left', 'center', 'right', 'justify'] as const;
 
@@ -79,7 +80,8 @@ export const inlineSpecTokenNodeSchema = z.strictObject({
   field_id: idString,
   field_version_id: idString,
   display_value: z.string().max(TEXT_LIMITS.name),
-  unit_id: idString,
+  /** null for unitless fields (booleans, enums) — the display value carries the text. */
+  unit_id: idString.nullable(),
   product_id: idString,
   component_id: idString,
 });
@@ -275,6 +277,7 @@ const safetyChildSchema = z.discriminatedUnion('type', [
   headingContent,
   imageContent,
 ]);
+export type SafetyChild = z.infer<typeof safetyChildSchema>;
 
 const warningContent = z.strictObject({
   type: z.literal('warning'),
@@ -433,6 +436,7 @@ export const aiRichTextContentSchema = z.strictObject({
   alignment: z.enum(TEXT_ALIGNMENTS),
   nodes: z.array(z.discriminatedUnion('type', [aiTextNodeSchema, aiSpecTokenNodeSchema])),
 });
+export type AiRichTextContent = z.infer<typeof aiRichTextContentSchema>;
 
 const aiHeadingBlock = z.strictObject({
   type: z.literal('heading'),
@@ -450,6 +454,7 @@ const aiCalloutBlock = z.strictObject({
   content: aiRichTextContentSchema,
 });
 const aiSafetyChild = z.discriminatedUnion('type', [aiParagraphBlock, aiHeadingBlock]);
+export type AiSafetyChild = z.infer<typeof aiSafetyChild>;
 const aiWarningBlock = z.strictObject({
   type: z.literal('warning'),
   title: z.string().max(TEXT_LIMITS.name).optional(),

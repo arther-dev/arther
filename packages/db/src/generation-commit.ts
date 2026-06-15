@@ -1,13 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type {
-  BlockContent,
-  BlockSource,
-  BlockType,
-  DegradationConfig,
-  DocumentId,
-  GenerationRunId,
-  SpecFieldId,
-} from '@arther/types';
+import type { DocumentId, GenerationCommitBlock, GenerationRunId } from '@arther/types';
 import { rpcError } from './errors';
 import { scopedServiceQuery, type WorkspaceScope } from './guard';
 
@@ -19,17 +11,10 @@ import { scopedServiceQuery, type WorkspaceScope } from './guard';
  *
  * Service-role only (the RPC's EXECUTE is revoked from clients), so this takes
  * the SERVICE client under a workspace scope (guardrail 1). The app authorizes
- * `doc.generate` before reaching here.
+ * `doc.generate` before reaching here. The block shape (`GenerationCommitBlock`)
+ * is the `@arther/types` contract the generation assembler produces.
  */
-export interface GenerationCommitBlock {
-  type: BlockType;
-  source: BlockSource;
-  content: BlockContent;
-  degradation?: DegradationConfig;
-  textContent?: string | null;
-  /** Fields this block cites — resolved to current versions in the RPC. */
-  specRefs?: { fieldId: SpecFieldId }[];
-}
+export type { GenerationCommitBlock };
 
 export async function commitGeneration(
   service: SupabaseClient,
