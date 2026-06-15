@@ -11,3 +11,4 @@ export * from './reference-graph';
 export * from './table-paste';
 export * from './brief';
 export * from './block-content';
+export * from './document';

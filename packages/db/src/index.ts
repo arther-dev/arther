@@ -77,6 +77,28 @@ export {
   type EntityBrief,
 } from './briefs';
 export {
+  addBriefReference,
+  addPlaceholderReference,
+  addSpecReference,
+  createDocument,
+  deleteBlock,
+  getDocument,
+  insertBlocks,
+  listDocumentsForProduct,
+  listSpecReferences,
+  listStaleSpecReferences,
+  loadDocumentTree,
+  loadRevisionBlocks,
+  setDocumentArchived,
+  updateBlock,
+  type BlockRow,
+  type BlockSpecReferenceRow,
+  type DocumentRevisionRow,
+  type DocumentRow,
+  type DocumentTree,
+  type StaleSpecReference,
+} from './documents';
+export {
   assertWorkspaceScope,
   MissingWorkspaceScopeError,
   scopedServiceQuery,
