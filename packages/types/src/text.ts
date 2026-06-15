@@ -26,6 +26,8 @@ export const TEXT_LIMITS = {
   password: 200,
   /** Raw enum-options string before it is split on commas. */
   options: 4_000,
+  /** Product Brief fragment body — narrative AI-generation input, plain text. */
+  briefFragment: 20_000,
 } as const;
 
 /** Required, trimmed free text with a sane upper bound (default: name length). */

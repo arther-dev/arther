@@ -288,6 +288,99 @@ body {
   color: var(--text-primary);
 }
 
+/* --- Product Brief (G0.6) --- */
+.specs-tabs {
+  display: flex;
+  gap: var(--space-lg);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.specs-tabs__tab {
+  padding: var(--space-sm) 0;
+  color: var(--text-secondary);
+  text-decoration: none;
+  font: var(--type-label);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+.specs-tabs__tab:hover {
+  color: var(--text-primary);
+}
+.specs-tabs__tab--active {
+  color: var(--text-primary);
+  border-bottom-color: var(--text-link);
+}
+.specs-tabs__tab:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+.specs-brief__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.specs-brief__row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-md);
+  flex-wrap: wrap;
+  padding: var(--space-sm) 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.specs-brief__status {
+  color: var(--text-secondary);
+}
+.specs-brief__expanded {
+  display: flex;
+  gap: var(--space-2xl);
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+.specs-brief__editor {
+  flex: 1 1 380px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+.specs-brief__aside {
+  flex: 0 1 280px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+.specs-brief__aside-title {
+  font: var(--type-overline);
+  letter-spacing: var(--tracking-overline);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  margin: 0;
+}
+.specs-brief__refs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  font: var(--type-label);
+}
+.specs-textarea {
+  width: 100%;
+  min-height: 200px;
+  padding: var(--space-md);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  font: var(--type-body);
+  resize: vertical;
+}
+.specs-textarea:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+
 /* --- Table mini-spreadsheet (F6.3) --- */
 .specs-table-editor {
   border: 1px solid var(--border-subtle);

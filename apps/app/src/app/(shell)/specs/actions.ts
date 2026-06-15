@@ -13,6 +13,7 @@ import {
   createProduct,
   createRelease,
   createSpecField,
+  deleteBriefFragment,
   deleteRelease,
   getActiveWorkspace,
   listReferenceEdges,
@@ -20,8 +21,10 @@ import {
   setArchived,
   setComponentOverride,
   updateFieldValue,
+  upsertBriefFragment,
 } from '@arther/db';
 import {
+  briefFragmentFormSchema,
   fieldTypeSchema,
   isOverridableFieldType,
   optionalText,
@@ -470,6 +473,48 @@ export async function addCommentAction(
     });
   } catch {
     return { error: 'Could not post the comment.' };
+  }
+  revalidatePath('/specs');
+  revalidatePath('/specs/library');
+  return {};
+}
+
+/**
+ * G0.6 — save (or clear) a Product Brief fragment. Briefs are authoring
+ * content, so this is editor-gated (`spec.write`, matching the 0004 RLS). The
+ * key + body are bounded at the boundary (F8.5); an empty body clears the
+ * fragment back to "not yet added" rather than persisting a blank.
+ */
+export async function saveBriefFragmentAction(
+  _prev: SpecsFormState,
+  formData: FormData,
+): Promise<SpecsFormState> {
+  const parsed = briefFragmentFormSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { error: parsed.error.issues[0]!.message };
+
+  const auth = await authorize();
+  if ('error' in auth) return { error: auth.error };
+
+  const content = parsed.data.content.trim();
+  try {
+    if (content.length === 0) {
+      await deleteBriefFragment(auth.supabase, {
+        entityType: parsed.data.entityType,
+        entityId: parsed.data.entityId,
+        key: parsed.data.key,
+      });
+    } else {
+      await upsertBriefFragment(auth.supabase, {
+        workspaceId: auth.workspace.id,
+        entityType: parsed.data.entityType,
+        entityId: parsed.data.entityId,
+        key: parsed.data.key,
+        content,
+        userId: auth.userId,
+      });
+    }
+  } catch {
+    return { error: 'Could not save the brief fragment.' };
   }
   revalidatePath('/specs');
   revalidatePath('/specs/library');
