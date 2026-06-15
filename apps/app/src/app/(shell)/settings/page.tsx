@@ -138,6 +138,18 @@ export default async function SettingsPage() {
 
         {canManage ? (
           <section className="specs-section">
+            <h2 className="specs-section__title">Document types</h2>
+            <p className="specs-grid__meta">
+              Generation schemas — what each kind of document contains and which spec data feeds it.
+            </p>
+            <Link className="ui-btn ui-btn--secondary ui-btn--sm" href="/settings/document-types">
+              Configure document types
+            </Link>
+          </section>
+        ) : null}
+
+        {canManage ? (
+          <section className="specs-section">
             <h2 className="specs-section__title">Invitations</h2>
             {pending.length > 0 ? (
               <ul className="specs-form" aria-label="Pending invitations">
