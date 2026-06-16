@@ -12,6 +12,7 @@ import {
   createComponent,
   createProduct,
   createRelease,
+  createServiceClient,
   createSpecField,
   deleteBriefFragment,
   deleteRelease,
@@ -19,6 +20,7 @@ import {
   getFieldChangeImpact,
   listReferenceEdges,
   membershipLookupFor,
+  propagateFieldChange,
   setArchived,
   setComponentOverride,
   updateFieldValue,
@@ -268,6 +270,21 @@ export async function updateFieldValueAction(
   } catch (e) {
     return { error: e instanceof z.ZodError ? e.issues[0]!.message : 'Could not save the value.' };
   }
+
+  // G6.2 two-speed propagation: cascade the new value into every citing document's
+  // working copy and flag affected prose. Best-effort — the value is already
+  // committed, and staleness still reads correctly from the advanced version, so a
+  // propagation hiccup must not fail the save. Moves to the durable runner with G1.2.
+  try {
+    await propagateFieldChange(
+      createServiceClient(),
+      { workspaceId: auth.workspace.id },
+      { fieldId: head.data.fieldId as SpecFieldId, changedBy: auth.userId },
+    );
+  } catch (e) {
+    console.error('[propagate] field change propagation failed', head.data.fieldId, e);
+  }
+
   revalidatePath('/specs');
   revalidatePath('/specs/library');
   return {};
