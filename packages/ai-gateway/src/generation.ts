@@ -86,6 +86,7 @@ export function buildSectionPrompt(input: SectionPromptInput): { system: string;
     "- Ground every specification value in the provided spec fields. To state a value, emit an inline spec_token referencing the field's id — never write the number, unit, or value as plain text.",
     "- If a value isn't in the provided fields, do not state it. Never invent or estimate values.",
     '- Use the product brief for narrative and context, not for specification values.',
+    "- When a block's narrative is drawn from a product brief fragment, set that block's source to 'brief' and its brief_key to the fragment's key (the ### headings in the brief).",
     '- Match the brand voice; keep prose clear and technical.',
     // The section name lives in the user message (below), so the rules stay
     // byte-stable across a run's sections — that is what prompt caching keys on.

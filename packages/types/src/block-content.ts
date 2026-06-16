@@ -546,14 +546,19 @@ export const AI_GENERATABLE_BLOCK_TYPES = [
  * from brief-derived prose and from placeholders (a body the model leaves for a
  * null required field, G2.7).
  */
+/** G7.3 spine — which product-brief fragment a block drew its narrative from
+ *  (the brief analog of a spec_token's field_id). Optional; only brief-sourced
+ *  prose sets it. The app resolves it to a block_brief_reference at commit. */
+const aiBriefKeyField = z.string().max(TEXT_LIMITS.name).nullable().optional();
+
 export const generatedBlockSchema = z.discriminatedUnion('block_type', [
-  z.strictObject({ block_type: z.literal('heading'), source: z.enum(GENERATED_BLOCK_SOURCES), block: aiHeadingBlock }),
-  z.strictObject({ block_type: z.literal('paragraph'), source: z.enum(GENERATED_BLOCK_SOURCES), block: aiParagraphBlock }),
-  z.strictObject({ block_type: z.literal('callout'), source: z.enum(GENERATED_BLOCK_SOURCES), block: aiCalloutBlock }),
-  z.strictObject({ block_type: z.literal('spec_table'), source: z.enum(GENERATED_BLOCK_SOURCES), block: aiSpecTableBlock }),
-  z.strictObject({ block_type: z.literal('warning'), source: z.enum(GENERATED_BLOCK_SOURCES), block: aiWarningBlock }),
-  z.strictObject({ block_type: z.literal('caution'), source: z.enum(GENERATED_BLOCK_SOURCES), block: aiCautionBlock }),
-  z.strictObject({ block_type: z.literal('note'), source: z.enum(GENERATED_BLOCK_SOURCES), block: aiNoteBlock }),
+  z.strictObject({ block_type: z.literal('heading'), source: z.enum(GENERATED_BLOCK_SOURCES), brief_key: aiBriefKeyField, block: aiHeadingBlock }),
+  z.strictObject({ block_type: z.literal('paragraph'), source: z.enum(GENERATED_BLOCK_SOURCES), brief_key: aiBriefKeyField, block: aiParagraphBlock }),
+  z.strictObject({ block_type: z.literal('callout'), source: z.enum(GENERATED_BLOCK_SOURCES), brief_key: aiBriefKeyField, block: aiCalloutBlock }),
+  z.strictObject({ block_type: z.literal('spec_table'), source: z.enum(GENERATED_BLOCK_SOURCES), brief_key: aiBriefKeyField, block: aiSpecTableBlock }),
+  z.strictObject({ block_type: z.literal('warning'), source: z.enum(GENERATED_BLOCK_SOURCES), brief_key: aiBriefKeyField, block: aiWarningBlock }),
+  z.strictObject({ block_type: z.literal('caution'), source: z.enum(GENERATED_BLOCK_SOURCES), brief_key: aiBriefKeyField, block: aiCautionBlock }),
+  z.strictObject({ block_type: z.literal('note'), source: z.enum(GENERATED_BLOCK_SOURCES), brief_key: aiBriefKeyField, block: aiNoteBlock }),
 ]);
 export type GeneratedBlock = z.infer<typeof generatedBlockSchema>;
 
