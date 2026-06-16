@@ -46,6 +46,8 @@ export function DocumentEditor({
   state,
   staleFields,
   staleBlockIds,
+  staleBriefKeys = [],
+  staleBriefBlockIds = [],
   resolved,
   blocks: initialBlocks,
 }: {
@@ -55,10 +57,13 @@ export function DocumentEditor({
   state: string;
   staleFields: string[];
   staleBlockIds: string[];
+  staleBriefKeys?: string[];
+  staleBriefBlockIds?: string[];
   resolved?: SpecFieldResolution;
   blocks: EditorBlock[];
 }) {
   const staleSet = new Set(staleBlockIds);
+  const briefStaleSet = new Set(staleBriefBlockIds);
   const [blocks, setBlocks] = useState(initialBlocks);
   const [selected, setSelected] = useState<string | null>(null);
   const [showOutline, setShowOutline] = useState(true);
@@ -213,7 +218,12 @@ export function DocumentEditor({
     borderRadius: 6,
     padding: '2px 8px',
     outline: selected === id ? '2px solid var(--accent, #7aa2f7)' : '2px solid transparent',
-    boxShadow: staleSet.has(id) ? 'inset 3px 0 0 0 var(--warn, #e0af68)' : undefined,
+    // Spec value change = urgent (warn bar); brief edit = light (info bar, G7.3).
+    boxShadow: staleSet.has(id)
+      ? 'inset 3px 0 0 0 var(--warn, #e0af68)'
+      : briefStaleSet.has(id)
+        ? 'inset 2px 0 0 0 var(--info, #7dcfff)'
+        : undefined,
     background: matchingIdSet.has(id) ? 'var(--accent-subtle, rgba(122, 162, 247, 0.12))' : undefined,
   });
 
@@ -390,6 +400,13 @@ export function DocumentEditor({
           <p className="ui-field__error" role="status" style={{ marginBottom: 8 }}>
             {staleFields.length} spec value{staleFields.length === 1 ? '' : 's'} changed since
             generation ({staleFields.join(', ')}). Affected blocks are marked.
+          </p>
+        ) : null}
+
+        {staleBriefKeys.length > 0 ? (
+          <p className="specs-grid__meta" role="status" style={{ marginBottom: 8 }}>
+            {staleBriefKeys.length} brief fragment{staleBriefKeys.length === 1 ? '' : 's'} updated
+            since generation ({staleBriefKeys.join(', ')}) — the prose may want a refresh.
           </p>
         ) : null}
 
