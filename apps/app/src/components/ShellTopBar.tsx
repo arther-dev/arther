@@ -18,5 +18,5 @@ const MODE_TITLES: Array<[prefix: string, title: string]> = [
 export function ShellTopBar() {
   const pathname = usePathname() ?? '/';
   const activeTab = MODE_TITLES.find(([prefix]) => pathname.startsWith(prefix))?.[1] ?? 'Arther';
-  return <TopBar activeTab={activeTab} account={<AccountMenu />} />;
+  return <TopBar activeTab={activeTab} account={<AccountMenu />} searchHref="/search" />;
 }
