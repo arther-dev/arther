@@ -3,6 +3,7 @@ import type { BlockContent, RichTextContent } from './block-content';
 import {
   attributeSections,
   classifyBlockSpeed,
+  coalesceReviewSections,
   planFieldPropagation,
   rewriteSpecTokens,
   type PropagationBlock,
@@ -166,5 +167,52 @@ describe('planFieldPropagation', () => {
     });
     expect(plan.blockUpdates).toEqual([]); // p1 not stale; tbl has no token
     expect(plan.reviewSections).toEqual([]);
+  });
+});
+
+describe('coalesceReviewSections (G6.2b batch)', () => {
+  it('merges two fields hitting the same section + owner into one item', () => {
+    const out = coalesceReviewSections([
+      { diffId: 'd1', sections: [{ sectionName: 'Electrical', category: 'Electrical', ownerUserId: 'u1', blockIds: ['b1', 'b2'] }] },
+      { diffId: 'd2', sections: [{ sectionName: 'Electrical', category: 'Electrical', ownerUserId: 'u1', blockIds: ['b2', 'b3'] }] },
+    ]);
+    expect(out).toHaveLength(1);
+    expect(out[0]!.diffIds).toEqual(['d1', 'd2']);
+    expect(out[0]!.blockIds).toEqual(['b1', 'b2', 'b3']); // union, de-duped, first-seen order
+    expect(out[0]!.category).toBe('Electrical');
+    expect(out[0]!.ownerUserId).toBe('u1');
+  });
+
+  it('keeps separate items per section and per assignee', () => {
+    const out = coalesceReviewSections([
+      { diffId: 'd1', sections: [{ sectionName: 'A', category: 'X', ownerUserId: 'u1', blockIds: ['b1'] }] },
+      { diffId: 'd2', sections: [{ sectionName: 'A', category: 'X', ownerUserId: 'u2', blockIds: ['b2'] }] },
+      { diffId: 'd3', sections: [{ sectionName: 'B', category: 'X', ownerUserId: 'u1', blockIds: ['b3'] }] },
+    ]);
+    expect(out).toHaveLength(3);
+  });
+
+  it('nulls the category when coalesced fields span more than one', () => {
+    const out = coalesceReviewSections([
+      { diffId: 'd1', sections: [{ sectionName: 'Overview', category: 'Electrical', ownerUserId: 'u1', blockIds: ['b1'] }] },
+      { diffId: 'd2', sections: [{ sectionName: 'Overview', category: 'Mechanical', ownerUserId: 'u1', blockIds: ['b1'] }] },
+    ]);
+    expect(out).toHaveLength(1);
+    expect(out[0]!.category).toBeNull();
+    expect(out[0]!.blockIds).toEqual(['b1']); // same block, de-duped
+  });
+
+  it('coalesces unassigned (null owner) sections together', () => {
+    const out = coalesceReviewSections([
+      { diffId: 'd1', sections: [{ sectionName: 'S', category: 'X', ownerUserId: null, blockIds: ['b1'] }] },
+      { diffId: 'd2', sections: [{ sectionName: 'S', category: 'X', ownerUserId: null, blockIds: ['b2'] }] },
+    ]);
+    expect(out).toHaveLength(1);
+    expect(out[0]!.ownerUserId).toBeNull();
+    expect(out[0]!.diffIds).toEqual(['d1', 'd2']);
+  });
+
+  it('is empty for no contributions', () => {
+    expect(coalesceReviewSections([])).toEqual([]);
   });
 });

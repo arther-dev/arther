@@ -9,12 +9,14 @@ import { rateLimit } from '@arther/rate-limit';
 import {
   commitImportSession,
   createImportSession,
+  createServiceClient,
   DbRuleError,
   getImportSession,
   getActiveWorkspace,
   listUnits,
   loadCurrentSpecState,
   membershipLookupFor,
+  propagateImportBatch,
   updateImportSession,
   type ImportInterpretation,
   type ImportSessionRow,
@@ -31,7 +33,7 @@ import {
   type ParsedWorkbook,
   type PlannedMutation,
 } from '@arther/spec-import';
-import { parseFieldValue, type ProductId, type UserId } from '@arther/types';
+import { parseFieldValue, type ProductId, type SpecFieldId, type UserId } from '@arther/types';
 import { getSupabaseServer } from '../../../../lib/supabase/server';
 import { CATEGORIES } from '../shared';
 import { parseDecisions, recomputePlan } from './plan';
@@ -419,6 +421,28 @@ export async function commitImportAction(
     // show; any other failure stays generic so no DB internals leak.
     return { error: e instanceof DbRuleError ? e.message : 'Commit failed — nothing was applied.' };
   }
+
+  // G6.2b — ONE batch propagation for the whole session: cascade every changed
+  // value into citing documents' working copies and coalesce prose review items
+  // per (document, section, assignee). Best-effort — values are committed and
+  // staleness still reads correctly, so a propagation hiccup must not fail the
+  // commit. Only existing fields whose value moved (`set_value`) can have stale
+  // references; newly created fields are cited by nothing yet.
+  try {
+    const changedFieldIds = plan.mutations
+      .filter((m): m is Extract<PlannedMutation, { kind: 'set_value' }> => m.kind === 'set_value')
+      .map((m) => m.fieldId as SpecFieldId);
+    if (changedFieldIds.length > 0) {
+      await propagateImportBatch(
+        createServiceClient(),
+        { workspaceId: auth.workspace.id },
+        { fieldIds: changedFieldIds, changedBy: auth.userId },
+      );
+    }
+  } catch (e) {
+    console.error('[propagate] import batch propagation failed', loaded.session.id, e);
+  }
+
   revalidatePath('/specs');
   revalidatePath('/specs/releases');
   redirect(`/specs?product=${productId}`);

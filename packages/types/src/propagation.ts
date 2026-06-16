@@ -271,3 +271,79 @@ export function planFieldPropagation(input: {
 
   return { blockUpdates, reviewSections };
 }
+
+// --- G6.2b — batch (import) coalescing ---------------------------------------
+
+/** One propagated field's review sections for a document, tagged with its diff. */
+export interface ReviewContribution {
+  /** The `field_change_diffs` row id for this field's change. */
+  diffId: string;
+  sections: ReviewSection[];
+}
+
+/**
+ * A review item coalesced across every field a batch (import) changed in one
+ * document: one item per (section, assignee). Carries the union of affected
+ * blocks and the list of contributing field-change diffs.
+ */
+export interface CoalescedReviewSection {
+  sectionName: string;
+  ownerUserId: string | null;
+  /** The shared field category, or null when the coalesced fields span more than one. */
+  category: string | null;
+  blockIds: string[];
+  diffIds: string[];
+}
+
+/**
+ * G6.2b — coalesce per-field review sections (from running `planFieldPropagation`
+ * for each changed field over one document) into one review item per (section,
+ * assignee). An import that moves twelve values touching the same prose section
+ * for the same owner becomes a single review item listing twelve diffs, not
+ * twelve items. Pure, so the coalescing is unit-tested without a database; the
+ * DB layer turns each result into one `section_review_items` row.
+ */
+export function coalesceReviewSections(
+  contributions: readonly ReviewContribution[],
+): CoalescedReviewSection[] {
+  const groups = new Map<
+    string,
+    { sectionName: string; ownerUserId: string | null; categories: Set<string>; blockIds: string[]; seenBlocks: Set<string>; diffIds: string[]; seenDiffs: Set<string> }
+  >();
+  for (const { diffId, sections } of contributions) {
+    for (const section of sections) {
+      const key = `${section.sectionName} ${section.ownerUserId ?? ''}`;
+      let group = groups.get(key);
+      if (!group) {
+        group = {
+          sectionName: section.sectionName,
+          ownerUserId: section.ownerUserId,
+          categories: new Set(),
+          blockIds: [],
+          seenBlocks: new Set(),
+          diffIds: [],
+          seenDiffs: new Set(),
+        };
+        groups.set(key, group);
+      }
+      group.categories.add(section.category);
+      for (const blockId of section.blockIds) {
+        if (!group.seenBlocks.has(blockId)) {
+          group.seenBlocks.add(blockId);
+          group.blockIds.push(blockId);
+        }
+      }
+      if (!group.seenDiffs.has(diffId)) {
+        group.seenDiffs.add(diffId);
+        group.diffIds.push(diffId);
+      }
+    }
+  }
+  return [...groups.values()].map((g) => ({
+    sectionName: g.sectionName,
+    ownerUserId: g.ownerUserId,
+    category: g.categories.size === 1 ? [...g.categories][0]! : null,
+    blockIds: g.blockIds,
+    diffIds: g.diffIds,
+  }));
+}
