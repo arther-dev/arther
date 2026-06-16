@@ -2,7 +2,11 @@
 
 import { useActionState, useState } from 'react';
 import type { OverrideRow, SpecFieldRow, UnitRow } from '@arther/db';
-import { isOverridableFieldType } from '@arther/types';
+import {
+  describeFieldChangeImpact,
+  isOverridableFieldType,
+  listImpactedDocuments,
+} from '@arther/types';
 import { Button } from '@arther/ui';
 import {
   clearOverrideAction,
@@ -176,6 +180,47 @@ function TypeInputs({
   );
 }
 
+/**
+ * G6.6 — the shared save footer for the global value editors. When the action
+ * reports an impact (a value change that ripples into the documents citing the
+ * field), it swaps to a confirm: the blast-radius line, a `confirmed` flag, and
+ * an "Apply change" button. Zero-impact saves never see this — they commit on
+ * the first submit. The hidden `impactCheck` opts these forms into the check
+ * (the table editor saves directly, without it).
+ */
+function ValueEditorFooter({
+  state,
+  pending,
+  onCancel,
+}: {
+  state: SpecsFormState;
+  pending: boolean;
+  onCancel: () => void;
+}) {
+  const impact = state.impact;
+  return (
+    <>
+      <input type="hidden" name="impactCheck" value="true" />
+      {impact ? (
+        <>
+          <input type="hidden" name="confirmed" value="true" />
+          <p className="specs-grid__meta" role="status">
+            {describeFieldChangeImpact(impact)}
+            {impact.documentTitles.length > 0 ? ` Affected: ${listImpactedDocuments(impact)}.` : ''}
+          </p>
+        </>
+      ) : null}
+      <Button type="submit" size="sm" disabled={pending}>
+        {pending ? 'Saving…' : impact ? 'Apply change' : 'Save'}
+      </Button>
+      <Button type="button" size="sm" variant="ghost" onClick={onCancel}>
+        Cancel
+      </Button>
+      {state.error ? <p className="ui-field__error">{state.error}</p> : null}
+    </>
+  );
+}
+
 export function FieldValueEditor({
   field,
   units,
@@ -189,7 +234,9 @@ export function FieldValueEditor({
   const [state, action, pending] = useActionState<SpecsFormState, FormData>(
     async (prev, formData) => {
       const result = await updateFieldValueAction(prev, formData);
-      if (!result.error) setEditing(false);
+      // A confirm step (result.impact) keeps the editor open; only a committed
+      // save (no error, no pending impact) closes it.
+      if (!result.error && !result.impact) setEditing(false);
       return result;
     },
     {},
@@ -238,16 +285,10 @@ export function FieldValueEditor({
             </option>
           ))}
         </select>
-        <Button type="submit" size="sm" disabled={pending}>
-          {pending ? 'Saving…' : 'Save'}
-        </Button>
-        <Button type="button" size="sm" variant="ghost" onClick={() => setEditing(false)}>
-          Cancel
-        </Button>
         {candidates.length === 0 ? (
           <p className="specs-grid__meta">No other components in the library yet.</p>
         ) : null}
-        {state.error ? <p className="ui-field__error">{state.error}</p> : null}
+        <ValueEditorFooter state={state} pending={pending} onCancel={() => setEditing(false)} />
       </form>
     );
   }
@@ -262,13 +303,7 @@ export function FieldValueEditor({
         current={field.value as Record<string, unknown> | null}
         idPrefix="g"
       />
-      <Button type="submit" size="sm" disabled={pending}>
-        {pending ? 'Saving…' : 'Save'}
-      </Button>
-      <Button type="button" size="sm" variant="ghost" onClick={() => setEditing(false)}>
-        Cancel
-      </Button>
-      {state.error ? <p className="ui-field__error">{state.error}</p> : null}
+      <ValueEditorFooter state={state} pending={pending} onCancel={() => setEditing(false)} />
     </form>
   );
 }
