@@ -22,3 +22,4 @@ export * from './domain-ownership';
 export * from './propagation';
 export * from './spec-table';
 export * from './text-search';
+export * from './block-selection';
