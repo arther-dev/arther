@@ -125,6 +125,7 @@ export {
   type BlockRegenContext,
 } from './block-regeneration';
 export { resolveSpecFields } from './spec-table-resolve';
+export { getSpecCoverageForProduct } from './coverage';
 export {
   listPlaceholdersForFragment,
   clearPlaceholder,
