@@ -4,8 +4,10 @@ import { useEffect, useState, type CSSProperties } from 'react';
 import Link from 'next/link';
 import { BlockRenderer, buildOutline } from '@arther/block-renderer';
 import {
+  countMatchesInBlock,
   INSERTABLE_BLOCK_TYPES,
   insertableBlockLabel,
+  replaceInBlock,
   type BlockContent,
   type InsertableBlockType,
   type SpecFieldResolution,
@@ -65,6 +67,13 @@ export function DocumentEditor({
   const [insertType, setInsertType] = useState<InsertableBlockType>('paragraph');
   const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
   const [regenError, setRegenError] = useState<string | null>(null);
+  // G4.7 find & replace
+  const [findOpen, setFindOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [replacement, setReplacement] = useState('');
+  const [matchIndex, setMatchIndex] = useState(0);
+  const [replaceVersion, setReplaceVersion] = useState(0);
+  const [replaceStatus, setReplaceStatus] = useState<string | null>(null);
   const { enqueue, status: saveStatus, offline } = useSaveQueue<BlockContent>((id, content) =>
     updateBlockContentAction(id, content).then((r) => r.ok),
   );
@@ -80,6 +89,48 @@ export function DocumentEditor({
 
   const outline = buildOutline(blocks);
   const selectedBlock = blocks.find((b) => b.id === selected) ?? null;
+
+  // G4.7 — blocks whose editable text contains the query, in document order.
+  const matches = query
+    ? blocks
+        .map((b) => ({ id: b.id, n: countMatchesInBlock(b.content, query) }))
+        .filter((m) => m.n > 0)
+    : [];
+  const matchingIds = matches.map((m) => m.id);
+  const matchingIdSet = new Set(matchingIds);
+  const totalMatches = matches.reduce((sum, m) => sum + m.n, 0);
+
+  function gotoMatch(dir: 1 | -1) {
+    if (matchingIds.length === 0) return;
+    const next = (matchIndex + dir + matchingIds.length) % matchingIds.length;
+    setMatchIndex(next);
+    const id = matchingIds[next]!;
+    setSelected(id);
+    document.getElementById(`block-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  function replaceAll() {
+    if (!query) return;
+    let total = 0;
+    const changed: { id: string; content: BlockContent }[] = [];
+    const next = blocks.map((b) => {
+      const { content, replaced } = replaceInBlock(b.content, query, replacement);
+      if (replaced > 0) {
+        total += replaced;
+        changed.push({ id: b.id, content });
+        return { ...b, content };
+      }
+      return b;
+    });
+    if (total === 0) {
+      setReplaceStatus('No matches to replace.');
+      return;
+    }
+    setBlocks(next);
+    changed.forEach((c) => enqueue(c.id, c.content));
+    setReplaceVersion((v) => v + 1); // remount the inline editors so they show the new text
+    setReplaceStatus(`Replaced ${total} occurrence${total === 1 ? '' : 's'} in ${changed.length} block${changed.length === 1 ? '' : 's'}.`);
+  }
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -163,6 +214,7 @@ export function DocumentEditor({
     padding: '2px 8px',
     outline: selected === id ? '2px solid var(--accent, #7aa2f7)' : '2px solid transparent',
     boxShadow: staleSet.has(id) ? 'inset 3px 0 0 0 var(--warn, #e0af68)' : undefined,
+    background: matchingIdSet.has(id) ? 'var(--accent-subtle, rgba(122, 162, 247, 0.12))' : undefined,
   });
 
   return (
@@ -319,6 +371,14 @@ export function DocumentEditor({
               >
                 Properties
               </Button>
+              <Button
+                size="sm"
+                variant={findOpen ? 'secondary' : 'ghost'}
+                aria-pressed={findOpen}
+                onClick={() => setFindOpen((v) => !v)}
+              >
+                Find
+              </Button>
             </>
           ) : null}
           <Link className="ui-btn ui-btn--ghost" href={`/documents/${documentId}`}>
@@ -331,6 +391,49 @@ export function DocumentEditor({
             {staleFields.length} spec value{staleFields.length === 1 ? '' : 's'} changed since
             generation ({staleFields.join(', ')}). Affected blocks are marked.
           </p>
+        ) : null}
+
+        {mode === 'edit' && findOpen ? (
+          <div className="editor-find specs-form--row" role="search" style={{ marginBottom: 8, flexWrap: 'wrap', gap: 6 }}>
+            <input
+              className="ui-field__input"
+              aria-label="Find"
+              placeholder="Find"
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setMatchIndex(0);
+                setReplaceStatus(null);
+              }}
+            />
+            <span className="specs-grid__meta" aria-live="polite">
+              {query ? `${totalMatches} match${totalMatches === 1 ? '' : 'es'}` : ''}
+            </span>
+            <Button size="sm" variant="ghost" disabled={matchingIds.length === 0} onClick={() => gotoMatch(-1)}>
+              Prev
+            </Button>
+            <Button size="sm" variant="ghost" disabled={matchingIds.length === 0} onClick={() => gotoMatch(1)}>
+              Next
+            </Button>
+            <input
+              className="ui-field__input"
+              aria-label="Replace with"
+              placeholder="Replace with"
+              value={replacement}
+              onChange={(e) => setReplacement(e.target.value)}
+            />
+            <Button size="sm" variant="secondary" disabled={!query || totalMatches === 0} onClick={replaceAll}>
+              Replace all
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setFindOpen(false)}>
+              Close
+            </Button>
+            {replaceStatus ? (
+              <span className="specs-grid__meta" role="status">
+                {replaceStatus}
+              </span>
+            ) : null}
+          </div>
         ) : null}
 
         {mode === 'preview' ? (
@@ -358,6 +461,7 @@ export function DocumentEditor({
                     style={blockStyle(b.id)}
                   >
                     <RichTextEditor
+                      key={`${b.id}:${replaceVersion}`}
                       value={c.content}
                       onSave={(rt) => persist(b.id, { ...c, content: rt })}
                     />
