@@ -20,3 +20,4 @@ export * from './staleness';
 export * from './field-impact';
 export * from './domain-ownership';
 export * from './propagation';
+export * from './spec-table';

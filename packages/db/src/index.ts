@@ -119,6 +119,7 @@ export {
   loadBlockRegenContext,
   type BlockRegenContext,
 } from './block-regeneration';
+export { resolveSpecFields } from './spec-table-resolve';
 export {
   resolveDomainOwnersForDocument,
   type ResolvedCategoryOwner,

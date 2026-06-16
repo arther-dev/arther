@@ -3,7 +3,7 @@
 import { useEffect, useState, type CSSProperties } from 'react';
 import Link from 'next/link';
 import { BlockRenderer, buildOutline } from '@arther/block-renderer';
-import { type BlockContent } from '@arther/types';
+import { type BlockContent, type SpecFieldResolution } from '@arther/types';
 import { AppShell, Button } from '@arther/ui';
 import {
   addBlockAfterAction,
@@ -38,6 +38,7 @@ export function DocumentEditor({
   state,
   staleFields,
   staleBlockIds,
+  resolved,
   blocks: initialBlocks,
 }: {
   documentId: string;
@@ -46,6 +47,7 @@ export function DocumentEditor({
   state: string;
   staleFields: string[];
   staleBlockIds: string[];
+  resolved?: SpecFieldResolution;
   blocks: EditorBlock[];
 }) {
   const staleSet = new Set(staleBlockIds);
@@ -316,7 +318,7 @@ export function DocumentEditor({
             {blocks.length === 0 ? (
               <p className="specs-grid__meta">This draft has no blocks yet.</p>
             ) : (
-              <BlockRenderer blocks={blocks.map((b) => b.content)} />
+              <BlockRenderer blocks={blocks.map((b) => b.content)} resolved={resolved} />
             )}
           </article>
         ) : (
@@ -358,7 +360,7 @@ export function DocumentEditor({
                   }}
                   style={blockStyle(b.id)}
                 >
-                  <BlockRenderer blocks={[c]} />
+                  <BlockRenderer blocks={[c]} resolved={resolved} />
                 </div>
               );
             })
