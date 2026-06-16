@@ -81,6 +81,18 @@ export async function updateWorkspaceName(
   if (error) throw new Error(`updateWorkspaceName: ${error.message}`);
 }
 
+/** F4.5 — set (or, with null, clear) the workspace logo URL. Owner/admin-gated. */
+export async function updateWorkspaceLogo(
+  client: SupabaseClient,
+  input: { workspaceId: WorkspaceId; logoUrl: string | null; updatedBy: UserId },
+): Promise<void> {
+  const { error } = await client
+    .from('workspaces')
+    .update({ logo_url: input.logoUrl, updated_by: input.updatedBy })
+    .eq('id', input.workspaceId);
+  if (error) throw new Error(`updateWorkspaceLogo: ${error.message}`);
+}
+
 export interface InvitationRow {
   id: string;
   email: string;

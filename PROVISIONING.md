@@ -145,6 +145,18 @@ site, ADR-007), the `@arther/spec-import` pipeline, migration 0015, and the
   synchronously in the upload server action (`maxDuration = 300`). Wrap the same
   pipeline in a `packages/jobs` task when Trigger.dev is provisioned.
 
+## F4.5 — Workspace logo (Storage)
+
+Code side shipped 2026-06-16 (G-batch): owner/admin upload at `/settings`, stored
+as the workspace's `logo_url`. Status:
+
+- ☐ **Manual:** create a **public** Storage bucket named **`workspace-logos`** on dev
+  + prod (Supabase dashboard → Storage, "Public bucket"), with an editor/admin-write
+  policy on the `{workspace_id}/…` prefix and public read. Until it exists the upload
+  degrades honestly ("the 'workspace-logos' storage bucket may not exist yet") — no
+  crash, and the rest of Settings is unaffected. Public-read so the stored
+  `getPublicUrl` renders the logo without a signed URL.
+
 ## After provisioning
 
 - Fill local `.env` from `.env.example` (local dev talks to `arther-dev`).

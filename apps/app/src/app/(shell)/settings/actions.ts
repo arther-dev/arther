@@ -15,6 +15,7 @@ import {
   revokeInvitation,
   transferOwnership,
   updateMemberRole,
+  updateWorkspaceLogo,
   updateWorkspaceName,
 } from '@arther/db';
 import { emailField, requiredText, type UserId, type WorkspaceId } from '@arther/types';
@@ -67,6 +68,74 @@ export async function renameWorkspaceAction(
     });
   } catch {
     return { error: 'Could not rename the workspace.' };
+  }
+  revalidatePath('/settings');
+  return { done: true };
+}
+
+const LOGO_BUCKET = 'workspace-logos';
+const MAX_LOGO_BYTES = 2 * 1024 * 1024;
+const LOGO_TYPES = ['image/png', 'image/jpeg', 'image/svg+xml', 'image/webp', 'image/gif'];
+
+/**
+ * F4.1/F4.5 — upload a workspace logo to Storage (public `workspace-logos`
+ * bucket) and pin its public URL on the workspace. Owner/admin-gated; the image
+ * is type- and size-capped. A missing bucket degrades to an honest message
+ * (PROVISIONING.md) rather than a crash, mirroring the F7 import upload.
+ */
+export async function uploadWorkspaceLogoAction(
+  _prev: SettingsFormState,
+  formData: FormData,
+): Promise<SettingsFormState> {
+  const file = formData.get('logo');
+  if (!(file instanceof File) || file.size === 0) return { error: 'Choose an image file.' };
+  if (file.size > MAX_LOGO_BYTES) return { error: 'The logo must be under 2 MB.' };
+  if (!LOGO_TYPES.includes(file.type)) return { error: 'Use a PNG, JPEG, SVG, WebP, or GIF.' };
+
+  const auth = await authorizeManage();
+  if ('error' in auth) return { error: auth.error };
+
+  const ext = (file.name.split('.').pop() ?? 'png').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png';
+  const key = `${auth.workspace.id}/logo-${Date.now()}.${ext}`;
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const uploaded = await auth.supabase.storage
+    .from(LOGO_BUCKET)
+    .upload(key, bytes, { contentType: file.type, upsert: true });
+  if (uploaded.error) {
+    return {
+      error:
+        'Could not upload the logo — the “workspace-logos” storage bucket may not exist yet (PROVISIONING.md).',
+    };
+  }
+  const publicUrl = auth.supabase.storage.from(LOGO_BUCKET).getPublicUrl(key).data.publicUrl;
+
+  try {
+    await updateWorkspaceLogo(auth.supabase, {
+      workspaceId: auth.workspace.id,
+      logoUrl: publicUrl,
+      updatedBy: auth.userId,
+    });
+  } catch {
+    return { error: 'Could not save the logo.' };
+  }
+  revalidatePath('/settings');
+  return { done: true };
+}
+
+export async function removeWorkspaceLogoAction(
+  _prev: SettingsFormState,
+  _formData: FormData,
+): Promise<SettingsFormState> {
+  const auth = await authorizeManage();
+  if ('error' in auth) return { error: auth.error };
+  try {
+    await updateWorkspaceLogo(auth.supabase, {
+      workspaceId: auth.workspace.id,
+      logoUrl: null,
+      updatedBy: auth.userId,
+    });
+  } catch {
+    return { error: 'Could not remove the logo.' };
   }
   revalidatePath('/settings');
   return { done: true };
