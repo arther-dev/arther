@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, type CSSProperties, type DragEvent } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type DragEvent } from 'react';
 import Link from 'next/link';
 import { BlockRenderer, buildOutline } from '@arther/block-renderer';
 import {
@@ -41,6 +41,8 @@ export interface EditorBlock {
   content: BlockContent;
   type: string;
   source: string;
+  /** Optimistic-lock version token (G5.1/G5.4); null for never-edited blocks. */
+  lastEditedAt?: string | null;
 }
 
 export function DocumentEditor({
@@ -92,10 +94,53 @@ export function DocumentEditor({
   const [matchIndex, setMatchIndex] = useState(0);
   const [replaceVersion, setReplaceVersion] = useState(0);
   const [replaceStatus, setReplaceStatus] = useState<string | null>(null);
+  // G5.1/G5.4 — optimistic lock: each block's last-seen server version token, and
+  // any block another member advanced under us (a save conflict awaiting a
+  // block-level keep-mine / use-theirs choice). Untracked blocks (just inserted,
+  // pasted, or regenerated) save unconditionally and re-establish their token.
+  const versions = useRef(new Map<string, string | null>(initialBlocks.map((b) => [b.id, b.lastEditedAt ?? null])));
+  const [conflicts, setConflicts] = useState<Record<string, { content: BlockContent; lastEditedBy: string | null }>>({});
+  const clearConflict = (id: string) =>
+    setConflicts((c) => {
+      if (!c[id]) return c;
+      const next = { ...c };
+      delete next[id];
+      return next;
+    });
+
   const { enqueue, status: saveStatus, offline, restored } = useSaveQueue<BlockContent>(
-    (id, content) => updateBlockContentAction(id, content).then((r) => r.ok),
+    async (id, content) => {
+      const expected = versions.current.has(id) ? (versions.current.get(id) ?? null) : undefined;
+      const r = await updateBlockContentAction(id, content, expected);
+      if (r.ok) {
+        versions.current.set(id, r.lastEditedAt ?? null);
+        clearConflict(id);
+        return true;
+      }
+      if (r.conflict) {
+        // Adopt the server's token so a subsequent keep-mine re-save lands; surface
+        // the choice. Treated as handled (not a retryable failure).
+        versions.current.set(id, r.conflict.lastEditedAt ?? null);
+        setConflicts((c) => ({ ...c, [id]: { content: r.conflict!.content, lastEditedBy: r.conflict!.lastEditedBy } }));
+        return true;
+      }
+      return false; // transient — keep queued and retry
+    },
     { persistKey: `arther:save-queue:${documentId}` },
   );
+
+  function keepMine(id: string) {
+    clearConflict(id);
+    const block = blocks.find((b) => b.id === id);
+    if (block) enqueue(id, block.content); // expected now = server token → overwrites
+  }
+  function useTheirs(id: string) {
+    const server = conflicts[id];
+    if (!server) return;
+    setBlocks((prev) => prev.map((b) => (b.id === id ? { ...b, content: server.content } : b)));
+    clearConflict(id);
+    setReplaceVersion((v) => v + 1); // remount inline editors to show the server text
+  }
 
   const saveLabel =
     saveStatus === 'offline'
@@ -327,6 +372,10 @@ export function DocumentEditor({
     }
     const content = res.content;
     setBlocks((prev) => prev.map((b) => (b.id === id ? { ...b, content } : b)));
+    // The server advanced this block's version; drop our stale token so the next
+    // edit saves unconditionally and re-establishes it (no false self-conflict).
+    versions.current.delete(id);
+    clearConflict(id);
   }
 
   const blockStyle = (id: string): CSSProperties => ({
@@ -591,6 +640,43 @@ export function DocumentEditor({
             {staleBriefKeys.length} brief fragment{staleBriefKeys.length === 1 ? '' : 's'} updated
             since generation ({staleBriefKeys.join(', ')}) — the prose may want a refresh.
           </p>
+        ) : null}
+
+        {Object.keys(conflicts).length > 0 ? (
+          <div className="ui-field__error" role="alert" style={{ marginBottom: 8 }}>
+            <strong>Edit conflict</strong> — another member changed{' '}
+            {Object.keys(conflicts).length === 1
+              ? 'a block'
+              : `${Object.keys(conflicts).length} blocks`}{' '}
+            while you were editing. Keep your version or take theirs, per block.
+            <ul className="specs-form" style={{ marginTop: 6 }}>
+              {Object.keys(conflicts).map((id) => {
+                const block = blocks.find((b) => b.id === id);
+                return (
+                  <li key={id} className="specs-form--row" style={{ gap: 6 }}>
+                    <button
+                      type="button"
+                      className="specs-value-button"
+                      onClick={() =>
+                        document
+                          .getElementById(`block-${id}`)
+                          ?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                      }
+                    >
+                      {block ? `${block.type} block` : 'A removed block'}
+                    </button>
+                    <span style={{ flex: 1 }} />
+                    <Button size="sm" variant="secondary" onClick={() => keepMine(id)}>
+                      Keep mine
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => useTheirs(id)}>
+                      Use theirs
+                    </Button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
         ) : null}
 
         {mode === 'edit' && findOpen ? (

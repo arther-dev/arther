@@ -94,6 +94,7 @@ export default async function EditDocumentPage({ params }: { params: Promise<{ i
         content: b.content,
         type: b.type,
         source: b.source,
+        lastEditedAt: b.last_edited_at,
       }))}
     />
   );

@@ -26,7 +26,7 @@ import {
   membershipLookupFor,
   recordAnalyticsEvent,
   reorderBlocks,
-  updateBlock,
+  saveBlockContent,
 } from '@arther/db';
 import {
   blockContentSchema,
@@ -49,6 +49,13 @@ import { getSupabaseServer } from '../../../../../lib/supabase/server';
 export interface SaveResult {
   ok: boolean;
   error?: string;
+}
+
+export interface BlockSaveResult extends SaveResult {
+  /** The new server version token to use as the next save's expected value. */
+  lastEditedAt?: string | null;
+  /** Set when another member advanced the block since the editor last saw it. */
+  conflict?: { content: BlockContent; lastEditedAt: string | null; lastEditedBy: string | null };
 }
 
 export interface InsertResult extends SaveResult {
@@ -86,7 +93,11 @@ async function authorizeDocWrite(
  * `blockContentSchema` (ADR-012; a malformed tree never reaches the DB), FTS
  * projection recomputed. Called on editor blur; G5 layers debounced auto-save.
  */
-export async function updateBlockContentAction(blockId: string, content: unknown): Promise<SaveResult> {
+export async function updateBlockContentAction(
+  blockId: string,
+  content: unknown,
+  expectedLastEditedAt?: string | null,
+): Promise<BlockSaveResult> {
   if (!z.string().uuid().safeParse(blockId).success) return { ok: false, error: 'Invalid block.' };
   const parsed = blockContentSchema.safeParse(content);
   if (!parsed.success) return { ok: false, error: 'Invalid block content.' };
@@ -95,15 +106,20 @@ export async function updateBlockContentAction(blockId: string, content: unknown
   if ('error' in auth) return { ok: false, error: auth.error };
 
   try {
-    await updateBlock(auth.supabase, blockId as BlockId, {
+    const outcome = await saveBlockContent(auth.supabase, blockId as BlockId, {
       content: parsed.data,
       textContent: blockPlainText(parsed.data),
       userId: auth.userId,
+      expectedLastEditedAt,
     });
+    if (outcome.status === 'conflict') {
+      // G5.4 — the editor offers block-level keep-mine / use-theirs.
+      return { ok: false, conflict: outcome.server, lastEditedAt: outcome.lastEditedAt };
+    }
+    return { ok: true, lastEditedAt: outcome.lastEditedAt };
   } catch {
     return { ok: false, error: 'Could not save the block.' };
   }
-  return { ok: true };
 }
 
 const addSchema = z.object({
