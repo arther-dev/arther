@@ -21,6 +21,7 @@ import {
   listReferenceEdges,
   membershipLookupFor,
   propagateFieldChange,
+  recordAnalyticsEvent,
   setArchived,
   setComponentOverride,
   updateFieldValue,
@@ -283,6 +284,21 @@ export async function updateFieldValueAction(
     );
   } catch (e) {
     console.error('[propagate] field change propagation failed', head.data.fieldId, e);
+  }
+
+  // G8.2 — metering hook (best-effort; never fails the save).
+  try {
+    await recordAnalyticsEvent(
+      createServiceClient(),
+      { workspaceId: auth.workspace.id },
+      {
+        eventType: 'spec_field_updated',
+        actorUserId: auth.userId,
+        payload: { fieldId: head.data.fieldId, type: head.data.type },
+      },
+    );
+  } catch (e) {
+    console.error('[analytics] spec_field_updated failed', head.data.fieldId, e);
   }
 
   revalidatePath('/specs');

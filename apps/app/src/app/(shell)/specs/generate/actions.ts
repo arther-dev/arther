@@ -24,6 +24,7 @@ import {
   listUnits,
   loadGenerationFields,
   membershipLookupFor,
+  recordAnalyticsEvent,
   setGenerationRunStatus,
   setGenerationSectionStatus,
   type DocumentTypeDetail,
@@ -135,6 +136,7 @@ export async function createGenerationRunAction(
         type,
         productId,
         brandProfileId: brandProfileId as BrandProfileId | undefined,
+        requestedBy: user.id as UserId,
       });
     }
   } catch (err) {
@@ -163,8 +165,9 @@ async function runGenerationInline(ctx: {
   type: DocumentTypeDetail;
   productId: ProductId;
   brandProfileId?: BrandProfileId;
+  requestedBy: UserId;
 }): Promise<void> {
-  const { supabase, service, gateway, usage, scope, runId, runSections, type, productId, brandProfileId } = ctx;
+  const { supabase, service, gateway, usage, scope, runId, runSections, type, productId, brandProfileId, requestedBy } = ctx;
 
   try {
     await setGenerationRunStatus(service, scope, runId, { status: 'running' });
@@ -249,7 +252,7 @@ async function runGenerationInline(ctx: {
       return;
     }
 
-    await commitGeneration(service, scope, {
+    const documentId = await commitGeneration(service, scope, {
       runId,
       title: `${productName} — ${type.name}`,
       blocks: result.blocks,
@@ -259,6 +262,24 @@ async function runGenerationInline(ctx: {
       inputTokens: usage.input,
       outputTokens: usage.output,
     });
+    // G8.2 — metering hook (best-effort; never fails the generation).
+    try {
+      await recordAnalyticsEvent(service, scope, {
+        eventType: 'document_generated',
+        actorUserId: requestedBy,
+        documentId,
+        payload: {
+          runId,
+          productId,
+          documentTypeId: type.id,
+          status: result.status,
+          inputTokens: usage.input,
+          outputTokens: usage.output,
+        },
+      });
+    } catch (e) {
+      console.error('[analytics] document_generated failed', e);
+    }
   } catch {
     await setGenerationRunStatus(service, scope, runId, {
       status: 'failed',
