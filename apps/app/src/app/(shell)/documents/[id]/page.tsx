@@ -68,8 +68,10 @@ export default async function DocumentPage({ params }: { params: Promise<{ id: s
 
   const stale = summarizeStaleness(await listStaleReferencesForDocument(supabase, tree.document.id));
 
-  // G4 live data blocks — resolve current field values for spec_table rendering.
-  const resolved = tree.blocks.some((b) => b.content.type === 'spec_table')
+  // G4 live data blocks — resolve current field values for spec_table + chart.
+  const resolved = tree.blocks.some(
+    (b) => b.content.type === 'spec_table' || b.content.type === 'chart',
+  )
     ? await resolveSpecFields(supabase, tree.document.product_id, workspace.id)
     : undefined;
 

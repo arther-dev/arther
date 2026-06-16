@@ -195,6 +195,9 @@ importers:
       '@arther/types':
         specifier: workspace:*
         version: link:../types
+      '@arther/ui':
+        specifier: workspace:*
+        version: link:../ui
     devDependencies:
       '@types/react':
         specifier: ^19.1.0
