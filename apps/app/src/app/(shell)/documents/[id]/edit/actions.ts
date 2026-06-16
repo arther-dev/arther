@@ -14,6 +14,7 @@ import {
 } from '@arther/ai-gateway';
 import {
   applyBlockRegeneration,
+  createServiceClient,
   deleteBlock,
   getActiveWorkspace,
   getEntityBrief,
@@ -23,6 +24,7 @@ import {
   loadGenerationFields,
   loadRevisionBlocks,
   membershipLookupFor,
+  recordAnalyticsEvent,
   reorderBlocks,
   updateBlock,
 } from '@arther/db';
@@ -284,6 +286,22 @@ export async function regenerateBlockAction(blockId: string): Promise<Regenerate
       refs,
       userId: auth.userId,
     });
+
+    // G8.2 — metering hook (best-effort; never fails the regeneration).
+    try {
+      await recordAnalyticsEvent(
+        createServiceClient(),
+        { workspaceId: auth.workspaceId },
+        {
+          eventType: 'block_regenerated',
+          actorUserId: auth.userId,
+          documentId: ctx.documentId,
+          payload: { blockId, blockType: ctx.blockType },
+        },
+      );
+    } catch (e) {
+      console.error('[analytics] block_regenerated failed', e);
+    }
 
     return { ok: true, content: outcome.block.content };
   } catch (err) {

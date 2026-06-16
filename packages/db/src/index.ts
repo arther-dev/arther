@@ -121,6 +121,11 @@ export {
 } from './block-regeneration';
 export { resolveSpecFields } from './spec-table-resolve';
 export {
+  recordAnalyticsEvent,
+  type AnalyticsEvent,
+  type AnalyticsEventType,
+} from './analytics';
+export {
   resolveDomainOwnersForDocument,
   type ResolvedCategoryOwner,
 } from './domain-ownership';
