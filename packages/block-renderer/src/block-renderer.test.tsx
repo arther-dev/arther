@@ -146,6 +146,90 @@ describe('BlockRenderer', () => {
     expect(out).not.toContain('<svg');
   });
 
+  const lineResolved = {
+    TF1: {
+      name: 'Torque vs speed',
+      type: 'table',
+      value: {
+        columns: [
+          { id: 'x', name: 'Speed', unit_id: 'u', role: 'independent' },
+          { id: 'y', name: 'Torque', unit_id: 'u', role: 'dependent' },
+        ],
+        rows: [
+          { id: 'r1', values: { x: 0, y: 10 } },
+          { id: 'r2', values: { x: 100, y: 8 } },
+        ],
+        interpolation: 'linear',
+      },
+      unitSymbol: null,
+      ownerName: null,
+    },
+  };
+
+  it('renders a bar chart as rects (not a line path) when chart_type is bar', () => {
+    const block: BlockContent = {
+      type: 'chart',
+      table_field_id: 'TF1',
+      product_id: 'P1',
+      chart_type: 'bar',
+      show_legend: false,
+      show_grid: false,
+    };
+    const out = renderToStaticMarkup(<BlockRenderer blocks={[block]} resolved={lineResolved as never} />);
+    expect(out).toContain('<rect');
+    expect(out).not.toContain('<path'); // bars, no connecting line
+  });
+
+  it('draws gridlines and honours an axis-label override', () => {
+    const block: BlockContent = {
+      type: 'chart',
+      table_field_id: 'TF1',
+      product_id: 'P1',
+      chart_type: 'line',
+      x_axis_label: 'RPM',
+      show_legend: false,
+      show_grid: true,
+    };
+    const out = renderToStaticMarkup(<BlockRenderer blocks={[block]} resolved={lineResolved as never} />);
+    expect(out).toContain('ui-chart__grid');
+    expect(out).toContain('RPM'); // x-axis label override
+  });
+
+  it('renders a legend when show_legend is set and a series column exists', () => {
+    const seriesResolved = {
+      TF1: {
+        name: 'Torque',
+        type: 'table',
+        value: {
+          columns: [
+            { id: 'x', name: 'Speed', unit_id: 'u', role: 'independent' },
+            { id: 'y', name: 'Torque', unit_id: 'u', role: 'dependent' },
+            { id: 's', name: 'Temp', unit_id: 'u', role: 'series' },
+          ],
+          rows: [
+            { id: 'r1', values: { x: 0, y: 10, s: 25 } },
+            { id: 'r2', values: { x: 100, y: 8, s: 25 } },
+            { id: 'r3', values: { x: 0, y: 7, s: 85 } },
+            { id: 'r4', values: { x: 100, y: 5, s: 85 } },
+          ],
+          interpolation: 'linear',
+        },
+        unitSymbol: null,
+        ownerName: null,
+      },
+    };
+    const block: BlockContent = {
+      type: 'chart',
+      table_field_id: 'TF1',
+      product_id: 'P1',
+      chart_type: 'line',
+      show_legend: true,
+      show_grid: false,
+    };
+    const out = renderToStaticMarkup(<BlockRenderer blocks={[block]} resolved={seriesResolved as never} />);
+    expect(out).toContain('ui-chart__legend');
+  });
+
   it('renders a toc from the document headings with anchor links', () => {
     const out = html(
       { type: 'section_header', title: 'Overview' }, // index 0
