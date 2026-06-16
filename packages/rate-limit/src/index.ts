@@ -15,7 +15,7 @@ import { Redis } from '@upstash/redis';
  * (process.env presence); both Upstash REST keys must be set to use Redis.
  */
 
-export type RateLimitName = 'auth' | 'invitation' | 'import';
+export type RateLimitName = 'auth' | 'invitation' | 'import' | 'generation';
 
 export interface RateLimitResult {
   /** True when the request is within budget and may proceed. */
@@ -47,6 +47,8 @@ export const RATE_LIMITS: Record<RateLimitName, LimitConfig> = {
   invitation: { limit: 20, windowSeconds: 60 },
   // AI-backed spreadsheet interpretation, keyed by the importing member.
   import: { limit: 5, windowSeconds: 60 },
+  // Document generation + block regeneration (paid AI calls), keyed by member.
+  generation: { limit: 10, windowSeconds: 60 },
 };
 
 /** Both REST keys present ⇒ Upstash is the shared store; otherwise in-memory. */

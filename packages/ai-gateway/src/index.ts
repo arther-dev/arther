@@ -48,7 +48,20 @@ export interface StructuredRequest<S extends z.ZodType> {
   system: string;
   user: string;
   maxTokens?: number;
+  /**
+   * G8.5 — mark the system prompt as a cacheable prefix (Anthropic prompt
+   * caching). Worth it only when the system is byte-stable across calls (e.g.
+   * the generator's per-document-type rules reused across sections); a one-off
+   * call shouldn't set it (it pays the cache-write premium for no reuse).
+   */
+  cacheSystem?: boolean;
 }
+
+/** The system prompt as the SDK accepts it — a plain string, or text blocks
+ *  (so a prefix can carry `cache_control`). */
+export type SystemParam =
+  | string
+  | Array<{ type: 'text'; text: string; cache_control?: { type: 'ephemeral' } }>;
 
 export interface AiGateway {
   readonly provisioned: boolean;
@@ -85,7 +98,7 @@ export interface MessagesClient {
     stream(params: {
       model: string;
       max_tokens: number;
-      system: string;
+      system: SystemParam;
       messages: Array<{ role: 'user'; content: string }>;
       tools: ToolSpec[];
       tool_choice: { type: 'tool'; name: string };
@@ -140,7 +153,10 @@ export function createAiGateway(options: AiGatewayOptions): AiGateway {
         const stream = client.messages.stream({
           model,
           max_tokens: request.maxTokens ?? 16000,
-          system: request.system,
+          // G8.5 — a cacheable system prefix when the caller opts in (stable rules).
+          system: request.cacheSystem
+            ? [{ type: 'text', text: request.system, cache_control: { type: 'ephemeral' } }]
+            : request.system,
           messages: [{ role: 'user', content: request.user }],
           tools: [tool],
           tool_choice: { type: 'tool', name: RESULT_TOOL },

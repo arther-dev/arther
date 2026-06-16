@@ -3,6 +3,7 @@
 import { z } from 'zod';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createCanDo } from '@arther/authz';
+import { rateLimit } from '@arther/rate-limit';
 import {
   buildFieldResolver,
   buildSectionPrompt,
@@ -216,6 +217,12 @@ export async function regenerateBlockAction(blockId: string): Promise<Regenerate
 
   const gateway = createAiGateway({ apiKey: process.env.ANTHROPIC_API_KEY });
   if (!gateway.provisioned) return { ok: false, error: 'Not configured in this environment yet.' };
+
+  // G8.5 — block regeneration is a paid AI call; share the per-member generation budget.
+  const throttle = await rateLimit('generation', auth.userId);
+  if (!throttle.success) {
+    return { ok: false, error: `Too many generations in a short window — wait ${throttle.retryAfterSeconds}s.` };
+  }
 
   try {
     const [fields, units, brief, product] = await Promise.all([
