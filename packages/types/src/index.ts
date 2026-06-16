@@ -17,3 +17,4 @@ export * from './generation-preflight';
 export * from './generation-assembly';
 export * from './save-queue';
 export * from './staleness';
+export * from './domain-ownership';
