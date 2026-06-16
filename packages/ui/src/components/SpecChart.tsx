@@ -1,9 +1,10 @@
 /**
- * Minimal line-chart primitive for table-field data (spec §5.5 "preview
- * chart"). Pure SVG, no dependencies; the Phase 2 Chart block renders through
- * this same component so the editor preview and published output match.
- * Structural props keep @arther/ui free of @arther/types: any table-shaped
- * value (columns with roles + numeric rows) plots.
+ * Minimal chart primitive for table-field data (spec §5.5 "preview chart"). Pure
+ * SVG, no dependencies; the Phase 2 Chart block renders through this same
+ * component so the editor preview and published output match. Structural props
+ * keep @arther/ui free of @arther/types: any table-shaped value (columns with
+ * roles + numeric rows) plots. Supports the Chart block's configuration —
+ * line / scatter / bar, axis-label overrides, legend, and a grid.
  */
 
 export interface SpecChartColumn {
@@ -17,9 +18,17 @@ export interface SpecChartProps {
   rows: Array<{ id: string; values: Record<string, number | null> }>;
   /** 'step' renders staircase segments; everything else draws straight lines. */
   interpolation?: 'linear' | 'spline' | 'step' | 'none';
+  /** Plot style (Chart block `chart_type`). Defaults to a line chart. */
+  chartType?: 'line' | 'scatter' | 'bar';
+  /** Axis-title overrides; default to the mapped columns' names. */
+  xAxisLabel?: string;
+  yAxisLabel?: string;
+  /** Show a series legend (only meaningful with a series column). */
+  showLegend?: boolean;
+  /** Draw light min/mid/max gridlines behind the data. */
+  showGrid?: boolean;
   width?: number;
   height?: number;
-  /** Axis labels default to the mapped columns' names. */
   className?: string;
 }
 
@@ -51,6 +60,11 @@ export function SpecChart({
   columns,
   rows,
   interpolation = 'linear',
+  chartType = 'line',
+  xAxisLabel,
+  yAxisLabel,
+  showLegend = false,
+  showGrid = false,
   width = 320,
   height = 180,
   className,
@@ -79,18 +93,28 @@ export function SpecChart({
     );
   }
 
+  const xLabel = xAxisLabel || xCol.name;
+  const yLabel = yAxisLabel || yCol.name;
+
   const xs = pairs.map((p) => p.x);
   const ys = pairs.map((p) => p.y);
   const xMin = Math.min(...xs);
   const xMax = Math.max(...xs);
   const yMin = Math.min(...ys, 0);
   const yMax = Math.max(...ys);
-  const pad = 28;
-  const plotW = width - pad * 2;
-  const plotH = height - pad * 2;
-  const sx = (x: number) => pad + (xMax === xMin ? 0 : ((x - xMin) / (xMax - xMin)) * plotW);
-  const sy = (y: number) =>
-    height - pad - (yMax === yMin ? 0 : ((y - yMin) / (yMax - yMin)) * plotH);
+  // Asymmetric padding leaves room for the y-axis title (left) + x-axis title (bottom).
+  const padL = 38;
+  const padR = 12;
+  const padT = 12;
+  const padB = 36;
+  const plotW = width - padL - padR;
+  const plotH = height - padT - padB;
+  const sx = (x: number) => padL + (xMax === xMin ? 0 : ((x - xMin) / (xMax - xMin)) * plotW);
+  const sy = (y: number) => height - padB - (yMax === yMin ? 0 : ((y - yMin) / (yMax - yMin)) * plotH);
+  const yMid = (yMin + yMax) / 2;
+  const xMid = (xMin + xMax) / 2;
+  const baseline = sy(0);
+  const barW = Math.max(2, (plotW / pairs.length) * 0.6);
 
   const seriesKeys = sCol ? [...new Set(pairs.map((p) => p.s))] : [null];
   const series = seriesKeys.map((key, i) => {
@@ -105,35 +129,83 @@ export function SpecChart({
     <figure className={['ui-chart', className].filter(Boolean).join(' ')}>
       <svg
         role="img"
-        aria-label={`${yCol.name} vs ${xCol.name}${sCol ? ` by ${sCol.name}` : ''}`}
+        aria-label={`${yLabel} vs ${xLabel}${sCol ? ` by ${sCol.name}` : ''}`}
         viewBox={`0 0 ${width} ${height}`}
         width={width}
         height={height}
       >
+        {showGrid ? (
+          <g className="ui-chart__grid">
+            {[yMin, yMid, yMax].map((y) => (
+              <line key={`h${y}`} x1={padL} y1={sy(y)} x2={width - padR} y2={sy(y)} />
+            ))}
+            {[xMin, xMid, xMax].map((x) => (
+              <line key={`v${x}`} x1={sx(x)} y1={padT} x2={sx(x)} y2={height - padB} />
+            ))}
+          </g>
+        ) : null}
+
         {/* axes */}
-        <line x1={pad} y1={height - pad} x2={width - pad} y2={height - pad} className="ui-chart__axis" />
-        <line x1={pad} y1={pad} x2={pad} y2={height - pad} className="ui-chart__axis" />
+        <line x1={padL} y1={height - padB} x2={width - padR} y2={height - padB} className="ui-chart__axis" />
+        <line x1={padL} y1={padT} x2={padL} y2={height - padB} className="ui-chart__axis" />
+
         {/* min/max ticks */}
-        <text x={pad} y={height - pad + 14} className="ui-chart__tick">{xMin}</text>
-        <text x={width - pad} y={height - pad + 14} textAnchor="end" className="ui-chart__tick">{xMax}</text>
-        <text x={pad - 4} y={height - pad} textAnchor="end" className="ui-chart__tick">{yMin}</text>
-        <text x={pad - 4} y={pad + 4} textAnchor="end" className="ui-chart__tick">{yMax}</text>
+        <text x={padL} y={height - padB + 14} className="ui-chart__tick">{xMin}</text>
+        <text x={width - padR} y={height - padB + 14} textAnchor="end" className="ui-chart__tick">{xMax}</text>
+        <text x={padL - 4} y={height - padB} textAnchor="end" className="ui-chart__tick">{yMin}</text>
+        <text x={padL - 4} y={padT + 4} textAnchor="end" className="ui-chart__tick">{yMax}</text>
+
+        {/* axis titles */}
+        <text x={padL + plotW / 2} y={height - 2} textAnchor="middle" className="ui-chart__axis-label">
+          {xLabel}
+        </text>
+        <text
+          x={10}
+          y={padT + plotH / 2}
+          textAnchor="middle"
+          transform={`rotate(-90 10 ${padT + plotH / 2})`}
+          className="ui-chart__axis-label"
+        >
+          {yLabel}
+        </text>
+
         {series.map((s) => (
           <g key={String(s.key)}>
-            <path
-              d={pathFor(s.points, interpolation === 'step')}
-              fill="none"
-              stroke={s.color}
-              strokeWidth={1.5}
-            />
-            {s.points.map((p, i) => (
-              <circle key={i} cx={p.x} cy={p.y} r={2} fill={s.color} />
-            ))}
+            {chartType === 'bar'
+              ? s.points.map((p, i) => (
+                  <rect
+                    key={i}
+                    x={p.x - barW / 2}
+                    y={Math.min(p.y, baseline)}
+                    width={barW}
+                    height={Math.abs(p.y - baseline)}
+                    fill={s.color}
+                  />
+                ))
+              : null}
+            {chartType === 'line' ? (
+              <path d={pathFor(s.points, interpolation === 'step')} fill="none" stroke={s.color} strokeWidth={1.5} />
+            ) : null}
+            {chartType !== 'bar'
+              ? s.points.map((p, i) => <circle key={i} cx={p.x} cy={p.y} r={2} fill={s.color} />)
+              : null}
           </g>
         ))}
       </svg>
+
+      {showLegend && sCol && series.length > 0 ? (
+        <ul className="ui-chart__legend">
+          {series.map((s) => (
+            <li key={String(s.key)}>
+              <span className="ui-chart__swatch" style={{ background: s.color }} aria-hidden="true" />
+              {String(s.key)}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
       <figcaption className="ui-chart__caption">
-        {yCol.name} vs {xCol.name}
+        {yLabel} vs {xLabel}
         {sCol ? ` · ${series.length} series by ${sCol.name}` : ''}
       </figcaption>
     </figure>

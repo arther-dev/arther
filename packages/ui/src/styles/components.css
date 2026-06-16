@@ -406,6 +406,37 @@
   fill: var(--text-tertiary);
   font: var(--type-caption);
 }
+.ui-chart__axis-label {
+  fill: var(--text-secondary);
+  font: var(--type-caption);
+}
+.ui-chart__grid line {
+  stroke: var(--border-subtle);
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+  opacity: 0.6;
+}
+.ui-chart__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--text-tertiary);
+  font: var(--type-caption);
+}
+.ui-chart__legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2xs, 4px);
+}
+.ui-chart__swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  display: inline-block;
+}
 .ui-chart__caption {
   color: var(--text-tertiary);
   font: var(--type-caption);

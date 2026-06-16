@@ -154,6 +154,11 @@ function Chart({
         columns={table.columns.map((c) => ({ id: c.id, name: c.name, role: c.role }))}
         rows={table.rows}
         interpolation={table.interpolation}
+        chartType={content.chart_type}
+        xAxisLabel={content.x_axis_label}
+        yAxisLabel={content.y_axis_label}
+        showLegend={content.show_legend}
+        showGrid={content.show_grid}
       />
     </div>
   );
