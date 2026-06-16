@@ -278,3 +278,35 @@ describe('RLS — members read, editors write, strangers isolated', () => {
     );
   });
 });
+
+describe('optimistic-lock conditional save (G5.4)', () => {
+  it('writes only when the version token matches, and conflicts when it is stale', async () => {
+    const target = blockIds[2]!;
+    // Establish a known version token (the editor's last-seen value).
+    const t1 = (
+      await editor`
+        update public.blocks set last_edited_by = ${editorId}, last_edited_at = now()
+        where id = ${target} returning last_edited_at
+      `
+    )[0]!.last_edited_at as string;
+
+    // A stale token (someone else moved the block ahead) updates nothing.
+    const stale = await editor`
+      update public.blocks
+      set content = ${editor.json(para('mine'))}, last_edited_at = now()
+      where id = ${target} and last_edited_at = ${new Date(0).toISOString()}
+      returning id
+    `;
+    expect(stale).toHaveLength(0);
+
+    // The matching token updates exactly one row and advances the token.
+    const ok = await editor`
+      update public.blocks
+      set content = ${editor.json(para('mine'))}, last_edited_by = ${editorId}, last_edited_at = now()
+      where id = ${target} and last_edited_at = ${t1}
+      returning last_edited_at
+    `;
+    expect(ok).toHaveLength(1);
+    expect(ok[0]!.last_edited_at).not.toBe(t1);
+  });
+});

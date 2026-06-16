@@ -55,7 +55,7 @@ const DOCUMENT_COLUMNS =
   'id, workspace_id, product_id, document_type_id, brand_profile_id, title, slug, owner_id, current_revision_id, archived_at, created_at';
 const REVISION_COLUMNS = 'id, document_id, revision_number, state, created_at';
 const BLOCK_COLUMNS =
-  'id, document_id, revision_id, type, parent_block_id, display_order, source, content, degradation, text_content';
+  'id, document_id, revision_id, type, parent_block_id, display_order, source, content, degradation, text_content, last_edited_at, last_edited_by';
 const SPEC_REFERENCE_COLUMNS =
   'id, block_id, document_id, field_id, field_version_id, release_id, reference_type';
 
@@ -92,6 +92,9 @@ export interface BlockRow {
   content: BlockContent;
   degradation: DegradationConfig | Record<string, never>;
   text_content: string | null;
+  /** Optimistic-lock version token (G5.1/G5.4): the last write's timestamp. */
+  last_edited_at: string | null;
+  last_edited_by: UserId | null;
 }
 
 export interface BlockSpecReferenceRow {
@@ -298,6 +301,74 @@ export async function updateBlock(
   if (patch.displayOrder !== undefined) update.display_order = patch.displayOrder;
   const { error } = await client.from('blocks').update(update).eq('id', blockId);
   if (error) throw new Error(`updateBlock: ${error.message}`);
+}
+
+export interface BlockSaveOutcome {
+  status: 'saved' | 'conflict';
+  /** The block's new (saved) or current (conflict) version token. */
+  lastEditedAt: string | null;
+  /** On conflict, the server's current state so the client can offer use-theirs. */
+  server?: { content: BlockContent; lastEditedAt: string | null; lastEditedBy: UserId | null };
+}
+
+/**
+ * G5.1/G5.4 — optimistic-locked content save. When `expectedLastEditedAt` is
+ * given, the write only lands if the block's version token still matches what the
+ * editor last saw (a conditional UPDATE); if another member advanced it meanwhile
+ * the write is refused and the server's current block is returned so the editor
+ * can offer block-level keep-mine / use-theirs. With no expected token (a block
+ * the editor has no version for yet) it writes unconditionally. The returned
+ * `lastEditedAt` is the canonical server value to use as the next expected token.
+ */
+export async function saveBlockContent(
+  client: SupabaseClient,
+  blockId: BlockId,
+  input: {
+    content: BlockContent;
+    textContent: string | null;
+    userId: UserId;
+    expectedLastEditedAt?: string | null;
+  },
+): Promise<BlockSaveOutcome> {
+  const update = {
+    content: blockContentSchema.parse(input.content),
+    text_content: input.textContent == null ? null : blockTextContentSchema.parse(input.textContent),
+    last_edited_by: input.userId,
+    last_edited_at: new Date().toISOString(),
+  };
+
+  let query = client.from('blocks').update(update).eq('id', blockId);
+  if (input.expectedLastEditedAt !== undefined) {
+    query =
+      input.expectedLastEditedAt === null
+        ? query.is('last_edited_at', null)
+        : query.eq('last_edited_at', input.expectedLastEditedAt);
+  }
+  const { data, error } = await query.select('last_edited_at');
+  if (error) throw new Error(`saveBlockContent: ${error.message}`);
+
+  if ((data ?? []).length === 1) {
+    return { status: 'saved', lastEditedAt: (data![0]!.last_edited_at as string | null) ?? null };
+  }
+
+  // No row updated — the version moved (or the block is gone). Read it back so
+  // the editor can show the conflicting server state.
+  const { data: current, error: readErr } = await client
+    .from('blocks')
+    .select('content, last_edited_at, last_edited_by')
+    .eq('id', blockId)
+    .maybeSingle();
+  if (readErr) throw new Error(`saveBlockContent(read): ${readErr.message}`);
+  if (!current) return { status: 'conflict', lastEditedAt: null };
+  return {
+    status: 'conflict',
+    lastEditedAt: (current.last_edited_at as string | null) ?? null,
+    server: {
+      content: current.content as BlockContent,
+      lastEditedAt: (current.last_edited_at as string | null) ?? null,
+      lastEditedBy: (current.last_edited_by as UserId | null) ?? null,
+    },
+  };
 }
 
 export async function deleteBlock(client: SupabaseClient, blockId: BlockId): Promise<void> {
