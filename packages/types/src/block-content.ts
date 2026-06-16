@@ -361,6 +361,57 @@ export const blockContentSchema = z.discriminatedUnion('type', [
 ]);
 export type BlockContent = z.infer<typeof blockContentSchema>;
 
+// --- Manual block insertion (G4.6) -------------------------------------------
+//
+// The block types an author can insert by hand in the editor: the prose family
+// (paragraph/heading/callout) edited inline, plus a section header (title via
+// the inspector) and a divider. Data/media/container types are inserted through
+// their own dedicated flows (they need a field/source picker), not this list.
+
+export const INSERTABLE_BLOCK_TYPES = [
+  'paragraph',
+  'heading',
+  'callout',
+  'section_header',
+  'divider',
+] as const satisfies readonly BlockType[];
+export type InsertableBlockType = (typeof INSERTABLE_BLOCK_TYPES)[number];
+export const insertableBlockTypeSchema = z.enum(INSERTABLE_BLOCK_TYPES);
+
+/** A valid, empty `BlockContent` for a freshly inserted block of `type`. */
+export function defaultBlockContent(type: InsertableBlockType): BlockContent {
+  switch (type) {
+    case 'heading':
+      return { type: 'heading', level: 2, content: { alignment: 'left', nodes: [] } };
+    case 'callout':
+      return { type: 'callout', variant: 'info', content: { alignment: 'left', nodes: [] } };
+    case 'section_header':
+      return { type: 'section_header', title: '' };
+    case 'divider':
+      return { type: 'divider' };
+    case 'paragraph':
+    default:
+      return { type: 'paragraph', content: { alignment: 'left', nodes: [] } };
+  }
+}
+
+/** The author-facing label for an insertable block type (the editor's picker). */
+export function insertableBlockLabel(type: InsertableBlockType): string {
+  switch (type) {
+    case 'heading':
+      return 'Heading';
+    case 'callout':
+      return 'Callout';
+    case 'section_header':
+      return 'Section header';
+    case 'divider':
+      return 'Divider';
+    case 'paragraph':
+    default:
+      return 'Paragraph';
+  }
+}
+
 // --- Container child rules (spec §4.11), as data ------------------------------
 
 const SAFETY_BLOCK_TYPES = ['warning', 'caution', 'note'] as const satisfies readonly BlockType[];

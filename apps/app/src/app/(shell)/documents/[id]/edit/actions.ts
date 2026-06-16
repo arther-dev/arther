@@ -28,12 +28,15 @@ import {
 import {
   blockContentSchema,
   blockPlainText,
+  defaultBlockContent,
   formatFieldValue,
+  INSERTABLE_BLOCK_TYPES,
   type BlockContent,
   type BlockId,
   type DocumentId,
   type DocumentRevisionId,
   type FieldVersionId,
+  type InsertableBlockType,
   type SpecFieldId,
   type UserId,
   type WorkspaceId,
@@ -104,13 +107,17 @@ const addSchema = z.object({
   revisionId: z.string().uuid(),
   documentId: z.string().uuid(),
   afterBlockId: z.string().uuid().nullable(),
+  type: z.enum(INSERTABLE_BLOCK_TYPES).default('paragraph'),
 });
 
-/** G4.6 — insert an empty paragraph after a block (or at the end), then reorder. */
+/** G4.6 — insert an empty block of the chosen type after a block (or at the
+ *  end), then reorder. Prose blocks are then edited inline; section header and
+ *  divider via the inspector / as-is. */
 export async function addBlockAfterAction(input: {
   revisionId: string;
   documentId: string;
   afterBlockId: string | null;
+  type?: InsertableBlockType;
 }): Promise<InsertResult> {
   const parsed = addSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Invalid request.' };
@@ -126,10 +133,10 @@ export async function addBlockAfterAction(input: {
       userId: auth.userId,
       blocks: [
         {
-          type: 'paragraph',
+          type: parsed.data.type,
           source: 'manual',
           displayOrder: current.length,
-          content: { type: 'paragraph', content: { alignment: 'left', nodes: [] } },
+          content: defaultBlockContent(parsed.data.type),
         },
       ],
     });
