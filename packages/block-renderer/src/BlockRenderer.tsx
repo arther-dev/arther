@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import {
+  blockPlainText,
   deriveSpecTableCells,
   type BlockContent,
   type SpecFieldResolution,
@@ -11,9 +12,9 @@ import { RichText } from './RichText';
 /**
  * G4.4 — the one read-only renderer for the block tree. Editor preview, portal
  * SSR, and PDF all render through this (degradation contracts wire in at C5/C6).
- * Prose, safety, container, and (with a `resolved` field map) spec_table and
- * chart blocks render fully; the remaining media blocks (video/gif/hotspot/
- * snippet/toc) render structurally with a labelled placeholder for now.
+ * Prose, safety, containers, data (spec_table + chart, with a `resolved` field
+ * map), media (image/video/gif/hotspot_image), and the toc all render fully;
+ * only `snippet` (Content Reuse, Phase 4) stays a labelled placeholder.
  */
 export interface BlockRendererProps {
   blocks: BlockContent[];
@@ -25,11 +26,35 @@ export interface BlockRendererProps {
   resolved?: SpecFieldResolution;
 }
 
+/** A heading in the document, for the toc and the heading anchors it links to. */
+interface TocHeading {
+  anchorId: string;
+  text: string;
+  /** 1 = section header, 2 = H2, 3 = H3. */
+  level: number;
+}
+
+const anchorFor = (index: number) => `br-block-${index}`;
+
+/** Top-level section headers + headings, in document order (the toc source). */
+function collectTocHeadings(blocks: BlockContent[]): TocHeading[] {
+  const headings: TocHeading[] = [];
+  blocks.forEach((content, i) => {
+    if (content.type === 'section_header') {
+      headings.push({ anchorId: anchorFor(i), text: content.title || 'Section', level: 1 });
+    } else if (content.type === 'heading') {
+      headings.push({ anchorId: anchorFor(i), text: blockPlainText(content) || 'Heading', level: content.level });
+    }
+  });
+  return headings;
+}
+
 export function BlockRenderer({ blocks, resolved }: BlockRendererProps) {
+  const headings = collectTocHeadings(blocks);
   return (
     <div className="br-doc">
       {blocks.map((content, i) => (
-        <Block key={i} content={content} resolved={resolved} />
+        <Block key={i} content={content} resolved={resolved} index={i} headings={headings} />
       ))}
     </div>
   );
@@ -134,20 +159,54 @@ function Chart({
   );
 }
 
+function Toc({
+  content,
+  headings,
+}: {
+  content: Extract<BlockContent, { type: 'toc' }>;
+  headings: TocHeading[];
+}): ReactNode {
+  // depth N includes headings down to level N (1 = section headers only).
+  const items = headings.filter((h) => h.level <= content.depth);
+  if (items.length === 0) return <Placeholder label={content.title ?? 'Table of contents'} />;
+  return (
+    <nav className="br-toc" aria-label={content.title ?? 'Table of contents'}>
+      {content.title ? <p className="br-toc__title">{content.title}</p> : null}
+      <ul>
+        {items.map((h) => (
+          <li key={h.anchorId} style={{ marginLeft: (h.level - 1) * 16 }}>
+            <a href={`#${h.anchorId}`}>{h.text}</a>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  );
+}
+
 function Block({
   content,
   resolved,
+  index,
+  headings = [],
 }: {
   content: BlockContent;
   resolved?: SpecFieldResolution;
+  /** Top-level position — the toc anchor target for headings (omitted when nested). */
+  index?: number;
+  headings?: TocHeading[];
 }): ReactNode {
+  const anchorId = index === undefined ? undefined : anchorFor(index);
   switch (content.type) {
     case 'section_header':
-      return <h2 className="br-section-header">{content.title}</h2>;
+      return (
+        <h2 id={anchorId} className="br-section-header">
+          {content.title}
+        </h2>
+      );
     case 'heading': {
       const Tag = content.level === 2 ? 'h2' : 'h3';
       return (
-        <Tag className="br-heading" style={{ textAlign: content.content.alignment }}>
+        <Tag id={anchorId} className="br-heading" style={{ textAlign: content.content.alignment }}>
           <RichText content={content.content} />
         </Tag>
       );
@@ -233,15 +292,72 @@ function Block({
     case 'chart':
       return <Chart content={content} resolved={resolved} />;
     case 'toc':
-      return <Placeholder label={content.title ?? 'Table of contents'} />;
+      return <Toc content={content} headings={headings} />;
     case 'video':
-      return <Placeholder label="Video" />;
+      return (
+        <figure className="br-figure">
+          <video className="br-video" src={content.url} poster={content.thumbnail_url} controls>
+            <a href={content.url}>Watch video</a>
+          </video>
+          {content.caption ? (
+            <figcaption>
+              <RichText content={content.caption} />
+            </figcaption>
+          ) : null}
+        </figure>
+      );
     case 'gif':
-      return <Placeholder label="Animation" />;
+      return (
+        <figure className="br-figure">
+          <img className="br-gif" src={content.url} alt={content.alt_text} />
+          {content.caption ? (
+            <figcaption>
+              <RichText content={content.caption} />
+            </figcaption>
+          ) : null}
+        </figure>
+      );
     case 'hotspot_image':
-      return <Placeholder label="Annotated image" />;
+      return (
+        <figure className="br-figure br-hotspot">
+          <div className="br-hotspot__frame" style={{ position: 'relative', display: 'inline-block' }}>
+            <img src={content.url} alt={content.alt_text} />
+            {content.pins.map((pin) => (
+              <span
+                key={pin.id}
+                className="br-hotspot__pin"
+                style={{
+                  position: 'absolute',
+                  left: `${pin.x_percent}%`,
+                  top: `${pin.y_percent}%`,
+                  transform: 'translate(-50%, -50%)',
+                }}
+                aria-label={`${pin.number}: ${pin.label}`}
+              >
+                {pin.number}
+              </span>
+            ))}
+          </div>
+          {content.pins.length > 0 ? (
+            <ol className="br-hotspot__legend">
+              {content.pins.map((pin) => (
+                <li key={pin.id} value={pin.number}>
+                  {pin.label}
+                </li>
+              ))}
+            </ol>
+          ) : null}
+          {content.caption ? (
+            <figcaption>
+              <RichText content={content.caption} />
+            </figcaption>
+          ) : null}
+        </figure>
+      );
+    // Snippets are the Content Reuse feature (Phase 4); their content isn't
+    // resolvable yet, so the labelled placeholder stays until that lands.
     case 'snippet':
-      return <Placeholder label={content.snippet_name} />;
+      return <Placeholder label={`Snippet: ${content.snippet_name}`} />;
     default:
       return null;
   }

@@ -146,6 +146,69 @@ describe('BlockRenderer', () => {
     expect(out).not.toContain('<svg');
   });
 
+  it('renders a toc from the document headings with anchor links', () => {
+    const out = html(
+      { type: 'section_header', title: 'Overview' }, // index 0
+      { type: 'heading', level: 2, content: rich(text('Wiring')) }, // index 1
+      { type: 'toc', title: 'Contents', depth: 2 }, // index 2
+      { type: 'section_header', title: 'Safety' }, // index 3
+    );
+    expect(out).toContain('br-toc');
+    expect(out).toContain('Contents');
+    expect(out).toContain('href="#br-block-0"'); // Overview
+    expect(out).toContain('href="#br-block-1"'); // Wiring (H2, within depth 2)
+    expect(out).toContain('href="#br-block-3"'); // Safety
+    expect(out).toContain('id="br-block-0"'); // the heading carries the matching anchor
+  });
+
+  it('respects toc depth — depth 1 links only section headers', () => {
+    const out = html(
+      { type: 'section_header', title: 'Overview' }, // index 0
+      { type: 'heading', level: 2, content: rich(text('Wiring')) }, // index 1
+      { type: 'toc', depth: 1 }, // index 2
+    );
+    expect(out).toContain('href="#br-block-0"'); // section header linked
+    expect(out).not.toContain('href="#br-block-1"'); // H2 excluded at depth 1
+  });
+
+  it('renders a video with controls and a caption', () => {
+    const out = html({
+      type: 'video',
+      url: 'https://example.com/v.mp4',
+      autoplay: false,
+      caption: rich(text('Demo')),
+    });
+    expect(out).toContain('<video');
+    expect(out).toContain('https://example.com/v.mp4');
+    expect(out).toContain('Demo');
+  });
+
+  it('renders a gif as an image', () => {
+    const out = html({ type: 'gif', url: 'https://example.com/a.gif', storage_key: 'k', alt_text: 'spin' });
+    expect(out).toContain('<img');
+    expect(out).toContain('https://example.com/a.gif');
+    expect(out).toContain('spin');
+  });
+
+  it('renders a hotspot image with positioned pins and a legend', () => {
+    const out = html({
+      type: 'hotspot_image',
+      url: 'https://example.com/i.png',
+      storage_key: 'k',
+      alt_text: 'panel',
+      pins: [{ id: 'p1', number: 1, x_percent: 20, y_percent: 30, label: 'Power switch' }],
+    });
+    expect(out).toContain('br-hotspot');
+    expect(out).toContain('Power switch');
+    expect(out).toContain('20%'); // pin x position
+  });
+
+  it('keeps a snippet as a labelled placeholder (Content Reuse is Phase 4)', () => {
+    const out = html({ type: 'snippet', snippet_id: 's1', snippet_name: 'Boilerplate warranty' });
+    expect(out).toContain('br-placeholder');
+    expect(out).toContain('Boilerplate warranty');
+  });
+
   it('renders an accordion section as details with its child', () => {
     const out = html({
       type: 'accordion',
