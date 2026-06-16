@@ -37,6 +37,10 @@ export interface GenerationCommitBlock {
   textContent?: string | null;
   /** Fields this block cites — resolved to current versions in the commit RPC. */
   specRefs?: { fieldId: SpecFieldId }[];
+  /** G7.3 — the product-brief fragment this block's narrative drew from; the app
+   *  writes a block_brief_reference (with the fragment's content snapshot) after
+   *  commit. Null/absent for blocks not sourced from the brief. */
+  briefKey?: string | null;
 }
 
 /** What the spec graph supplies for one referenced field at resolution time. */
@@ -180,6 +184,8 @@ export function resolveGeneratedSection(
       content,
       textContent: blockPlainText(content),
       specRefs: [...refs].map((fieldId) => ({ fieldId: fieldId as SpecFieldId })),
+      // Only brief-sourced blocks carry an attribution (G7.3 spine).
+      briefKey: gb.source === 'brief' ? (gb.brief_key ?? null) : null,
     });
   }
   return { blocks, unresolvedFieldIds: [...unresolved] };

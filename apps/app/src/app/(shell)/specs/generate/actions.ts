@@ -14,6 +14,7 @@ import {
   type SectionPlan,
 } from '@arther/ai-gateway';
 import {
+  addBriefReference,
   commitGeneration,
   createGenerationRun,
   createServiceClient,
@@ -22,6 +23,7 @@ import {
   getDocumentType,
   getEntityBrief,
   listUnits,
+  loadDocumentTree,
   loadGenerationFields,
   membershipLookupFor,
   recordAnalyticsEvent,
@@ -262,6 +264,33 @@ async function runGenerationInline(ctx: {
       inputTokens: usage.input,
       outputTokens: usage.output,
     });
+
+    // G7.3 spine — record block→brief references (best-effort; never fails the
+    // generation). The committed blocks load in the same order as result.blocks
+    // (commit inserts by array index), so index → block id maps cleanly.
+    try {
+      if (brief.briefId) {
+        const fragmentContent = new Map(brief.fragments.map((fr) => [fr.key, fr.content]));
+        const tree = await loadDocumentTree(service, documentId);
+        const committed = tree?.blocks ?? [];
+        for (let i = 0; i < result.blocks.length && i < committed.length; i += 1) {
+          const briefKey = result.blocks[i]!.briefKey;
+          if (briefKey && fragmentContent.has(briefKey)) {
+            await addBriefReference(service, {
+              workspaceId: scope.workspaceId,
+              documentId,
+              blockId: committed[i]!.id,
+              briefId: brief.briefId,
+              fragmentKey: briefKey,
+              contentSnapshot: fragmentContent.get(briefKey) ?? undefined,
+            });
+          }
+        }
+      }
+    } catch (e) {
+      console.error('[brief-refs] writing block_brief_references failed', e);
+    }
+
     // G8.2 — metering hook (best-effort; never fails the generation).
     try {
       await recordAnalyticsEvent(service, scope, {

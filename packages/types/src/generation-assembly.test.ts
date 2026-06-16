@@ -100,4 +100,16 @@ describe('resolveGeneratedSection', () => {
     const token = block.content.content.nodes.find((n) => n.type === 'spec_token');
     expect(token).toMatchObject({ unit_id: null, display_value: 'Yes' });
   });
+
+  it('carries brief_key for brief-sourced blocks, null otherwise (G7.3 spine)', () => {
+    const briefBlock: GeneratedBlock = {
+      block_type: 'paragraph',
+      source: 'brief',
+      brief_key: 'overview',
+      block: { type: 'paragraph', content: { alignment: 'left', nodes: [textNode('A precision servo.')] } },
+    };
+    const out = resolveGeneratedSection(section(briefBlock, paragraph('F1')), resolve);
+    expect(out.blocks[0]!.briefKey).toBe('overview'); // brief-sourced → attributed
+    expect(out.blocks[1]!.briefKey).toBeNull(); // spec-sourced → not attributed
+  });
 });
