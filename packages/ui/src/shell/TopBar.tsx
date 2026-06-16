@@ -8,6 +8,8 @@ export interface TopBarProps {
   connectivity?: 'connected' | 'saving' | 'offline';
   /** Account affordance (menu); falls back to the bare avatar button. */
   account?: ReactNode;
+  /** Where the ⌘K search control navigates (G4.7); a bare button when unset. */
+  searchHref?: string;
   /** Slot for future tab-strip items beyond the active one. */
   children?: ReactNode;
 }
@@ -18,7 +20,13 @@ export interface TopBarProps {
  * persistence, launcher, overflow) is later work; this renders the frame with
  * the accessibility contract (aria-labels, ≥24px hit areas) in place.
  */
-export function TopBar({ activeTab, connectivity = 'connected', account, children }: TopBarProps) {
+export function TopBar({
+  activeTab,
+  connectivity = 'connected',
+  account,
+  searchHref,
+  children,
+}: TopBarProps) {
   const connectivityLabel =
     connectivity === 'connected' ? 'Connected' : connectivity === 'saving' ? 'Saving…' : 'Offline';
   return (
@@ -39,9 +47,15 @@ export function TopBar({ activeTab, connectivity = 'connected', account, childre
       </nav>
 
       <div className="ui-topbar__utils">
-        <button type="button" className="ui-icon-btn" aria-label="Search (⌘K)">
-          <SearchIcon />
-        </button>
+        {searchHref ? (
+          <a href={searchHref} className="ui-icon-btn" aria-label="Search (⌘K)">
+            <SearchIcon />
+          </a>
+        ) : (
+          <button type="button" className="ui-icon-btn" aria-label="Search (⌘K)">
+            <SearchIcon />
+          </button>
+        )}
         <button type="button" className="ui-icon-btn" aria-label="Notifications">
           <BellIcon />
         </button>

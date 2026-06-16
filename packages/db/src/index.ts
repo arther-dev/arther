@@ -129,6 +129,13 @@ export {
 export { resolveSpecFields } from './spec-table-resolve';
 export { getSpecCoverageForProduct } from './coverage';
 export {
+  searchWorkspace,
+  type ComponentHit,
+  type DocumentHit,
+  type SpecFieldHit,
+  type WorkspaceSearchResults,
+} from './search';
+export {
   listPlaceholdersForFragment,
   clearPlaceholder,
   type PlaceholderForFill,

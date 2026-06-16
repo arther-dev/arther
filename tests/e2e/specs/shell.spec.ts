@@ -12,7 +12,8 @@ test.describe('app shell frame (Handoff 02)', () => {
   test('top bar carries the named utility cluster (a11y contract §11.2)', async ({ page }) => {
     await page.goto(`${APP}/dashboard`);
     await expect(page.getByRole('button', { name: 'Switch module' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Search (⌘K)' })).toBeVisible();
+    // G4.7 — the search control navigates to /search, so it's a link now.
+    await expect(page.getByRole('link', { name: 'Search (⌘K)' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Notifications' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Ask Arther (⌘J)' })).toBeVisible();
     // The account control is the menu's <summary> trigger since F4.5.
@@ -65,7 +66,7 @@ test.describe('app shell frame (Handoff 02)', () => {
 
   test('shell controls are keyboard-reachable with a visible focus ring', async ({ page }) => {
     await page.goto(`${APP}/specs`);
-    const search = page.getByRole('button', { name: 'Search (⌘K)' });
+    const search = page.getByRole('link', { name: 'Search (⌘K)' });
     await search.focus();
     await expect(search).toBeFocused();
     const products = page.getByRole('link', { name: 'Products' });
