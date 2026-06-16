@@ -2,11 +2,12 @@ import Link from 'next/link';
 import { BlockRenderer } from '@arther/block-renderer';
 import {
   getActiveWorkspace,
+  listStaleBriefReferencesForDocument,
   listStaleReferencesForDocument,
   loadDocumentTree,
   resolveSpecFields,
 } from '@arther/db';
-import { summarizeStaleness, type DocumentId } from '@arther/types';
+import { summarizeBriefStaleness, summarizeStaleness, type DocumentId } from '@arther/types';
 import { AppShell, EmptyState } from '@arther/ui';
 import { getSupabaseServer } from '../../../../lib/supabase/server';
 
@@ -67,6 +68,9 @@ export default async function DocumentPage({ params }: { params: Promise<{ id: s
   }
 
   const stale = summarizeStaleness(await listStaleReferencesForDocument(supabase, tree.document.id));
+  const briefStale = summarizeBriefStaleness(
+    await listStaleBriefReferencesForDocument(supabase, tree.document.id),
+  );
 
   // G4 live data blocks — resolve current field values for spec_table + chart.
   const resolved = tree.blocks.some(
@@ -92,6 +96,12 @@ export default async function DocumentPage({ params }: { params: Promise<{ id: s
           <p className="ui-field__error" role="status">
             {stale.fieldCount} spec value{stale.fieldCount === 1 ? '' : 's'} changed since this draft
             was generated ({stale.fields.join(', ')}) — review in the editor.
+          </p>
+        ) : null}
+        {briefStale.keyCount > 0 ? (
+          <p className="specs-grid__meta" role="status">
+            {briefStale.keyCount} brief fragment{briefStale.keyCount === 1 ? '' : 's'} updated since
+            this draft was generated ({briefStale.keys.join(', ')}) — the prose may want a refresh.
           </p>
         ) : null}
         {tree.blocks.length > 0 ? (

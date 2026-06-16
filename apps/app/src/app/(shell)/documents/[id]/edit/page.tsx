@@ -1,11 +1,12 @@
 import Link from 'next/link';
 import {
   getActiveWorkspace,
+  listStaleBriefReferencesForDocument,
   listStaleReferencesForDocument,
   loadDocumentTree,
   resolveSpecFields,
 } from '@arther/db';
-import { summarizeStaleness, type DocumentId } from '@arther/types';
+import { summarizeBriefStaleness, summarizeStaleness, type DocumentId } from '@arther/types';
 import { AppShell, EmptyState } from '@arther/ui';
 import { getSupabaseServer } from '../../../../../lib/supabase/server';
 import { DocumentEditor } from './DocumentEditor';
@@ -66,6 +67,9 @@ export default async function EditDocumentPage({ params }: { params: Promise<{ i
   }
 
   const stale = summarizeStaleness(await listStaleReferencesForDocument(supabase, tree.document.id));
+  const briefStale = summarizeBriefStaleness(
+    await listStaleBriefReferencesForDocument(supabase, tree.document.id),
+  );
 
   // G4 live data blocks — resolve current field values for spec_table + chart.
   const resolved = tree.blocks.some(
@@ -82,6 +86,8 @@ export default async function EditDocumentPage({ params }: { params: Promise<{ i
       state={tree.revision.state}
       staleFields={stale.fields}
       staleBlockIds={stale.blockIds}
+      staleBriefKeys={briefStale.keys}
+      staleBriefBlockIds={briefStale.blockIds}
       resolved={resolved}
       blocks={tree.blocks.map((b) => ({
         id: b.id,
