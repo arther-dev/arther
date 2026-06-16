@@ -15,6 +15,7 @@ import {
 } from '@arther/ai-gateway';
 import {
   addBriefReference,
+  addPlaceholderReference,
   commitGeneration,
   createGenerationRun,
   createServiceClient,
@@ -202,9 +203,17 @@ async function runGenerationInline(ctx: {
 
     const sectionById = new Map(type.sections.map((s) => [s.id, s]));
     const briefFragments = brief.fragments.map((fr) => ({ key: fr.key, content: fr.content }));
+    // G2.7 — brief keys with real content; a required key absent from this set
+    // becomes a placeholder block.
+    const populatedBriefKeys = new Set(
+      brief.fragments.filter((fr) => fr.content.trim().length > 0).map((fr) => fr.key),
+    );
     const plans: SectionPlan[] = runSections.map((rs) => {
       const dts = rs.document_type_section_id ? sectionById.get(rs.document_type_section_id) : undefined;
       const categories = new Set(dts?.spec_field_categories ?? []);
+      const missingBriefKeys = dts?.brief_required
+        ? (dts.brief_fragment_keys ?? []).filter((k) => !populatedBriefKeys.has(k))
+        : [];
       const promptFields: PromptField[] = fields
         .filter((f) => categories.has(f.category))
         .map((f) => ({
@@ -226,6 +235,7 @@ async function runGenerationInline(ctx: {
           brandVoice: brand?.voice_descriptors ?? [],
           toneNotes: brand?.tone_notes ?? null,
         }),
+        missingBriefKeys,
       };
     });
 
@@ -265,30 +275,44 @@ async function runGenerationInline(ctx: {
       outputTokens: usage.output,
     });
 
-    // G7.3 spine — record block→brief references (best-effort; never fails the
-    // generation). The committed blocks load in the same order as result.blocks
-    // (commit inserts by array index), so index → block id maps cleanly.
+    // G7.3 + G2.7 spines — record block→brief references and placeholder→brief
+    // references (best-effort; never fails the generation). Committed blocks load
+    // in the same order as result.blocks (commit inserts by array index), so
+    // index → block id maps cleanly; we track the current section header for the
+    // placeholder's section_name.
     try {
-      if (brief.briefId) {
-        const fragmentContent = new Map(brief.fragments.map((fr) => [fr.key, fr.content]));
-        const tree = await loadDocumentTree(service, documentId);
-        const committed = tree?.blocks ?? [];
-        for (let i = 0; i < result.blocks.length && i < committed.length; i += 1) {
-          const briefKey = result.blocks[i]!.briefKey;
-          if (briefKey && fragmentContent.has(briefKey)) {
-            await addBriefReference(service, {
-              workspaceId: scope.workspaceId,
-              documentId,
-              blockId: committed[i]!.id,
-              briefId: brief.briefId,
-              fragmentKey: briefKey,
-              contentSnapshot: fragmentContent.get(briefKey) ?? undefined,
-            });
-          }
+      const tree = await loadDocumentTree(service, documentId);
+      const committed = tree?.blocks ?? [];
+      const fragmentContent = new Map(brief.fragments.map((fr) => [fr.key, fr.content]));
+      let currentSection: string | undefined;
+      for (let i = 0; i < result.blocks.length && i < committed.length; i += 1) {
+        const rb = result.blocks[i]!;
+        if (rb.content.type === 'section_header') currentSection = rb.content.title;
+
+        if (brief.briefId && rb.briefKey && fragmentContent.has(rb.briefKey)) {
+          await addBriefReference(service, {
+            workspaceId: scope.workspaceId,
+            documentId,
+            blockId: committed[i]!.id,
+            briefId: brief.briefId,
+            fragmentKey: rb.briefKey,
+            contentSnapshot: fragmentContent.get(rb.briefKey) ?? undefined,
+          });
+        }
+        if (rb.placeholderBriefKey) {
+          await addPlaceholderReference(service, {
+            workspaceId: scope.workspaceId,
+            documentId,
+            blockId: committed[i]!.id,
+            entityType: 'product',
+            entityId: productId,
+            fragmentKey: rb.placeholderBriefKey,
+            sectionName: currentSection,
+          });
         }
       }
     } catch (e) {
-      console.error('[brief-refs] writing block_brief_references failed', e);
+      console.error('[refs] writing block_brief / placeholder references failed', e);
     }
 
     // G8.2 — metering hook (best-effort; never fails the generation).

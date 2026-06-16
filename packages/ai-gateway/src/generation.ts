@@ -135,6 +135,10 @@ export interface SectionPlan {
   sectionId: string;
   name: string;
   prompt: { system: string; user: string };
+  /** G2.7 — required brief fragment keys this section needs but the brief leaves
+   *  empty; each becomes a placeholder block (can't publish) instead of fabricated
+   *  prose. The app resolves them to placeholder_brief_references after commit. */
+  missingBriefKeys?: string[];
 }
 
 export interface SectionOutcome {
@@ -194,6 +198,28 @@ function sectionHeaderBlock(name: string): GenerationCommitBlock {
   };
 }
 
+/**
+ * G2.7 — a placeholder block standing in for a required-but-empty brief fragment.
+ * A visible callout (never a fabricated value, invariant 6); marked source
+ * `placeholder` so it can't be published, and tagged with the fragment key so the
+ * app writes a placeholder_brief_reference (the G7.2 fill-offer reads it).
+ */
+function placeholderBlock(briefKey: string): GenerationCommitBlock {
+  const text = `This section needs the “${briefKey}” brief fragment — write it to generate this content.`;
+  return {
+    type: 'callout',
+    source: 'placeholder',
+    placeholderBriefKey: briefKey,
+    content: {
+      type: 'callout',
+      variant: 'important',
+      title: 'Brief fragment needed',
+      content: { alignment: 'left', nodes: [{ type: 'text', text, marks: [] }] },
+    },
+    textContent: text,
+  };
+}
+
 export interface GenerateDocumentDeps {
   gateway: Pick<AiGateway, 'structured'>;
   resolve: FieldResolver;
@@ -221,8 +247,12 @@ export async function generateDocument(deps: GenerateDocumentDeps): Promise<Gene
     await deps.onSectionStart?.(plan.sectionId);
     // Cache the stable rules prefix across the run's sections (G8.5).
     const outcome = await generateSection(deps.gateway, plan, deps.resolve, true);
-    if (outcome.status === 'succeeded') {
-      blocks.push(sectionHeaderBlock(plan.name), ...outcome.blocks);
+    const placeholders = (plan.missingBriefKeys ?? []).map(placeholderBlock); // G2.7
+    // A section contributes a header when it produced prose OR has placeholders.
+    if (outcome.status === 'succeeded' || placeholders.length > 0) {
+      blocks.push(sectionHeaderBlock(plan.name));
+      if (outcome.status === 'succeeded') blocks.push(...outcome.blocks);
+      blocks.push(...placeholders);
     }
     outcomes.push(outcome);
     await deps.onSectionDone?.(outcome);

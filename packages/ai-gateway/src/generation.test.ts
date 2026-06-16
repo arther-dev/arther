@@ -145,6 +145,27 @@ describe('generateDocument', () => {
     expect(result.status).toBe('failed');
     expect(result.blocks).toEqual([]);
   });
+
+  it('emits a placeholder block for a missing required brief key (G2.7)', async () => {
+    const result = await generateDocument({
+      gateway: mockGateway(async () => sectionWith('F1')), // section succeeds
+      resolve,
+      sections: [{ ...plan('S1'), missingBriefKeys: ['overview'] }],
+    });
+    expect(result.blocks.map((b) => b.type)).toEqual(['section_header', 'paragraph', 'callout']);
+    const placeholder = result.blocks.find((b) => b.source === 'placeholder');
+    expect(placeholder?.placeholderBriefKey).toBe('overview');
+  });
+
+  it('a failed section with a missing brief key still yields a header + placeholder', async () => {
+    const result = await generateDocument({
+      gateway: mockGateway(async () => sectionWith('F404')), // zero-hallucination fail → no prose
+      resolve,
+      sections: [{ ...plan('S1'), missingBriefKeys: ['overview'] }],
+    });
+    expect(result.blocks.map((b) => b.type)).toEqual(['section_header', 'callout']);
+    expect(result.blocks.find((b) => b.source === 'placeholder')?.placeholderBriefKey).toBe('overview');
+  });
 });
 
 describe('buildSectionPrompt — single-block focus (G7.1)', () => {
