@@ -102,6 +102,50 @@ describe('BlockRenderer', () => {
     expect(out).not.toContain('Hidden'); // visible:false row omitted
   });
 
+  const chartBlock: BlockContent = {
+    type: 'chart',
+    table_field_id: 'TF1',
+    product_id: 'P1',
+    title: 'Torque curve',
+    chart_type: 'line',
+    show_legend: true,
+    show_grid: true,
+  };
+
+  it('renders a chart as an SVG plot when its table field is resolved', () => {
+    const resolved = {
+      TF1: {
+        name: 'Torque vs speed',
+        type: 'table',
+        value: {
+          columns: [
+            { id: 'x', name: 'Speed', unit_id: 'u', role: 'independent' },
+            { id: 'y', name: 'Torque', unit_id: 'u', role: 'dependent' },
+          ],
+          rows: [
+            { id: 'r1', values: { x: 0, y: 10 } },
+            { id: 'r2', values: { x: 100, y: 8 } },
+          ],
+          interpolation: 'linear',
+        },
+        unitSymbol: null,
+        ownerName: null,
+      },
+    };
+    const out = renderToStaticMarkup(<BlockRenderer blocks={[chartBlock]} resolved={resolved as never} />);
+    expect(out).toContain('<svg');
+    expect(out).toContain('Torque'); // the dependent column name from SpecChart
+    expect(out).toContain('Torque curve'); // the block title
+    expect(out).not.toContain('br-placeholder');
+  });
+
+  it('keeps the chart placeholder when no resolution is supplied', () => {
+    const out = html(chartBlock);
+    expect(out).toContain('br-placeholder');
+    expect(out).toContain('Torque curve');
+    expect(out).not.toContain('<svg');
+  });
+
   it('renders an accordion section as details with its child', () => {
     const out = html({
       type: 'accordion',

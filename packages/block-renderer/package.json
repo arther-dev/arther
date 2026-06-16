@@ -12,7 +12,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@arther/types": "workspace:*"
+    "@arther/types": "workspace:*",
+    "@arther/ui": "workspace:*"
   },
   "peerDependencies": {
     "react": ">=19"

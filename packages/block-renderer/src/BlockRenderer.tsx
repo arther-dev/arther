@@ -3,15 +3,17 @@ import {
   deriveSpecTableCells,
   type BlockContent,
   type SpecFieldResolution,
+  type TableValue,
 } from '@arther/types';
+import { SpecChart } from '@arther/ui';
 import { RichText } from './RichText';
 
 /**
  * G4.4 — the one read-only renderer for the block tree. Editor preview, portal
  * SSR, and PDF all render through this (degradation contracts wire in at C5/C6).
- * Prose, safety, container, and (with a `resolved` field map) spec_table blocks
- * render fully; the remaining data/media blocks (chart, image variants) render
- * structurally with a labelled placeholder until their live-value resolution lands.
+ * Prose, safety, container, and (with a `resolved` field map) spec_table and
+ * chart blocks render fully; the remaining media blocks (video/gif/hotspot/
+ * snippet/toc) render structurally with a labelled placeholder for now.
  */
 export interface BlockRendererProps {
   blocks: BlockContent[];
@@ -103,6 +105,32 @@ function SpecTable({
         </tbody>
       </table>
     </figure>
+  );
+}
+
+function Chart({
+  content,
+  resolved,
+}: {
+  content: Extract<BlockContent, { type: 'chart' }>;
+  resolved?: SpecFieldResolution;
+}): ReactNode {
+  const field = resolved?.[content.table_field_id];
+  // The chart plots a table field's live value (spec §3.1); without it (no
+  // resolution, missing field, or empty value) keep the labelled placeholder.
+  if (!field || field.type !== 'table' || field.value == null) {
+    return <Placeholder label={content.title ?? 'Chart'} />;
+  }
+  const table = field.value as TableValue;
+  return (
+    <div className="br-chart">
+      {content.title ? <p className="br-chart__title">{content.title}</p> : null}
+      <SpecChart
+        columns={table.columns.map((c) => ({ id: c.id, name: c.name, role: c.role }))}
+        rows={table.rows}
+        interpolation={table.interpolation}
+      />
+    </div>
   );
 }
 
@@ -203,7 +231,7 @@ function Block({
     case 'spec_table':
       return <SpecTable content={content} resolved={resolved} />;
     case 'chart':
-      return <Placeholder label={content.title ?? 'Chart'} />;
+      return <Chart content={content} resolved={resolved} />;
     case 'toc':
       return <Placeholder label={content.title ?? 'Table of contents'} />;
     case 'video':
