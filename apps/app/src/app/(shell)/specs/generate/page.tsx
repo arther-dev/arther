@@ -10,7 +10,6 @@ import {
 } from '@arther/db';
 import {
   computeGenerationReadiness,
-  summarizeRunProgress,
   type DocumentTypeId,
   type GenerationRunId,
   type PreflightFieldRef,
@@ -18,6 +17,7 @@ import {
 } from '@arther/types';
 import { getSupabaseServer } from '../../../../lib/supabase/server';
 import { GenerateConfirm } from './GenerateConfirm';
+import { RunStatus } from './RunStatus';
 
 /** Generation will run here once the durable pipeline lands (G2.2). */
 export const maxDuration = 300;
@@ -93,56 +93,23 @@ export default async function GeneratePage({
         </main>
       );
     }
-    const progress = summarizeRunProgress(runData.sections);
-    const status = runData.run.status;
-    const heading =
-      status === 'succeeded'
-        ? 'Draft created'
-        : status === 'partial'
-          ? 'Draft created — some sections need attention'
-          : status === 'failed'
-            ? 'Generation failed'
-            : status === 'running'
-              ? 'Generating…'
-              : 'Generation queued';
     return (
-      <main className="import-canvas">
-        <h1 className="specs-title">{heading}</h1>
-        {status === 'queued' ? (
-          <p className="ui-field__error">
-            Generation isn’t provisioned in this environment — set ANTHROPIC_API_KEY
-            (PROVISIONING.md) and generate again.
-          </p>
-        ) : status === 'failed' ? (
-          <p className="ui-field__error">{runData.run.error ?? 'Generation failed.'}</p>
-        ) : (
-          <p className="specs-grid__meta">
-            {progress.byStatus.succeeded} of {progress.total} section
-            {progress.total === 1 ? '' : 's'} generated for <strong>{selected.name}</strong>
-            {status === 'succeeded' || status === 'partial'
-              ? ' — the draft is saved. The block editor (G4) opens it next.'
-              : '.'}
-          </p>
-        )}
-        <ol className="specs-form" aria-label="Sections">
-          {runData.sections.map((s) => (
-            <li key={s.id} className="specs-form--row">
-              {s.name}
-              <span className={`import-status import-status--${s.status}`}>{s.status}</span>
-            </li>
-          ))}
-        </ol>
-        {runData.run.document_id ? (
-          <p className="specs-form--row">
-            <Link className="ui-btn ui-btn--primary" href={`/documents/${runData.run.document_id}`}>
-              Open draft
-            </Link>
-          </p>
-        ) : null}
-        <p className="specs-grid__meta">
-          <Link href={`/specs?product=${selected.id}`}>← Back to {selected.name}</Link>
-        </p>
-      </main>
+      <RunStatus
+        runId={run}
+        productName={selected.name}
+        productHref={`/specs?product=${selected.id}`}
+        initial={{
+          status: runData.run.status,
+          error: runData.run.error ?? null,
+          documentId: runData.run.document_id ?? null,
+          sections: runData.sections.map((s) => ({
+            id: s.id,
+            name: s.name,
+            status: s.status,
+            error: s.error ?? null,
+          })),
+        }}
+      />
     );
   }
 

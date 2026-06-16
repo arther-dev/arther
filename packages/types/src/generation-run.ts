@@ -121,3 +121,34 @@ export const generationRunCreateSchema = z.object({
   sections: z.array(generationRunSectionInputSchema).min(1).max(100),
 });
 export type GenerationRunCreate = z.infer<typeof generationRunCreateSchema>;
+
+// --- Live-status surface decisions (G2.8) ------------------------------------
+
+/**
+ * Should the generation-status surface keep polling (and listening for Realtime
+ * pushes)? Only a `running` run is genuinely live: a `queued` run has no worker
+ * under the inline model (it means "not provisioned"), and terminal runs never
+ * change. This broadens to `queued` once a durable runtime (G1.2) picks runs up.
+ */
+export function shouldPollRun(status: GenerationRunStatus): boolean {
+  return status === 'running';
+}
+
+/**
+ * On a *watched* run reaching a successful terminal state with a committed
+ * document, the surface opens into the editor (G2.8 — "opens into the editor on
+ * completion"). `watched` is false when the user merely revisits an
+ * already-finished run, so it never yanks them away from a result they navigated
+ * to deliberately.
+ */
+export function shouldOpenEditorOnCompletion(args: {
+  watched: boolean;
+  status: GenerationRunStatus;
+  documentId: string | null;
+}): boolean {
+  return (
+    args.watched &&
+    args.documentId !== null &&
+    (args.status === 'succeeded' || args.status === 'partial')
+  );
+}

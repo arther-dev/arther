@@ -23,6 +23,7 @@ import {
   getBrandProfile,
   getDocumentType,
   getEntityBrief,
+  getGenerationRun,
   listUnits,
   loadDocumentTree,
   loadGenerationFields,
@@ -39,6 +40,8 @@ import {
   type DocumentTypeId,
   type GenerationRunId,
   type GenerationRunSectionId,
+  type GenerationRunStatus,
+  type GenerationSectionStatus,
   type ProductId,
   type UserId,
   type WorkspaceId,
@@ -48,6 +51,39 @@ import { getSupabaseServer } from '../../../../lib/supabase/server';
 
 export interface GenerateFormState {
   error?: string;
+}
+
+export interface RunStatusView {
+  status: GenerationRunStatus;
+  error: string | null;
+  documentId: string | null;
+  sections: { id: string; name: string; status: GenerationSectionStatus; error: string | null }[];
+}
+
+/**
+ * G2.8 — the live read for the generation-status surface. The client polls this
+ * (and re-reads it on a Realtime push, once that lands) while a run is running.
+ * Reads through the user session under RLS, so a run outside the caller's
+ * workspace simply isn't visible. A lean, serializable projection of the run +
+ * its sections in display order.
+ */
+export async function getRunStatusAction(runId: string): Promise<RunStatusView | null> {
+  if (!z.string().uuid().safeParse(runId).success) return null;
+  const supabase = await getSupabaseServer();
+  if (!supabase) return null;
+  const runData = await getGenerationRun(supabase, runId as GenerationRunId);
+  if (!runData) return null;
+  return {
+    status: runData.run.status,
+    error: runData.run.error ?? null,
+    documentId: runData.run.document_id ?? null,
+    sections: runData.sections.map((s) => ({
+      id: s.id,
+      name: s.name,
+      status: s.status,
+      error: s.error ?? null,
+    })),
+  };
 }
 
 const schema = z.object({
