@@ -2,6 +2,7 @@ import Link from 'next/link';
 import {
   getActiveWorkspace,
   getEntityBrief,
+  getSpecCoverageForProduct,
   listArchived,
   listArchivedFields,
   listBriefKeyUsage,
@@ -17,6 +18,7 @@ import {
 } from '@arther/db';
 import {
   briefFragmentKeySchema,
+  summariseCoverage,
   type ComponentId,
   type ProductId,
   type SpecFieldId,
@@ -26,6 +28,7 @@ import { AppShell, Button, EmptyState, Skeleton } from '@arther/ui';
 import { getSupabaseServer } from '../../../lib/supabase/server';
 import { AddFieldForm } from './AddFieldForm';
 import { BriefPanel } from './BriefPanel';
+import { CoverageReport, type CoverageGroup } from './CoverageReport';
 import { AttachComponentForm } from './ComponentForms';
 import { ArchiveToggle } from './DetailForms';
 import { FieldDetail } from './FieldDetail';
@@ -87,6 +90,7 @@ export default async function SpecsPage({
   const products = await listProducts(supabase, workspace.id);
   const { product, field, tab, fragment } = await searchParams;
   const briefTab = tab === 'brief';
+  const coverageTab = tab === 'coverage';
   // F8.5: a malformed ?fragment= degrades to the fragment list, never a 500.
   const expandedKey = fragment ? briefFragmentKeySchema.safeParse(fragment).data : undefined;
   const selectedId = (product ?? products[0]?.id) as ProductId | undefined;
@@ -145,6 +149,37 @@ export default async function SpecsPage({
   const attachable = components.filter((c) => !edges.some((e) => e.component_id === c.id));
   const detailBase = `/specs?product=${selected.id}&`;
 
+  // G6.8 — coverage is only computed on its own tab (a read over block_spec_references).
+  const coverage = coverageTab ? await getSpecCoverageForProduct(supabase, selected.id) : null;
+  const coverageGroups: CoverageGroup[] = coverage
+    ? [
+        {
+          id: 'product',
+          title: 'Product fields',
+          fields: fields.map((f) => ({
+            id: f.id,
+            name: f.name,
+            count: coverage.documentCountByField.get(f.id) ?? 0,
+          })),
+        },
+        ...edges.map((e) => ({
+          id: e.id,
+          title: e.component_name,
+          fields: (componentFields.get(e.component_id) ?? []).map((f) => ({
+            id: f.id,
+            name: f.name,
+            count: coverage.documentCountByField.get(f.id) ?? 0,
+          })),
+        })),
+      ]
+    : [];
+  const coverageSummary = coverage
+    ? summariseCoverage(
+        coverageGroups.flatMap((g) => g.fields.map((f) => f.id)),
+        coverage.documentCountByField,
+      )
+    : { covered: 0, total: 0 };
+
   // G0.6: brief data is only needed on the Product Brief tab.
   const brief = briefTab ? await getEntityBrief(supabase, 'product', selected.id) : null;
   const briefUsage = briefTab ? await listBriefKeyUsage(supabase, workspace.id) : [];
@@ -196,9 +231,9 @@ export default async function SpecsPage({
 
         <nav className="specs-tabs" aria-label="Product view">
           <Link
-            className={`specs-tabs__tab${briefTab ? '' : ' specs-tabs__tab--active'}`}
+            className={`specs-tabs__tab${!briefTab && !coverageTab ? ' specs-tabs__tab--active' : ''}`}
             href={`/specs?product=${selected.id}`}
-            aria-current={briefTab ? undefined : 'page'}
+            aria-current={!briefTab && !coverageTab ? 'page' : undefined}
           >
             Spec Fields
           </Link>
@@ -209,9 +244,18 @@ export default async function SpecsPage({
           >
             Product Brief
           </Link>
+          <Link
+            className={`specs-tabs__tab${coverageTab ? ' specs-tabs__tab--active' : ''}`}
+            href={`/specs?product=${selected.id}&tab=coverage`}
+            aria-current={coverageTab ? 'page' : undefined}
+          >
+            Coverage
+          </Link>
         </nav>
 
-        {briefTab ? (
+        {coverageTab ? (
+          <CoverageReport summary={coverageSummary} groups={coverageGroups} />
+        ) : briefTab ? (
           <BriefPanel
             entityType="product"
             entityId={selected.id}
@@ -295,7 +339,7 @@ export default async function SpecsPage({
           </>
         )}
 
-        {!briefTab && field ? (
+        {!briefTab && !coverageTab && field ? (
           <FieldDetail
             supabase={supabase}
             fieldId={field as SpecFieldId}
