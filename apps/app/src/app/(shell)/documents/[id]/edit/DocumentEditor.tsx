@@ -7,7 +7,9 @@ import {
   countMatchesInBlock,
   INSERTABLE_BLOCK_TYPES,
   insertableBlockLabel,
+  rangeSelection,
   replaceInBlock,
+  toggleSelection,
   type BlockContent,
   type InsertableBlockType,
   type SpecFieldResolution,
@@ -65,7 +67,11 @@ export function DocumentEditor({
   const staleSet = new Set(staleBlockIds);
   const briefStaleSet = new Set(staleBriefBlockIds);
   const [blocks, setBlocks] = useState(initialBlocks);
-  const [selected, setSelected] = useState<string | null>(null);
+  // G4.6 — multi-select: a set of block ids plus the range anchor. Most editor
+  // paths act on one block, so `selected` derives the lone id (else null) and
+  // `selectOnly` is the single-block setter those flows keep using unchanged.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [anchor, setAnchor] = useState<string | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const [showOutline, setShowOutline] = useState(true);
@@ -95,7 +101,36 @@ export function DocumentEditor({
           : 'All changes saved';
 
   const outline = buildOutline(blocks);
+  const selected = selectedIds.size === 1 ? [...selectedIds][0]! : null;
   const selectedBlock = blocks.find((b) => b.id === selected) ?? null;
+
+  const selectOnly = (id: string) => {
+    setSelectedIds(new Set([id]));
+    setAnchor(id);
+  };
+  const clearSelection = () => {
+    setSelectedIds(new Set());
+    setAnchor(null);
+  };
+
+  // G4.6 — click selection with modifiers: ⌘/Ctrl toggles a block in/out of the
+  // set, Shift extends a contiguous range from the anchor, a plain click selects
+  // just that block.
+  function clickSelect(id: string, e: { metaKey: boolean; ctrlKey: boolean; shiftKey: boolean }) {
+    if (e.metaKey || e.ctrlKey) {
+      setSelectedIds((prev) => toggleSelection(prev, id));
+      setAnchor(id);
+      return;
+    }
+    if (e.shiftKey && anchor) {
+      const range = rangeSelection(blocks.map((b) => b.id), anchor, id);
+      if (range.size > 0) {
+        setSelectedIds(range);
+        return;
+      }
+    }
+    selectOnly(id);
+  }
 
   // G4.7 — blocks whose editable text contains the query, in document order.
   const matches = query
@@ -112,7 +147,7 @@ export function DocumentEditor({
     const next = (matchIndex + dir + matchingIds.length) % matchingIds.length;
     setMatchIndex(next);
     const id = matchingIds[next]!;
-    setSelected(id);
+    selectOnly(id);
     document.getElementById(`block-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
@@ -174,7 +209,7 @@ export function DocumentEditor({
       const byId = new Map<string, EditorBlock>([...prev, block].map((b) => [b.id, b]));
       return order.map((id) => byId.get(id)).filter((b): b is EditorBlock => Boolean(b));
     });
-    setSelected(block.id);
+    selectOnly(block.id);
   }
 
   async function removeSelected() {
@@ -183,7 +218,18 @@ export function DocumentEditor({
     const res = await deleteBlockAction(id);
     if (!res.ok) return;
     setBlocks((prev) => prev.filter((b) => b.id !== id));
-    setSelected(null);
+    clearSelection();
+  }
+
+  // G4.6 — bulk delete every block in the selection (structural, blocked offline).
+  async function deleteSelectedBlocks() {
+    if (selectedIds.size === 0 || offline) return;
+    const ids = [...selectedIds];
+    const results = await Promise.all(ids.map((id) => deleteBlockAction(id)));
+    const removed = new Set(ids.filter((_, i) => results[i]?.ok));
+    if (removed.size === 0) return;
+    setBlocks((prev) => prev.filter((b) => !removed.has(b.id)));
+    clearSelection();
   }
 
   async function moveSelected(direction: -1 | 1) {
@@ -234,7 +280,7 @@ export function DocumentEditor({
     cursor: 'pointer',
     borderRadius: 6,
     padding: '2px 8px',
-    outline: selected === id ? '2px solid var(--accent, #7aa2f7)' : '2px solid transparent',
+    outline: selectedIds.has(id) ? '2px solid var(--accent, #7aa2f7)' : '2px solid transparent',
     // Spec value change = urgent (warn bar); brief edit = light (info bar, G7.3).
     boxShadow: staleSet.has(id)
       ? 'inset 3px 0 0 0 var(--warn, #e0af68)'
@@ -297,9 +343,9 @@ export function DocumentEditor({
                     <button
                       type="button"
                       className="specs-value-button"
-                      aria-current={selected === item.id ? 'true' : undefined}
+                      aria-current={selectedIds.has(item.id) ? 'true' : undefined}
                       onClick={() => {
-                        setSelected(item.id);
+                        selectOnly(item.id);
                         document.getElementById(`block-${item.id}`)?.scrollIntoView({
                           behavior: 'smooth',
                           block: 'start',
@@ -319,7 +365,20 @@ export function DocumentEditor({
         mode === 'edit' && showProps ? (
           <div className="editor-props">
             <h2 className="specs-section__title">Properties</h2>
-            {selectedBlock ? (
+            {selectedIds.size > 1 ? (
+              <div className="specs-form">
+                <p className="specs-grid__meta">{selectedIds.size} blocks selected.</p>
+                <div className="specs-form--row" style={{ marginTop: 8, gap: 4 }}>
+                  <Button size="sm" variant="danger" disabled={offline} onClick={deleteSelectedBlocks}>
+                    Delete selected
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={clearSelection}>
+                    Clear
+                  </Button>
+                </div>
+                <p className="specs-grid__meta">⌘/Ctrl-click to toggle · Shift-click to range-select.</p>
+              </div>
+            ) : selectedBlock ? (
               <>
                 <dl className="specs-form">
                   <div className="specs-form--row">
@@ -530,7 +589,7 @@ export function DocumentEditor({
                     key={b.id}
                     id={`block-${b.id}`}
                     className={`editor-block editor-block--${c.type}`}
-                    onClick={() => setSelected(b.id)}
+                    onClick={(e) => clickSelect(b.id, e)}
                     style={wrapperStyle(b.id)}
                     {...dropProps(b.id)}
                   >
@@ -551,12 +610,12 @@ export function DocumentEditor({
                   id={`block-${b.id}`}
                   role="button"
                   tabIndex={0}
-                  aria-pressed={selected === b.id}
-                  onClick={() => setSelected(b.id)}
+                  aria-pressed={selectedIds.has(b.id)}
+                  onClick={(e) => clickSelect(b.id, e)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault();
-                      setSelected(b.id);
+                      selectOnly(b.id);
                     }
                   }}
                   style={wrapperStyle(b.id)}
