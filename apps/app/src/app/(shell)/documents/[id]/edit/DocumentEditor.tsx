@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, type CSSProperties } from 'react';
+import { useEffect, useState, type CSSProperties, type DragEvent } from 'react';
 import Link from 'next/link';
 import { BlockRenderer, buildOutline } from '@arther/block-renderer';
 import {
@@ -66,6 +66,8 @@ export function DocumentEditor({
   const briefStaleSet = new Set(staleBriefBlockIds);
   const [blocks, setBlocks] = useState(initialBlocks);
   const [selected, setSelected] = useState<string | null>(null);
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
   const [showOutline, setShowOutline] = useState(true);
   const [showProps, setShowProps] = useState(true);
   const [mode, setMode] = useState<'edit' | 'preview'>('edit');
@@ -195,6 +197,21 @@ export function DocumentEditor({
     await reorderBlocksAction(next.map((b) => b.id));
   }
 
+  // G4.6 — drag a block (by its handle) and drop it before another to reorder.
+  async function moveBlock(toId: string) {
+    const fromId = dragId;
+    setDragId(null);
+    setDragOverId(null);
+    if (!fromId || fromId === toId || offline) return;
+    const moved = blocks.find((b) => b.id === fromId);
+    const rest = blocks.filter((b) => b.id !== fromId);
+    const at = rest.findIndex((b) => b.id === toId);
+    if (!moved || at < 0) return;
+    const next = [...rest.slice(0, at), moved, ...rest.slice(at)];
+    setBlocks(next);
+    await reorderBlocksAction(next.map((b) => b.id));
+  }
+
   // G7.1 — regenerate the selected prose block against the current spec graph.
   // The action writes through the DB, so on success we replace the local content
   // to match (no save enqueue). The resolution for a staleness-flagged block.
@@ -226,6 +243,45 @@ export function DocumentEditor({
         : undefined,
     background: matchingIdSet.has(id) ? 'var(--accent-subtle, rgba(122, 162, 247, 0.12))' : undefined,
   });
+
+  // G4.6 — drag-to-reorder: a flex wrapper with a grip handle, the block body as
+  // the drop target (a dragged block lands before the one it's dropped on).
+  const wrapperStyle = (id: string): CSSProperties => ({
+    ...blockStyle(id),
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: 4,
+    borderTop:
+      dragOverId === id && dragId && dragId !== id
+        ? '2px solid var(--accent, #7aa2f7)'
+        : '2px solid transparent',
+  });
+  const dropProps = (id: string) => ({
+    onDragOver: (e: DragEvent) => {
+      e.preventDefault();
+      if (dragId && dragOverId !== id) setDragOverId(id);
+    },
+    onDrop: (e: DragEvent) => {
+      e.preventDefault();
+      void moveBlock(id);
+    },
+  });
+  const handle = (id: string) => (
+    <span
+      role="button"
+      aria-label="Drag to reorder"
+      className="editor-drag-handle"
+      draggable={!offline}
+      onDragStart={() => setDragId(id)}
+      onDragEnd={() => {
+        setDragId(null);
+        setDragOverId(null);
+      }}
+      style={{ cursor: offline ? 'default' : 'grab', userSelect: 'none', color: 'var(--text-tertiary, #888)', lineHeight: 1.4 }}
+    >
+      ⠿
+    </span>
+  );
 
   return (
     <AppShell
@@ -475,13 +531,17 @@ export function DocumentEditor({
                     id={`block-${b.id}`}
                     className={`editor-block editor-block--${c.type}`}
                     onClick={() => setSelected(b.id)}
-                    style={blockStyle(b.id)}
+                    style={wrapperStyle(b.id)}
+                    {...dropProps(b.id)}
                   >
-                    <RichTextEditor
-                      key={`${b.id}:${replaceVersion}`}
-                      value={c.content}
-                      onSave={(rt) => persist(b.id, { ...c, content: rt })}
-                    />
+                    {handle(b.id)}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <RichTextEditor
+                        key={`${b.id}:${replaceVersion}`}
+                        value={c.content}
+                        onSave={(rt) => persist(b.id, { ...c, content: rt })}
+                      />
+                    </div>
                   </div>
                 );
               }
@@ -499,9 +559,13 @@ export function DocumentEditor({
                       setSelected(b.id);
                     }
                   }}
-                  style={blockStyle(b.id)}
+                  style={wrapperStyle(b.id)}
+                  {...dropProps(b.id)}
                 >
-                  <BlockRenderer blocks={[c]} resolved={resolved} />
+                  {handle(b.id)}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <BlockRenderer blocks={[c]} resolved={resolved} />
+                  </div>
                 </div>
               );
             })
