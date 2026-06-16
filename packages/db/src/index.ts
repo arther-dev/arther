@@ -206,6 +206,7 @@ export {
   revokeInvitation,
   transferOwnership,
   updateMemberRole,
+  updateWorkspaceLogo,
   updateWorkspaceName,
   type InvitationLookup,
   type InvitationRow,

@@ -14,6 +14,7 @@ import {
   RenameWorkspaceForm,
   RestoreWorkspaceBanner,
   RevokeInvitationButton,
+  WorkspaceLogoForm,
 } from './SettingsForms';
 
 /**
@@ -21,7 +22,7 @@ import {
  * members with role/remove/transfer (F4.2/F4.4) · invitations with accept
  * links + revoke (F4.3). The owner-only Danger Zone (F8.7) soft-deletes the
  * workspace (14-day grace + restore). No rail — Settings is one of the rail-less
- * modes (Handoff 02 region matrix). Logo upload follows with Storage.
+ * modes (Handoff 02 region matrix). The workspace logo uploads to Storage (F4.5).
  */
 export default async function SettingsPage() {
   const supabase = await getSupabaseServer();
@@ -100,6 +101,15 @@ export default async function SettingsPage() {
             Portal address: <code>{workspace.slug}</code> — the slug is permanent (portal
             subdomain).
           </p>
+          {canManage ? (
+            <WorkspaceLogoForm logoUrl={workspace.logoUrl} />
+          ) : workspace.logoUrl ? (
+            <img
+              src={workspace.logoUrl}
+              alt="Workspace logo"
+              style={{ height: 40, width: 40, objectFit: 'contain' }}
+            />
+          ) : null}
         </section>
 
         <section className="specs-section">

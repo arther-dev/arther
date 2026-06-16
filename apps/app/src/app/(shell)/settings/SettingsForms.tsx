@@ -8,10 +8,12 @@ import {
   changeRoleAction,
   inviteMemberAction,
   removeMemberAction,
+  removeWorkspaceLogoAction,
   renameWorkspaceAction,
   requestWorkspaceDeletionAction,
   revokeInvitationAction,
   transferOwnershipAction,
+  uploadWorkspaceLogoAction,
   type SettingsFormState,
 } from './actions';
 
@@ -34,6 +36,56 @@ export function RenameWorkspaceForm({ currentName }: { currentName: string }) {
       </Button>
       {state.done ? <p className="specs-grid__meta">Saved.</p> : null}
     </form>
+  );
+}
+
+/** F4.5 — workspace logo: shows the current mark, uploads a new one, or clears it. */
+export function WorkspaceLogoForm({ logoUrl }: { logoUrl: string | null }) {
+  const [upState, upAction, upPending] = useActionState<SettingsFormState, FormData>(
+    uploadWorkspaceLogoAction,
+    {},
+  );
+  const [rmState, rmAction, rmPending] = useActionState<SettingsFormState, FormData>(
+    removeWorkspaceLogoAction,
+    {},
+  );
+  return (
+    <div className="specs-form" style={{ gap: 8 }}>
+      <div className="specs-form--row" style={{ gap: 12, alignItems: 'center' }}>
+        {logoUrl ? (
+          <img
+            src={logoUrl}
+            alt="Workspace logo"
+            style={{ height: 40, width: 40, objectFit: 'contain', borderRadius: 6 }}
+          />
+        ) : (
+          <span className="specs-grid__meta">No logo yet.</span>
+        )}
+        <form action={upAction} className="specs-form--row" style={{ gap: 6 }}>
+          <input
+            type="file"
+            name="logo"
+            accept="image/png,image/jpeg,image/svg+xml,image/webp,image/gif"
+            aria-label="Workspace logo file"
+            className="ui-field__input"
+          />
+          <Button type="submit" size="sm" disabled={upPending}>
+            {upPending ? 'Uploading…' : 'Upload'}
+          </Button>
+        </form>
+        {logoUrl ? (
+          <form action={rmAction}>
+            <Button type="submit" size="sm" variant="ghost" disabled={rmPending}>
+              {rmPending ? 'Removing…' : 'Remove'}
+            </Button>
+          </form>
+        ) : null}
+      </div>
+      {upState.error ? <p className="ui-field__error">{upState.error}</p> : null}
+      {rmState.error ? <p className="ui-field__error">{rmState.error}</p> : null}
+      {upState.done || rmState.done ? <p className="specs-grid__meta">Saved.</p> : null}
+      <p className="specs-grid__meta">PNG, JPEG, SVG, WebP, or GIF · up to 2 MB.</p>
+    </div>
   );
 }
 

@@ -29,23 +29,30 @@ export interface ActiveWorkspace {
   name: string;
   slug: string;
   role: WorkspaceRole;
+  logoUrl: string | null;
 }
 
 /** v1 is single-workspace (multi-workspace deferred): first membership wins. */
 export async function getActiveWorkspace(client: SupabaseClient): Promise<ActiveWorkspace | null> {
   const { data, error } = await client
     .from('workspace_members')
-    .select('role, workspaces!inner(id, name, slug)')
+    .select('role, workspaces!inner(id, name, slug, logo_url)')
     .order('joined_at', { ascending: true })
     .limit(1)
     .maybeSingle();
   if (error || !data) return null;
-  const ws = data.workspaces as unknown as { id: string; name: string; slug: string };
+  const ws = data.workspaces as unknown as {
+    id: string;
+    name: string;
+    slug: string;
+    logo_url: string | null;
+  };
   return {
     id: ws.id as WorkspaceId,
     name: ws.name,
     slug: ws.slug,
     role: data.role as WorkspaceRole,
+    logoUrl: ws.logo_url ?? null,
   };
 }
 
