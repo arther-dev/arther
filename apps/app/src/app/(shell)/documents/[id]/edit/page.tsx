@@ -1,6 +1,6 @@
 import Link from 'next/link';
-import { getActiveWorkspace, loadDocumentTree } from '@arther/db';
-import { type DocumentId } from '@arther/types';
+import { getActiveWorkspace, listStaleReferencesForDocument, loadDocumentTree } from '@arther/db';
+import { summarizeStaleness, type DocumentId } from '@arther/types';
 import { AppShell, EmptyState } from '@arther/ui';
 import { getSupabaseServer } from '../../../../../lib/supabase/server';
 import { DocumentEditor } from './DocumentEditor';
@@ -60,12 +60,16 @@ export default async function EditDocumentPage({ params }: { params: Promise<{ i
     );
   }
 
+  const stale = summarizeStaleness(await listStaleReferencesForDocument(supabase, tree.document.id));
+
   return (
     <DocumentEditor
       documentId={tree.document.id}
       revisionId={tree.revision.id}
       title={tree.document.title}
       state={tree.revision.state}
+      staleFields={stale.fields}
+      staleBlockIds={stale.blockIds}
       blocks={tree.blocks.map((b) => ({
         id: b.id,
         content: b.content,
