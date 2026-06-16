@@ -18,10 +18,12 @@ import { AppShell, Button } from '@arther/ui';
 import {
   addBlockAfterAction,
   deleteBlockAction,
+  pasteBlocksAction,
   regenerateBlockAction,
   reorderBlocksAction,
   updateBlockContentAction,
 } from './actions';
+import { readBlockClipboard, writeBlockClipboard } from './clipboard';
 import { BlockProperties } from './BlockProperties';
 import { RichTextEditor } from './RichTextEditor';
 import { useSaveQueue } from './useSaveQueue';
@@ -80,6 +82,9 @@ export function DocumentEditor({
   const [insertType, setInsertType] = useState<InsertableBlockType>('paragraph');
   const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
   const [regenError, setRegenError] = useState<string | null>(null);
+  // G4.6 — block clipboard (localStorage, so copy/paste spans documents). The
+  // count drives the Paste button's enabled/label state; read once on mount.
+  const [clipboardCount, setClipboardCount] = useState(0);
   // G4.7 find & replace
   const [findOpen, setFindOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -174,6 +179,12 @@ export function DocumentEditor({
     setReplaceStatus(`Replaced ${total} occurrence${total === 1 ? '' : 's'} in ${changed.length} block${changed.length === 1 ? '' : 's'}.`);
   }
 
+  // Seed the clipboard count from localStorage (a copy may predate this mount,
+  // e.g. copied in another document before navigating here).
+  useEffect(() => {
+    setClipboardCount(readBlockClipboard().length);
+  }, []);
+
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key !== '\\') return;
@@ -230,6 +241,36 @@ export function DocumentEditor({
     if (removed.size === 0) return;
     setBlocks((prev) => prev.filter((b) => !removed.has(b.id)));
     clearSelection();
+  }
+
+  // G4.6 — copy the selected blocks' content to the cross-document clipboard, in
+  // document order. Available offline (it never touches the server).
+  function copySelected() {
+    const ordered = blocks.filter((b) => selectedIds.has(b.id)).map((b) => b.content);
+    if (ordered.length > 0 && writeBlockClipboard(ordered)) setClipboardCount(ordered.length);
+  }
+
+  // G4.6 — paste the clipboard blocks after the selection (or at the end), as new
+  // manual blocks. Structural, so blocked offline; selects what landed.
+  async function pasteBlocks() {
+    if (offline) return;
+    const payload = readBlockClipboard();
+    if (payload.length === 0) return;
+    const res = await pasteBlocksAction({ revisionId, documentId, afterBlockId: selected, blocks: payload });
+    if (!res.ok || !res.blocks || !res.orderedIds) return;
+    const added: EditorBlock[] = res.blocks.map((b) => ({
+      id: b.id,
+      content: b.content,
+      type: b.type,
+      source: b.source,
+    }));
+    const order = res.orderedIds;
+    setBlocks((prev) => {
+      const byId = new Map<string, EditorBlock>([...prev, ...added].map((b) => [b.id, b]));
+      return order.map((id) => byId.get(id)).filter((b): b is EditorBlock => Boolean(b));
+    });
+    setSelectedIds(new Set(added.map((b) => b.id)));
+    setAnchor(added[added.length - 1]?.id ?? null);
   }
 
   async function moveSelected(direction: -1 | 1) {
@@ -369,6 +410,9 @@ export function DocumentEditor({
               <div className="specs-form">
                 <p className="specs-grid__meta">{selectedIds.size} blocks selected.</p>
                 <div className="specs-form--row" style={{ marginTop: 8, gap: 4 }}>
+                  <Button size="sm" variant="secondary" onClick={copySelected}>
+                    Copy
+                  </Button>
                   <Button size="sm" variant="danger" disabled={offline} onClick={deleteSelectedBlocks}>
                     Delete selected
                   </Button>
@@ -401,6 +445,9 @@ export function DocumentEditor({
                   </Button>
                   <Button size="sm" variant="ghost" disabled={offline} onClick={() => moveSelected(1)}>
                     Move down
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={copySelected}>
+                    Copy
                   </Button>
                   <Button size="sm" variant="danger" disabled={offline} onClick={removeSelected}>
                     Delete
@@ -479,6 +526,15 @@ export function DocumentEditor({
               </select>
               <Button size="sm" variant="primary" disabled={offline} onClick={() => insertBlock(insertType)}>
                 + Insert
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={offline || clipboardCount === 0}
+                onClick={pasteBlocks}
+                title={clipboardCount === 0 ? 'Copy blocks first' : `Paste ${clipboardCount} copied block${clipboardCount === 1 ? '' : 's'}`}
+              >
+                Paste{clipboardCount > 0 ? ` (${clipboardCount})` : ''}
               </Button>
               <Button
                 size="sm"

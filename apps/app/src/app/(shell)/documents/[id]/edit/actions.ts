@@ -166,6 +166,79 @@ export async function addBlockAfterAction(input: {
   }
 }
 
+// The scalar envelope stays on classic zod (v3); the block array is validated
+// with `blockContentSchema` (zod/v4) standalone — the two zod majors must never
+// be mixed in one schema (a v4 schema inside a v3 `z.object` breaks the build).
+const pasteEnvelopeSchema = z.object({
+  revisionId: z.string().uuid(),
+  documentId: z.string().uuid(),
+  afterBlockId: z.string().uuid().nullable(),
+});
+const pasteBlocksSchema = blockContentSchema.array().min(1).max(100);
+
+export interface PasteResult extends SaveResult {
+  blocks?: { id: string; content: BlockContent; type: string; source: string }[];
+  orderedIds?: string[];
+}
+
+/**
+ * G4.6 — paste copied blocks (from the editor's localStorage clipboard) after a
+ * block, or at the end. Each is re-validated through `blockContentSchema` and
+ * inserted as a fresh `manual` block (the content travels, not the source doc's
+ * spec/brief references), then the revision is reordered to land them in place.
+ */
+export async function pasteBlocksAction(input: {
+  revisionId: string;
+  documentId: string;
+  afterBlockId: string | null;
+  blocks: unknown[];
+}): Promise<PasteResult> {
+  const env = pasteEnvelopeSchema.safeParse(input);
+  if (!env.success) return { ok: false, error: 'Invalid request.' };
+  const parsedBlocks = pasteBlocksSchema.safeParse(input.blocks);
+  if (!parsedBlocks.success) return { ok: false, error: 'Invalid request.' };
+  const auth = await authorizeDocWrite();
+  if ('error' in auth) return { ok: false, error: auth.error };
+
+  try {
+    const current = await loadRevisionBlocks(auth.supabase, env.data.revisionId as DocumentRevisionId);
+    const inserted = await insertBlocks(auth.supabase, {
+      workspaceId: auth.workspaceId,
+      documentId: env.data.documentId as DocumentId,
+      revisionId: env.data.revisionId as DocumentRevisionId,
+      userId: auth.userId,
+      blocks: parsedBlocks.data.map((content, i) => ({
+        type: content.type,
+        source: 'manual',
+        displayOrder: current.length + i,
+        content,
+        textContent: blockPlainText(content),
+      })),
+    });
+    if (inserted.length === 0) return { ok: false, error: 'Could not paste the blocks.' };
+
+    const existingIds = current.map((b) => b.id as string);
+    const newIds = inserted.map((b) => b.id as string);
+    const at = env.data.afterBlockId ? existingIds.indexOf(env.data.afterBlockId) : -1;
+    const orderedIds = [...existingIds];
+    orderedIds.splice(at >= 0 ? at + 1 : existingIds.length, 0, ...newIds);
+    await reorderBlocks(auth.supabase, orderedIds as BlockId[], auth.userId);
+
+    return {
+      ok: true,
+      blocks: inserted.map((b) => ({
+        id: b.id as string,
+        content: b.content,
+        type: b.type,
+        source: b.source,
+      })),
+      orderedIds,
+    };
+  } catch {
+    return { ok: false, error: 'Could not paste the blocks.' };
+  }
+}
+
 export async function deleteBlockAction(blockId: string): Promise<SaveResult> {
   if (!z.string().uuid().safeParse(blockId).success) return { ok: false, error: 'Invalid block.' };
   const auth = await authorizeDocWrite();
