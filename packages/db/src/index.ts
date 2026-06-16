@@ -114,6 +114,10 @@ export { commitGeneration, type GenerationCommitBlock } from './generation-commi
 export { loadGenerationFields, type GenerationFieldRow } from './generation-context';
 export { listStaleReferencesForDocument, type StaleReference } from './staleness';
 export {
+  resolveDomainOwnersForDocument,
+  type ResolvedCategoryOwner,
+} from './domain-ownership';
+export {
   assertWorkspaceScope,
   MissingWorkspaceScopeError,
   scopedServiceQuery,
