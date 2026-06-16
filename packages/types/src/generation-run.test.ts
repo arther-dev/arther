@@ -5,6 +5,8 @@ import {
   generationRunCreateSchema,
   isTerminalRunStatus,
   isTerminalSectionStatus,
+  shouldOpenEditorOnCompletion,
+  shouldPollRun,
   summarizeRunProgress,
   type GenerationSectionStatus,
 } from './generation-run';
@@ -81,5 +83,41 @@ describe('generationRunCreateSchema', () => {
     expect(
       generationRunCreateSchema.safeParse({ productId: UUID, documentTypeId: UUID, sections: [] }).success,
     ).toBe(false);
+  });
+});
+
+describe('shouldPollRun (G2.8 live surface)', () => {
+  it('polls only a running run', () => {
+    expect(shouldPollRun('running')).toBe(true);
+  });
+
+  it('does not poll a queued run (no worker under the inline model)', () => {
+    expect(shouldPollRun('queued')).toBe(false);
+  });
+
+  it('does not poll a terminal run', () => {
+    for (const s of ['succeeded', 'partial', 'failed', 'cancelled'] as const) {
+      expect(shouldPollRun(s)).toBe(false);
+    }
+  });
+});
+
+describe('shouldOpenEditorOnCompletion (G2.8)', () => {
+  it('opens the editor when a watched run succeeds with a document', () => {
+    expect(shouldOpenEditorOnCompletion({ watched: true, status: 'succeeded', documentId: UUID })).toBe(true);
+    expect(shouldOpenEditorOnCompletion({ watched: true, status: 'partial', documentId: UUID })).toBe(true);
+  });
+
+  it('does not open when the run was not being watched (revisiting a finished run)', () => {
+    expect(shouldOpenEditorOnCompletion({ watched: false, status: 'succeeded', documentId: UUID })).toBe(false);
+  });
+
+  it('does not open without a committed document', () => {
+    expect(shouldOpenEditorOnCompletion({ watched: true, status: 'succeeded', documentId: null })).toBe(false);
+  });
+
+  it('does not open on a failed or cancelled run', () => {
+    expect(shouldOpenEditorOnCompletion({ watched: true, status: 'failed', documentId: UUID })).toBe(false);
+    expect(shouldOpenEditorOnCompletion({ watched: true, status: 'cancelled', documentId: UUID })).toBe(false);
   });
 });
