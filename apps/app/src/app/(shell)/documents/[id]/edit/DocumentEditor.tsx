@@ -92,8 +92,9 @@ export function DocumentEditor({
   const [matchIndex, setMatchIndex] = useState(0);
   const [replaceVersion, setReplaceVersion] = useState(0);
   const [replaceStatus, setReplaceStatus] = useState<string | null>(null);
-  const { enqueue, status: saveStatus, offline } = useSaveQueue<BlockContent>((id, content) =>
-    updateBlockContentAction(id, content).then((r) => r.ok),
+  const { enqueue, status: saveStatus, offline, restored } = useSaveQueue<BlockContent>(
+    (id, content) => updateBlockContentAction(id, content).then((r) => r.ok),
+    { persistKey: `arther:save-queue:${documentId}` },
   );
 
   const saveLabel =
@@ -183,6 +184,17 @@ export function DocumentEditor({
   // e.g. copied in another document before navigating here).
   useEffect(() => {
     setClipboardCount(readBlockClipboard().length);
+  }, []);
+
+  // G5.2 — show any edits restored from a previous session's save queue (made
+  // offline, then the tab reloaded before they drained): apply them over the
+  // server's blocks and remount the inline editors so prose reflects them. The
+  // queue itself re-drains them to the server on mount.
+  useEffect(() => {
+    if (restored.length === 0) return;
+    const byId = new Map(restored.map((r) => [r.id, r.value]));
+    setBlocks((prev) => prev.map((b) => (byId.has(b.id) ? { ...b, content: byId.get(b.id)! } : b)));
+    setReplaceVersion((v) => v + 1);
   }, []);
 
   useEffect(() => {

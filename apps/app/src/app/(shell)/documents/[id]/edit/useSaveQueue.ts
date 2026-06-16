@@ -9,17 +9,58 @@ import { SaveQueue, type SaveStatus } from '@arther/types';
  * a flush drains in order and stops if the network drops, keeping unsent edits
  * queued; the `online` event resumes the drain. `status` drives the always-on
  * Connected/Saving/Offline indicator.
+ *
+ * G5.2 durability: with a `persistKey`, the pending queue is mirrored to
+ * localStorage on every change and rehydrated on mount, so edits made offline
+ * survive a reload or crash — they drain on the next mount, and `restored` lets
+ * the editor show them immediately. The save action re-validates every value, so
+ * a stale or tampered entry can never corrupt a block.
  */
 export function useSaveQueue<T>(
   save: (id: string, value: T) => Promise<boolean>,
-  debounceMs = 600,
+  options: { persistKey?: string; debounceMs?: number } = {},
 ) {
+  const { persistKey, debounceMs = 600 } = options;
   const queue = useRef(new SaveQueue<T>());
   const flushing = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [status, setStatus] = useState<SaveStatus>('idle');
 
-  const sync = useCallback(() => setStatus(queue.current.status()), []);
+  // Rehydrate the persisted queue once, before first render, so `restored` is
+  // ready for the editor's mount effect and the drain on reconnect.
+  const restored = useRef<Array<{ id: string; value: T }>>([]);
+  const inited = useRef(false);
+  if (!inited.current) {
+    inited.current = true;
+    if (persistKey && typeof window !== 'undefined') {
+      try {
+        const raw = window.localStorage.getItem(persistKey);
+        const parsed = raw ? JSON.parse(raw) : null;
+        if (Array.isArray(parsed)) {
+          restored.current = parsed as Array<{ id: string; value: T }>;
+          queue.current.hydrate(restored.current);
+        }
+      } catch {
+        // A corrupt entry is dropped — the action re-validates anyway.
+      }
+    }
+  }
+
+  const persist = useCallback(() => {
+    if (!persistKey || typeof window === 'undefined') return;
+    const items = queue.current.entries();
+    try {
+      if (items.length === 0) window.localStorage.removeItem(persistKey);
+      else window.localStorage.setItem(persistKey, JSON.stringify(items));
+    } catch {
+      // Storage full or unavailable — the in-memory queue still drives saving.
+    }
+  }, [persistKey]);
+
+  const sync = useCallback(() => {
+    setStatus(queue.current.status());
+    persist();
+  }, [persist]);
 
   const flush = useCallback(async () => {
     if (flushing.current || !queue.current.isOnline()) return;
@@ -70,6 +111,8 @@ export function useSaveQueue<T>(
     };
     queue.current.setOnline(typeof navigator === 'undefined' ? true : navigator.onLine);
     sync();
+    // Drain anything rehydrated from a previous session (G5.2).
+    if (queue.current.pendingCount() > 0) void flush();
     window.addEventListener('online', onOnline);
     window.addEventListener('offline', onOffline);
     return () => {
@@ -78,5 +121,5 @@ export function useSaveQueue<T>(
     };
   }, [flush, sync]);
 
-  return { enqueue, status, offline: status === 'offline' };
+  return { enqueue, status, offline: status === 'offline', restored: restored.current };
 }

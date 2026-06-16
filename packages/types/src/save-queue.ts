@@ -57,6 +57,22 @@ export class SaveQueue<T> {
     return this.pending.size;
   }
 
+  /**
+   * All pending edits (latest value per key), in first-edit order — the snapshot
+   * the hook persists to localStorage so unsent edits survive a reload/crash
+   * (G5.2). Inflight items are included: a save that didn't confirm before the
+   * reload must be retried, not dropped.
+   */
+  entries(): Array<{ id: string; value: T }> {
+    return [...this.pending].map(([id, value]) => ({ id, value }));
+  }
+
+  /** Seed pending edits from a persisted snapshot on mount. Clears the error flag. */
+  hydrate(entries: ReadonlyArray<{ id: string; value: T }>): void {
+    for (const { id, value } of entries) this.pending.set(id, value);
+    this.errored = false;
+  }
+
   status(): SaveStatus {
     if (!this.online) return 'offline';
     if (this.inflight.size > 0) return 'saving';
