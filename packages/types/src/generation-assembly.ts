@@ -41,6 +41,10 @@ export interface GenerationCommitBlock {
    *  writes a block_brief_reference (with the fragment's content snapshot) after
    *  commit. Null/absent for blocks not sourced from the brief. */
   briefKey?: string | null;
+  /** G2.7 — set on a placeholder block standing in for a required-but-empty brief
+   *  fragment; the app writes a placeholder_brief_reference after commit so filling
+   *  the fragment can offer to regenerate this block (G7.2). */
+  placeholderBriefKey?: string | null;
 }
 
 /** What the spec graph supplies for one referenced field at resolution time. */
