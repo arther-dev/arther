@@ -18,6 +18,8 @@ import {
   deleteRelease,
   getActiveWorkspace,
   getFieldChangeImpact,
+  clearPlaceholder,
+  listPlaceholdersForFragment,
   listReferenceEdges,
   membershipLookupFor,
   propagateFieldChange,
@@ -45,6 +47,7 @@ import {
   type UserId,
 } from '@arther/types';
 import { getSupabaseServer } from '../../../lib/supabase/server';
+import { regenerateBlockAction } from '../documents/[id]/edit/actions';
 
 export interface SpecsFormState {
   error?: string;
@@ -54,6 +57,11 @@ export interface SpecsFormState {
    * confirmation before committing. Cleared (absent) on a committed save.
    */
   impact?: FieldChangeImpact;
+  /** G7.2 — after saving a brief fragment, how many placeholder blocks are now
+   *  fillable; the editor offers a one-click fill. */
+  placeholdersWaiting?: number;
+  /** G7.2 — how many placeholders the fill action just regenerated. */
+  placeholdersFilled?: number;
 }
 
 /**
@@ -572,7 +580,67 @@ export async function saveBriefFragmentAction(
   }
   revalidatePath('/specs');
   revalidatePath('/specs/library');
+
+  // G7.2 — once the fragment has content, surface the placeholder blocks waiting
+  // on it so the author can fill them in one click.
+  if (content.length > 0) {
+    try {
+      const waiting = await listPlaceholdersForFragment(
+        auth.supabase,
+        parsed.data.entityType,
+        parsed.data.entityId,
+        parsed.data.key,
+      );
+      if (waiting.length > 0) return { placeholdersWaiting: waiting.length };
+    } catch {
+      // Best-effort — never fail the save over the offer.
+    }
+  }
   return {};
+}
+
+/**
+ * G7.2 — fill the placeholder blocks waiting on a just-saved brief fragment:
+ * regenerate each (now that the fragment has content) and drop its placeholder
+ * marker. Reuses the G7.1 single-block regeneration; gated/rate-limited inside it.
+ */
+export async function fillPlaceholdersAction(
+  _prev: SpecsFormState,
+  formData: FormData,
+): Promise<SpecsFormState> {
+  const parsed = z
+    .object({
+      entityType: z.enum(['product', 'component']),
+      entityId: z.string().uuid(),
+      key: requiredText('Missing the fragment key.'),
+    })
+    .safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { error: 'Invalid request.' };
+
+  const auth = await authorize('spec.write');
+  if ('error' in auth) return { error: auth.error };
+
+  let filled = 0;
+  try {
+    const waiting = await listPlaceholdersForFragment(
+      auth.supabase,
+      parsed.data.entityType,
+      parsed.data.entityId,
+      parsed.data.key,
+    );
+    for (const ph of waiting) {
+      const res = await regenerateBlockAction(ph.blockId);
+      if (res.ok) {
+        await clearPlaceholder(auth.supabase, ph.blockId, auth.userId);
+        filled += 1;
+      }
+    }
+  } catch {
+    return { error: 'Could not fill the waiting blocks.' };
+  }
+  revalidatePath('/specs');
+  revalidatePath('/specs/library');
+  return { placeholdersFilled: filled };
 }
 
 const archiveSchema = z.object({
