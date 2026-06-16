@@ -280,33 +280,34 @@ describe('RLS — members read, editors write, strangers isolated', () => {
 });
 
 describe('optimistic-lock conditional save (G5.4)', () => {
+  // Fixed millisecond-precision tokens: the production path round-trips the
+  // timestamp as a full-precision ISO string through PostgREST, but a raw-SQL
+  // probe would read it back as a JS Date (millisecond truncation), so pin the
+  // values to avoid sub-millisecond drift and assert the SQL semantics directly.
   it('writes only when the version token matches, and conflicts when it is stale', async () => {
     const target = blockIds[2]!;
-    // Establish a known version token (the editor's last-seen value).
-    const t1 = (
-      await editor`
-        update public.blocks set last_edited_by = ${editorId}, last_edited_at = now()
-        where id = ${target} returning last_edited_at
-      `
-    )[0]!.last_edited_at as string;
+    const token = '2026-01-01T00:00:00.000Z';
+    await editor`
+      update public.blocks set last_edited_by = ${editorId}, last_edited_at = ${token}
+      where id = ${target}
+    `;
 
     // A stale token (someone else moved the block ahead) updates nothing.
     const stale = await editor`
       update public.blocks
-      set content = ${editor.json(para('mine'))}, last_edited_at = now()
-      where id = ${target} and last_edited_at = ${new Date(0).toISOString()}
+      set content = ${editor.json(para('mine'))}, last_edited_at = ${'2020-01-01T00:00:00.000Z'}
+      where id = ${target} and last_edited_at = ${'2019-01-01T00:00:00.000Z'}
       returning id
     `;
     expect(stale).toHaveLength(0);
 
-    // The matching token updates exactly one row and advances the token.
+    // The matching token updates exactly one row.
     const ok = await editor`
       update public.blocks
-      set content = ${editor.json(para('mine'))}, last_edited_by = ${editorId}, last_edited_at = now()
-      where id = ${target} and last_edited_at = ${t1}
-      returning last_edited_at
+      set content = ${editor.json(para('mine'))}, last_edited_by = ${editorId}, last_edited_at = ${'2026-02-02T00:00:00.000Z'}
+      where id = ${target} and last_edited_at = ${token}
+      returning id
     `;
     expect(ok).toHaveLength(1);
-    expect(ok[0]!.last_edited_at).not.toBe(t1);
   });
 });
