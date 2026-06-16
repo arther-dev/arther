@@ -112,6 +112,7 @@ export {
 export { listPreflightFields } from './generation-preflight';
 export { commitGeneration, type GenerationCommitBlock } from './generation-commit';
 export { loadGenerationFields, type GenerationFieldRow } from './generation-context';
+export { listStaleReferencesForDocument, type StaleReference } from './staleness';
 export {
   assertWorkspaceScope,
   MissingWorkspaceScopeError,

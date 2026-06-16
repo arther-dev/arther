@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { BlockRenderer } from '@arther/block-renderer';
-import { getActiveWorkspace, loadDocumentTree } from '@arther/db';
-import { type DocumentId } from '@arther/types';
+import { getActiveWorkspace, listStaleReferencesForDocument, loadDocumentTree } from '@arther/db';
+import { summarizeStaleness, type DocumentId } from '@arther/types';
 import { AppShell, EmptyState } from '@arther/ui';
 import { getSupabaseServer } from '../../../../lib/supabase/server';
 
@@ -61,6 +61,8 @@ export default async function DocumentPage({ params }: { params: Promise<{ id: s
     );
   }
 
+  const stale = summarizeStaleness(await listStaleReferencesForDocument(supabase, tree.document.id));
+
   return (
     <AppShell>
       <article className="br-document specs-content">
@@ -74,6 +76,12 @@ export default async function DocumentPage({ params }: { params: Promise<{ id: s
             Edit
           </Link>
         </header>
+        {stale.fieldCount > 0 ? (
+          <p className="ui-field__error" role="status">
+            {stale.fieldCount} spec value{stale.fieldCount === 1 ? '' : 's'} changed since this draft
+            was generated ({stale.fields.join(', ')}) — review in the editor.
+          </p>
+        ) : null}
         {tree.blocks.length > 0 ? (
           <BlockRenderer blocks={tree.blocks.map((b) => b.content)} />
         ) : (

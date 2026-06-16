@@ -35,14 +35,19 @@ export function DocumentEditor({
   revisionId,
   title,
   state,
+  staleFields,
+  staleBlockIds,
   blocks: initialBlocks,
 }: {
   documentId: string;
   revisionId: string;
   title: string;
   state: string;
+  staleFields: string[];
+  staleBlockIds: string[];
   blocks: EditorBlock[];
 }) {
+  const staleSet = new Set(staleBlockIds);
   const [blocks, setBlocks] = useState(initialBlocks);
   const [selected, setSelected] = useState<string | null>(null);
   const [showOutline, setShowOutline] = useState(true);
@@ -127,6 +132,7 @@ export function DocumentEditor({
     borderRadius: 6,
     padding: '2px 8px',
     outline: selected === id ? '2px solid var(--accent, #7aa2f7)' : '2px solid transparent',
+    boxShadow: staleSet.has(id) ? 'inset 3px 0 0 0 var(--warn, #e0af68)' : undefined,
   });
 
   return (
@@ -258,6 +264,13 @@ export function DocumentEditor({
             Done
           </Link>
         </header>
+
+        {staleFields.length > 0 ? (
+          <p className="ui-field__error" role="status" style={{ marginBottom: 8 }}>
+            {staleFields.length} spec value{staleFields.length === 1 ? '' : 's'} changed since
+            generation ({staleFields.join(', ')}). Affected blocks are marked.
+          </p>
+        ) : null}
 
         {mode === 'preview' ? (
           <article className="br-document" aria-label="Document preview" style={{ maxWidth: 760 }}>
