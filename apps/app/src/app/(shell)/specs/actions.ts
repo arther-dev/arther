@@ -16,6 +16,7 @@ import {
   deleteBriefFragment,
   deleteRelease,
   getActiveWorkspace,
+  getFieldChangeImpact,
   listReferenceEdges,
   membershipLookupFor,
   setArchived,
@@ -25,6 +26,7 @@ import {
 } from '@arther/db';
 import {
   briefFragmentFormSchema,
+  fieldChangeHasImpact,
   fieldTypeSchema,
   isOverridableFieldType,
   optionalText,
@@ -32,6 +34,7 @@ import {
   TEXT_LIMITS,
   wouldCreateReferenceCycle,
   type ComponentId,
+  type FieldChangeImpact,
   type ProductId,
   type ReleaseId,
   type SpecFieldId,
@@ -42,6 +45,12 @@ import { getSupabaseServer } from '../../../lib/supabase/server';
 
 export interface SpecsFormState {
   error?: string;
+  /**
+   * G6.6 — set when a global value change would ripple into documents and the
+   * author hasn't confirmed yet: the editor shows the blast radius and asks for
+   * confirmation before committing. Cleared (absent) on a committed save.
+   */
+  impact?: FieldChangeImpact;
 }
 
 /**
@@ -236,6 +245,18 @@ export async function updateFieldValueAction(
           'That reference would create a loop — the selected component already references this one (directly or through a chain).',
       };
     }
+  }
+
+  // G6.6 — pre-commit impact: a global value change ripples into every document
+  // that cites this field (its inline tokens go stale). Surface that blast radius
+  // and require an explicit confirm before committing. Opt-in via the editor's
+  // hidden `impactCheck` (the table editor saves directly); a zero-impact change
+  // commits without friction.
+  const wantsImpactCheck = formData.get('impactCheck') === 'true';
+  const confirmed = formData.get('confirmed') === 'true';
+  if (wantsImpactCheck && !confirmed) {
+    const impact = await getFieldChangeImpact(auth.supabase, head.data.fieldId as SpecFieldId);
+    if (fieldChangeHasImpact(impact)) return { impact };
   }
 
   try {
