@@ -12,6 +12,9 @@ import {
   PERMITTED_CHILD_BLOCK_TYPES,
   richTextContentSchema,
   textMarkSchema,
+  INSERTABLE_BLOCK_TYPES,
+  defaultBlockContent,
+  insertableBlockLabel,
 } from './block-content';
 
 describe('rich text', () => {
@@ -230,3 +233,22 @@ describe('generation tool-use contract', () => {
     expect((schema.properties as Record<string, unknown>).blocks).toBeTruthy();
   });
 });
+
+describe('manual block insertion (G4.6)', () => {
+  it('every insertable default is a valid BlockContent of the requested type', () => {
+    for (const type of INSERTABLE_BLOCK_TYPES) {
+      const content = defaultBlockContent(type);
+      expect(content.type).toBe(type);
+      const parsed = blockContentSchema.safeParse(content);
+      expect(parsed.success, `${type} default should pass blockContentSchema`).toBe(true);
+    }
+  });
+
+  it('gives a human label for each insertable type', () => {
+    expect(insertableBlockLabel('section_header')).toBe('Section header');
+    expect(insertableBlockLabel('paragraph')).toBe('Paragraph');
+    for (const type of INSERTABLE_BLOCK_TYPES) {
+      expect(insertableBlockLabel(type).length).toBeGreaterThan(0);
+    }
+  });
+})

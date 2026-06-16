@@ -3,7 +3,13 @@
 import { useEffect, useState, type CSSProperties } from 'react';
 import Link from 'next/link';
 import { BlockRenderer, buildOutline } from '@arther/block-renderer';
-import { type BlockContent, type SpecFieldResolution } from '@arther/types';
+import {
+  INSERTABLE_BLOCK_TYPES,
+  insertableBlockLabel,
+  type BlockContent,
+  type InsertableBlockType,
+  type SpecFieldResolution,
+} from '@arther/types';
 import { AppShell, Button } from '@arther/ui';
 import {
   addBlockAfterAction,
@@ -56,6 +62,7 @@ export function DocumentEditor({
   const [showOutline, setShowOutline] = useState(true);
   const [showProps, setShowProps] = useState(true);
   const [mode, setMode] = useState<'edit' | 'preview'>('edit');
+  const [insertType, setInsertType] = useState<InsertableBlockType>('paragraph');
   const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
   const [regenError, setRegenError] = useState<string | null>(null);
   const { enqueue, status: saveStatus, offline } = useSaveQueue<BlockContent>((id, content) =>
@@ -99,9 +106,9 @@ export function DocumentEditor({
   }
 
   // Structural ops are immediate, not queued — blocked offline (G5.5).
-  async function addParagraph() {
+  async function insertBlock(type: InsertableBlockType) {
     if (offline) return;
-    const res = await addBlockAfterAction({ revisionId, documentId, afterBlockId: selected });
+    const res = await addBlockAfterAction({ revisionId, documentId, afterBlockId: selected, type });
     if (!res.ok || !res.block || !res.orderedIds) return;
     const block = res.block;
     const order = res.orderedIds;
@@ -280,8 +287,21 @@ export function DocumentEditor({
           </Button>
           {mode === 'edit' ? (
             <>
-              <Button size="sm" variant="primary" disabled={offline} onClick={addParagraph}>
-                + Paragraph
+              <select
+                aria-label="Block type to insert"
+                className="ui-field__input"
+                value={insertType}
+                disabled={offline}
+                onChange={(e) => setInsertType(e.target.value as InsertableBlockType)}
+              >
+                {INSERTABLE_BLOCK_TYPES.map((t) => (
+                  <option key={t} value={t}>
+                    {insertableBlockLabel(t)}
+                  </option>
+                ))}
+              </select>
+              <Button size="sm" variant="primary" disabled={offline} onClick={() => insertBlock(insertType)}>
+                + Insert
               </Button>
               <Button
                 size="sm"
