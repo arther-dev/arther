@@ -57,3 +57,45 @@ describe('SaveQueue', () => {
     expect(q.status()).toBe('pending');
   });
 });
+
+describe('SaveQueue persistence (G5.2)', () => {
+  it('entries snapshots the latest value per key in first-edit order', () => {
+    const q = new SaveQueue<string>();
+    q.enqueue('b1', 'v1');
+    q.enqueue('b2', 'w1');
+    q.enqueue('b1', 'v2'); // coalesces — newest wins, keeps original position
+    expect(q.entries()).toEqual([
+      { id: 'b1', value: 'v2' },
+      { id: 'b2', value: 'w1' },
+    ]);
+  });
+
+  it('includes inflight items so an unconfirmed save is retried after reload', () => {
+    const q = new SaveQueue<string>();
+    q.enqueue('b1', 'v1');
+    q.beginSave('b1');
+    expect(q.entries()).toEqual([{ id: 'b1', value: 'v1' }]);
+  });
+
+  it('round-trips through a fresh queue (reload): hydrate restores pending + status', () => {
+    const before = new SaveQueue<string>();
+    before.enqueue('b1', 'v1');
+    before.enqueue('b2', 'v2');
+    const snapshot = before.entries();
+
+    const after = new SaveQueue<string>();
+    after.hydrate(snapshot);
+    expect(after.batch()).toEqual(snapshot);
+    expect(after.status()).toBe('pending');
+  });
+
+  it('hydrate clears any prior error flag', () => {
+    const q = new SaveQueue<string>();
+    q.enqueue('b1', 'v1');
+    q.beginSave('b1');
+    q.failSave('b1');
+    expect(q.status()).toBe('error');
+    q.hydrate([{ id: 'b2', value: 'v2' }]);
+    expect(q.status()).toBe('pending');
+  });
+});
