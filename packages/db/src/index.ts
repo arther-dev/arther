@@ -126,6 +126,11 @@ export {
 } from './block-regeneration';
 export { resolveSpecFields } from './spec-table-resolve';
 export {
+  listPlaceholdersForFragment,
+  clearPlaceholder,
+  type PlaceholderForFill,
+} from './placeholders';
+export {
   recordAnalyticsEvent,
   type AnalyticsEvent,
   type AnalyticsEventType,
