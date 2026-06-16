@@ -3,6 +3,7 @@
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { createCanDo } from '@arther/authz';
+import { rateLimit } from '@arther/rate-limit';
 import {
   buildFieldResolver,
   buildSectionPrompt,
@@ -78,6 +79,12 @@ export async function createGenerationRunAction(
   const canDo = createCanDo(membershipLookupFor(supabase));
   if (!(await canDo({ id: user.id as UserId }, 'doc.generate', { workspaceId: workspace.id }))) {
     return { error: 'Viewers can’t generate documents — ask for an Editor seat.' };
+  }
+
+  // G8.5 — cap generations per member; each run is a multi-section paid AI call.
+  const throttle = await rateLimit('generation', user.id);
+  if (!throttle.success) {
+    return { error: `Too many generations in a short window — wait ${throttle.retryAfterSeconds}s and retry.` };
   }
 
   const type = await getDocumentType(supabase, parsed.data.documentTypeId as DocumentTypeId);

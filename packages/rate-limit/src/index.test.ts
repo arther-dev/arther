@@ -33,6 +33,16 @@ describe('MemoryRateLimiter', () => {
     expect(blocked.retryAfterSeconds).toBeLessThanOrEqual(RATE_LIMITS.import.windowSeconds);
   });
 
+  it('enforces the generation budget (G8.5)', () => {
+    const c = clock();
+    const rl = new MemoryRateLimiter(RATE_LIMITS, c.now);
+    const { limit } = RATE_LIMITS.generation; // 10
+    for (let i = 0; i < limit; i++) expect(rl.check('generation', 'user-1').success).toBe(true);
+    expect(rl.check('generation', 'user-1').success).toBe(false);
+    // A different member has an independent budget.
+    expect(rl.check('generation', 'user-2').success).toBe(true);
+  });
+
   it('frees up budget once the window slides past the oldest hit', () => {
     const c = clock();
     const rl = new MemoryRateLimiter(RATE_LIMITS, c.now);

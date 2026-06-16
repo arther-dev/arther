@@ -87,9 +87,11 @@ export function buildSectionPrompt(input: SectionPromptInput): { system: string;
     "- If a value isn't in the provided fields, do not state it. Never invent or estimate values.",
     '- Use the product brief for narrative and context, not for specification values.',
     '- Match the brand voice; keep prose clear and technical.',
+    // The section name lives in the user message (below), so the rules stay
+    // byte-stable across a run's sections — that is what prompt caching keys on.
     input.focus
       ? `- Rewrite ONLY the single ${input.focus.blockType} block described below so its prose reflects the current spec values; return exactly one ${input.focus.blockType} block, nothing else.`
-      : `- Author blocks only for this section: ${input.sectionName}.`,
+      : '- Author blocks only for the section named in the request.',
   ].join('\n');
 
   const fieldLines = input.fields.length
@@ -142,11 +144,14 @@ export interface SectionOutcome {
   error?: string;
 }
 
-/** Generate one section: structured call → resolve → zero-hallucination gate. */
+/** Generate one section: structured call → resolve → zero-hallucination gate.
+ *  `cacheSystem` marks the (stable) rules as a cacheable prefix (G8.5) — set by
+ *  multi-section document runs, left off for a one-off block regeneration. */
 export async function generateSection(
   gateway: Pick<AiGateway, 'structured'>,
   plan: SectionPlan,
   resolve: FieldResolver,
+  cacheSystem = false,
 ): Promise<SectionOutcome> {
   let section: GeneratedSection;
   try {
@@ -154,6 +159,7 @@ export async function generateSection(
       schema: generatedSectionSchema,
       system: plan.prompt.system,
       user: plan.prompt.user,
+      cacheSystem,
     });
   } catch (err) {
     return {
@@ -212,7 +218,8 @@ export async function generateDocument(deps: GenerateDocumentDeps): Promise<Gene
   const outcomes: SectionOutcome[] = [];
   for (const plan of deps.sections) {
     await deps.onSectionStart?.(plan.sectionId);
-    const outcome = await generateSection(deps.gateway, plan, deps.resolve);
+    // Cache the stable rules prefix across the run's sections (G8.5).
+    const outcome = await generateSection(deps.gateway, plan, deps.resolve, true);
     if (outcome.status === 'succeeded') {
       blocks.push(sectionHeaderBlock(plan.name), ...outcome.blocks);
     }

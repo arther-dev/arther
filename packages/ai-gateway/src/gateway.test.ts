@@ -97,4 +97,30 @@ describe('createAiGateway', () => {
       gateway.structured({ schema, system: 's', user: 'u' }),
     ).rejects.toThrow(/400 output_config/);
   });
+
+  it('caches the system prefix only when cacheSystem is set (G8.5)', async () => {
+    const systems: unknown[] = [];
+    const capturing: MessagesClient = {
+      messages: {
+        stream: (params) => {
+          systems.push(params.system);
+          return {
+            finalMessage: async () => ({
+              model: 'claude-test',
+              stop_reason: 'tool_use',
+              content: [toolUse({ answer: 1 })],
+              usage: { input_tokens: 1, output_tokens: 1 },
+            }),
+          };
+        },
+      },
+    };
+    const gateway = createAiGateway({ apiKey: 'test', client: capturing });
+
+    await gateway.structured({ schema, system: 'RULES', user: 'u' });
+    expect(systems[0]).toBe('RULES'); // plain string by default — no cache-write premium
+
+    await gateway.structured({ schema, system: 'RULES', user: 'u', cacheSystem: true });
+    expect(systems[1]).toEqual([{ type: 'text', text: 'RULES', cache_control: { type: 'ephemeral' } }]);
+  });
 });

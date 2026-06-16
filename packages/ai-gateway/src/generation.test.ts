@@ -68,6 +68,20 @@ describe('buildSectionPrompt', () => {
     expect(user).toContain('A precision servo.');
     expect(user).toContain('confident, precise');
   });
+
+  it('keeps the system rules byte-stable across sections, with the section in the user message (G8.5)', () => {
+    const base = {
+      documentTypeName: 'Datasheet',
+      productName: 'Servo S2',
+      fields: [],
+      briefFragments: [],
+    };
+    const a = buildSectionPrompt({ ...base, sectionName: 'Electrical' });
+    const b = buildSectionPrompt({ ...base, sectionName: 'Mechanical' });
+    expect(a.system).toBe(b.system); // identical rules → a cacheable prefix
+    expect(a.system).not.toContain('Electrical');
+    expect(a.user).toContain('Electrical'); // the section lives in the user message
+  });
 });
 
 describe('generateSection', () => {
