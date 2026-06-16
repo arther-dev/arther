@@ -117,6 +117,7 @@ export {
   resolveDomainOwnersForDocument,
   type ResolvedCategoryOwner,
 } from './domain-ownership';
+export { propagateFieldChange, type PropagationSummary } from './propagation';
 export {
   assertWorkspaceScope,
   MissingWorkspaceScopeError,
