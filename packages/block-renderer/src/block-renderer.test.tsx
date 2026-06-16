@@ -67,6 +67,41 @@ describe('BlockRenderer', () => {
     expect(out).toContain('Specification table — 1 row');
   });
 
+  it('renders a spec_table as a live table when field values are resolved', () => {
+    const block: BlockContent = {
+      type: 'spec_table',
+      product_id: 'P1',
+      title: 'Electrical',
+      column_config: {
+        show_min: true,
+        show_typical: true,
+        show_max: true,
+        show_conditions: false,
+        show_source: true,
+        unit_preference: 'metric',
+      },
+      rows: [
+        { field_id: 'F1', component_id: 'C1', display_order: 1, visible: true },
+        { field_id: 'F2', component_id: 'C1', display_order: 0, visible: true },
+        { field_id: 'F3', component_id: 'C1', display_order: 2, visible: false },
+      ],
+    };
+    const resolved = {
+      F1: { name: 'Rated voltage', type: 'scalar', value: { value: 48, unit_id: 'u' }, unitSymbol: 'V', ownerName: 'Power board' },
+      F2: { name: 'Operating range', type: 'range', value: { min: 10, max: 36, unit_id: 'u' }, unitSymbol: 'V', ownerName: null },
+      F3: { name: 'Hidden', type: 'scalar', value: { value: 1, unit_id: 'u' }, unitSymbol: 'A', ownerName: null },
+    };
+    const out = renderToStaticMarkup(<BlockRenderer blocks={[block]} resolved={resolved as never} />);
+    expect(out).toContain('<table');
+    expect(out).not.toContain('Specification table —'); // not the placeholder
+    expect(out).toContain('Rated voltage');
+    expect(out).toContain('48 V'); // scalar → typical
+    expect(out).toContain('10 V'); // range → min
+    expect(out).toContain('36 V'); // range → max
+    expect(out).toContain('Power board'); // source = owner name
+    expect(out).not.toContain('Hidden'); // visible:false row omitted
+  });
+
   it('renders an accordion section as details with its child', () => {
     const out = html({
       type: 'accordion',

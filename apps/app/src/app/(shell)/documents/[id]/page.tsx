@@ -1,6 +1,11 @@
 import Link from 'next/link';
 import { BlockRenderer } from '@arther/block-renderer';
-import { getActiveWorkspace, listStaleReferencesForDocument, loadDocumentTree } from '@arther/db';
+import {
+  getActiveWorkspace,
+  listStaleReferencesForDocument,
+  loadDocumentTree,
+  resolveSpecFields,
+} from '@arther/db';
 import { summarizeStaleness, type DocumentId } from '@arther/types';
 import { AppShell, EmptyState } from '@arther/ui';
 import { getSupabaseServer } from '../../../../lib/supabase/server';
@@ -63,6 +68,11 @@ export default async function DocumentPage({ params }: { params: Promise<{ id: s
 
   const stale = summarizeStaleness(await listStaleReferencesForDocument(supabase, tree.document.id));
 
+  // G4 live data blocks — resolve current field values for spec_table rendering.
+  const resolved = tree.blocks.some((b) => b.content.type === 'spec_table')
+    ? await resolveSpecFields(supabase, tree.document.product_id, workspace.id)
+    : undefined;
+
   return (
     <AppShell>
       <article className="br-document specs-content">
@@ -83,7 +93,7 @@ export default async function DocumentPage({ params }: { params: Promise<{ id: s
           </p>
         ) : null}
         {tree.blocks.length > 0 ? (
-          <BlockRenderer blocks={tree.blocks.map((b) => b.content)} />
+          <BlockRenderer blocks={tree.blocks.map((b) => b.content)} resolved={resolved} />
         ) : (
           <p className="specs-grid__meta">This document has no content yet.</p>
         )}
