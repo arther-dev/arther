@@ -8,6 +8,7 @@ import { AppShell, Button } from '@arther/ui';
 import {
   addBlockAfterAction,
   deleteBlockAction,
+  regenerateBlockAction,
   reorderBlocksAction,
   updateBlockContentAction,
 } from './actions';
@@ -53,6 +54,8 @@ export function DocumentEditor({
   const [showOutline, setShowOutline] = useState(true);
   const [showProps, setShowProps] = useState(true);
   const [mode, setMode] = useState<'edit' | 'preview'>('edit');
+  const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
+  const [regenError, setRegenError] = useState<string | null>(null);
   const { enqueue, status: saveStatus, offline } = useSaveQueue<BlockContent>((id, content) =>
     updateBlockContentAction(id, content).then((r) => r.ok),
   );
@@ -127,6 +130,24 @@ export function DocumentEditor({
     await reorderBlocksAction(next.map((b) => b.id));
   }
 
+  // G7.1 — regenerate the selected prose block against the current spec graph.
+  // The action writes through the DB, so on success we replace the local content
+  // to match (no save enqueue). The resolution for a staleness-flagged block.
+  async function regenerateSelected() {
+    if (!selectedBlock || offline || regeneratingId) return;
+    const id = selectedBlock.id;
+    setRegenError(null);
+    setRegeneratingId(id);
+    const res = await regenerateBlockAction(id);
+    setRegeneratingId(null);
+    if (!res.ok || !res.content) {
+      setRegenError(res.error ?? 'Could not regenerate this block.');
+      return;
+    }
+    const content = res.content;
+    setBlocks((prev) => prev.map((b) => (b.id === id ? { ...b, content } : b)));
+  }
+
   const blockStyle = (id: string): CSSProperties => ({
     cursor: 'pointer',
     borderRadius: 6,
@@ -199,6 +220,24 @@ export function DocumentEditor({
                     Delete
                   </Button>
                 </div>
+                {selectedBlock.type === 'paragraph' || selectedBlock.type === 'callout' ? (
+                  <div style={{ marginTop: 8 }}>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={offline || regeneratingId === selectedBlock.id}
+                      onClick={regenerateSelected}
+                    >
+                      {regeneratingId === selectedBlock.id
+                        ? 'Regenerating…'
+                        : staleSet.has(selectedBlock.id)
+                          ? 'Regenerate (spec changed)'
+                          : 'Regenerate'}
+                    </Button>
+                    {regenError ? <p className="ui-field__error">{regenError}</p> : null}
+                    <p className="specs-grid__meta">Rewrites this block from the current spec values.</p>
+                  </div>
+                ) : null}
               </>
             ) : (
               <p className="specs-grid__meta">Select a block to see its properties.</p>

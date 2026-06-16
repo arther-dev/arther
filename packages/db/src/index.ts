@@ -115,6 +115,11 @@ export { loadGenerationFields, type GenerationFieldRow } from './generation-cont
 export { listStaleReferencesForDocument, type StaleReference } from './staleness';
 export { getFieldChangeImpact } from './field-impact';
 export {
+  applyBlockRegeneration,
+  loadBlockRegenContext,
+  type BlockRegenContext,
+} from './block-regeneration';
+export {
   resolveDomainOwnersForDocument,
   type ResolvedCategoryOwner,
 } from './domain-ownership';

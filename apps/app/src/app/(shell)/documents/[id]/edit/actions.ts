@@ -4,9 +4,22 @@ import { z } from 'zod';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createCanDo } from '@arther/authz';
 import {
+  buildFieldResolver,
+  buildSectionPrompt,
+  createAiGateway,
+  regenerateBlock,
+  type PromptField,
+  type ResolverEntry,
+} from '@arther/ai-gateway';
+import {
+  applyBlockRegeneration,
   deleteBlock,
   getActiveWorkspace,
+  getEntityBrief,
   insertBlocks,
+  listUnits,
+  loadBlockRegenContext,
+  loadGenerationFields,
   loadRevisionBlocks,
   membershipLookupFor,
   reorderBlocks,
@@ -15,10 +28,13 @@ import {
 import {
   blockContentSchema,
   blockPlainText,
+  formatFieldValue,
   type BlockContent,
   type BlockId,
   type DocumentId,
   type DocumentRevisionId,
+  type FieldVersionId,
+  type SpecFieldId,
   type UserId,
   type WorkspaceId,
 } from '@arther/types';
@@ -36,8 +52,14 @@ export interface InsertResult extends SaveResult {
 
 type Authorized = { supabase: SupabaseClient; userId: UserId; workspaceId: WorkspaceId };
 
-/** Every document mutation is editor-gated (`doc.write`) with RLS behind it. */
-async function authorizeDocWrite(): Promise<Authorized | { error: string }> {
+/**
+ * Every document mutation is editor-gated with RLS behind it. Defaults to
+ * `doc.write`; regeneration (a model call) gates on `doc.generate`, matching the
+ * generation flow.
+ */
+async function authorizeDocWrite(
+  action: 'doc.write' | 'doc.generate' = 'doc.write',
+): Promise<Authorized | { error: string }> {
   const supabase = await getSupabaseServer();
   if (!supabase) return { error: 'Not configured in this environment yet.' };
   const {
@@ -47,7 +69,7 @@ async function authorizeDocWrite(): Promise<Authorized | { error: string }> {
   const workspace = await getActiveWorkspace(supabase);
   if (!workspace) return { error: 'No workspace.' };
   const canDo = createCanDo(membershipLookupFor(supabase));
-  if (!(await canDo({ id: user.id as UserId }, 'doc.write', { workspaceId: workspace.id }))) {
+  if (!(await canDo({ id: user.id as UserId }, action, { workspaceId: workspace.id }))) {
     return { error: 'Viewers can’t edit documents.' };
   }
   return { supabase, userId: user.id as UserId, workspaceId: workspace.id };
@@ -157,4 +179,106 @@ export async function reorderBlocksAction(orderedBlockIds: string[]): Promise<Sa
     return { ok: false, error: 'Could not reorder the blocks.' };
   }
   return { ok: true };
+}
+
+/** Prose blocks whose surrounding text a spec change can semantically affect. */
+const REGENERATABLE_TYPES = new Set(['paragraph', 'callout']);
+
+export interface RegenerateResult extends SaveResult {
+  content?: BlockContent;
+}
+
+/**
+ * G7.1 — regenerate a single prose block against the current spec graph, reusing
+ * the section contract (`regenerateBlock` → the same zero-hallucination gate as
+ * generation). Manual today (the editor button), and the resolution for a
+ * staleness-flagged block. Runs inline behind `doc.generate`; degrades honestly
+ * without `ANTHROPIC_API_KEY`. Moves to the Trigger.dev runner with G1.2.
+ */
+export async function regenerateBlockAction(blockId: string): Promise<RegenerateResult> {
+  if (!z.string().uuid().safeParse(blockId).success) return { ok: false, error: 'Invalid block.' };
+
+  const auth = await authorizeDocWrite('doc.generate');
+  if ('error' in auth) return { ok: false, error: auth.error };
+
+  const ctx = await loadBlockRegenContext(auth.supabase, blockId as BlockId);
+  if (!ctx) return { ok: false, error: 'Block not found.' };
+  if (!REGENERATABLE_TYPES.has(ctx.blockType)) {
+    return { ok: false, error: 'This block type can’t be regenerated yet.' };
+  }
+
+  const gateway = createAiGateway({ apiKey: process.env.ANTHROPIC_API_KEY });
+  if (!gateway.provisioned) return { ok: false, error: 'Not configured in this environment yet.' };
+
+  try {
+    const [fields, units, brief, product] = await Promise.all([
+      loadGenerationFields(auth.supabase, ctx.productId),
+      listUnits(auth.supabase, auth.workspaceId),
+      getEntityBrief(auth.supabase, 'product', ctx.productId),
+      auth.supabase.from('products').select('name').eq('id', ctx.productId).maybeSingle(),
+    ]);
+
+    const unitSymbol = new Map(units.map((u) => [u.id, u.symbol]));
+    const display = (f: (typeof fields)[number]) =>
+      formatFieldValue(f.type, f.value, f.unit_id ? unitSymbol.get(f.unit_id) : undefined);
+
+    // Only fields with a current version (a real value) are citable.
+    const citable = fields.filter((f) => f.current_version_id !== null);
+    const resolverEntries: ResolverEntry[] = citable.map((f) => ({
+      fieldId: f.id,
+      fieldVersionId: f.current_version_id as string,
+      displayValue: display(f),
+      unitId: f.unit_id,
+      productId: ctx.productId,
+      componentId: f.component_id,
+    }));
+    const resolve = buildFieldResolver(resolverEntries);
+    const versionByField = new Map(resolverEntries.map((e) => [e.fieldId, e.fieldVersionId]));
+    const promptFields: PromptField[] = citable.map((f) => ({
+      fieldId: f.id,
+      name: f.name,
+      category: f.category,
+      value: display(f),
+      owner: f.owner === 'component' ? (f.component_name ?? 'component') : 'product',
+    }));
+
+    const prompt = buildSectionPrompt({
+      documentTypeName: 'the document',
+      productName: (product.data?.name as string) ?? 'Product',
+      sectionName: ctx.sectionName,
+      fields: promptFields,
+      briefFragments: brief.fragments.map((fr) => ({ key: fr.key, content: fr.content })),
+      focus: { blockType: ctx.blockType, currentText: ctx.currentText },
+    });
+
+    const outcome = await regenerateBlock(gateway, { blockType: ctx.blockType, prompt }, resolve);
+    if (outcome.status !== 'succeeded' || !outcome.block) {
+      return { ok: false, error: 'Could not regenerate this block from the current spec.' };
+    }
+
+    const refs = (outcome.block.specRefs ?? [])
+      .map((r) => ({ fieldId: r.fieldId, fieldVersionId: versionByField.get(r.fieldId) }))
+      .filter((r): r is { fieldId: SpecFieldId; fieldVersionId: string } => Boolean(r.fieldVersionId))
+      .map((r) => ({ fieldId: r.fieldId, fieldVersionId: r.fieldVersionId as FieldVersionId }));
+
+    await applyBlockRegeneration(auth.supabase, {
+      blockId: blockId as BlockId,
+      documentId: ctx.documentId,
+      workspaceId: auth.workspaceId,
+      content: outcome.block.content,
+      textContent: outcome.block.textContent ?? blockPlainText(outcome.block.content),
+      refs,
+      userId: auth.userId,
+    });
+
+    return { ok: true, content: outcome.block.content };
+  } catch (err) {
+    return {
+      ok: false,
+      error:
+        err instanceof Error && err.name === 'EnvNotProvisionedError'
+          ? 'Not configured in this environment yet.'
+          : 'Could not regenerate the block.',
+    };
+  }
 }

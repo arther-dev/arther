@@ -1,6 +1,7 @@
 import {
   generatedSectionSchema,
   resolveGeneratedSection,
+  type BlockType,
   type FieldResolver,
   type GeneratedSection,
   type GenerationCommitBlock,
@@ -69,6 +70,12 @@ export interface SectionPromptInput {
   brandVoice?: string[];
   toneNotes?: string | null;
   qualityNotes?: string[];
+  /**
+   * G7.1 — when set, the prompt targets a single existing block for
+   * regeneration instead of authoring a whole section: rewrite just this block
+   * against the current spec values, returning one block of the same type.
+   */
+  focus?: { blockType: BlockType; currentText: string };
 }
 
 /** Build the system + user prompt for one section (the slot-filler injection, §5.1). */
@@ -80,7 +87,9 @@ export function buildSectionPrompt(input: SectionPromptInput): { system: string;
     "- If a value isn't in the provided fields, do not state it. Never invent or estimate values.",
     '- Use the product brief for narrative and context, not for specification values.',
     '- Match the brand voice; keep prose clear and technical.',
-    `- Author blocks only for this section: ${input.sectionName}.`,
+    input.focus
+      ? `- Rewrite ONLY the single ${input.focus.blockType} block described below so its prose reflects the current spec values; return exactly one ${input.focus.blockType} block, nothing else.`
+      : `- Author blocks only for this section: ${input.sectionName}.`,
   ].join('\n');
 
   const fieldLines = input.fields.length
@@ -106,6 +115,13 @@ export function buildSectionPrompt(input: SectionPromptInput): { system: string;
     '',
     'Editorial constraints:',
     input.qualityNotes?.length ? input.qualityNotes.map((q) => `- ${q}`).join('\n') : '(none)',
+    ...(input.focus
+      ? [
+          '',
+          `Block to rewrite (a ${input.focus.blockType}) — current text:`,
+          input.focus.currentText.trim() || '(empty)',
+        ]
+      : []),
   ].join('\n');
 
   return { system, user };
@@ -206,4 +222,51 @@ export async function generateDocument(deps: GenerateDocumentDeps): Promise<Gene
   const succeeded = outcomes.filter((o) => o.status === 'succeeded').length;
   const status = succeeded === outcomes.length ? 'succeeded' : succeeded === 0 ? 'failed' : 'partial';
   return { blocks, outcomes, status };
+}
+
+export interface BlockRegenPlan {
+  /** The target block's type — the model must return one block of this type. */
+  blockType: BlockType;
+  prompt: { system: string; user: string };
+}
+
+export interface BlockRegenOutcome {
+  status: 'succeeded' | 'failed';
+  /** The replacement block, grounded and ready to write, when `succeeded`. */
+  block?: GenerationCommitBlock;
+  unresolvedFieldIds: string[];
+  error?: string;
+}
+
+/**
+ * G7.1 — regenerate a single block against the current spec graph, reusing the
+ * one section contract (the model returns a `GeneratedSection`; we resolve its
+ * tokens through the same zero-hallucination gate as `generateSection`, then take
+ * the block of the target type). The caller replaces the existing block's content
+ * + spec references with the result. Injected gateway/resolver → unit-testable
+ * without a real model.
+ */
+export async function regenerateBlock(
+  gateway: Pick<AiGateway, 'structured'>,
+  plan: BlockRegenPlan,
+  resolve: FieldResolver,
+): Promise<BlockRegenOutcome> {
+  const outcome = await generateSection(
+    gateway,
+    { sectionId: 'regen', name: plan.blockType, prompt: plan.prompt },
+    resolve,
+  );
+  if (outcome.status === 'failed') {
+    return {
+      status: 'failed',
+      unresolvedFieldIds: outcome.unresolvedFieldIds,
+      error: outcome.error,
+    };
+  }
+  // Prefer a block of the same type; fall back to the first block the model emitted.
+  const block = outcome.blocks.find((b) => b.type === plan.blockType) ?? outcome.blocks[0];
+  if (!block) {
+    return { status: 'failed', unresolvedFieldIds: [], error: 'the model returned no block' };
+  }
+  return { status: 'succeeded', block, unresolvedFieldIds: [] };
 }

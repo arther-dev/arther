@@ -6,6 +6,7 @@ import {
   buildSectionPrompt,
   generateDocument,
   generateSection,
+  regenerateBlock,
   type SectionPlan,
 } from './generation';
 
@@ -129,5 +130,52 @@ describe('generateDocument', () => {
     });
     expect(result.status).toBe('failed');
     expect(result.blocks).toEqual([]);
+  });
+});
+
+describe('buildSectionPrompt — single-block focus (G7.1)', () => {
+  it('targets one block and includes its current text', () => {
+    const { system, user } = buildSectionPrompt({
+      documentTypeName: 'Datasheet',
+      productName: 'Servo S2',
+      sectionName: 'Electrical',
+      fields: [{ fieldId: 'F1', name: 'Rated voltage', category: 'Electrical', value: '36 V', owner: 'product' }],
+      briefFragments: [],
+      focus: { blockType: 'paragraph', currentText: 'The servo is rated at 36 V.' },
+    });
+    expect(system).toMatch(/Rewrite ONLY the single paragraph block/i);
+    expect(system).not.toMatch(/Author blocks only for this section/i);
+    expect(user).toContain('Block to rewrite (a paragraph) — current text:');
+    expect(user).toContain('The servo is rated at 36 V.');
+  });
+});
+
+describe('regenerateBlock (G7.1)', () => {
+  const regenPlan = { blockType: 'paragraph' as const, prompt: { system: 'sys', user: 'usr' } };
+
+  it('returns a grounded replacement block of the target type', async () => {
+    const outcome = await regenerateBlock(mockGateway(async () => sectionWith('F1')), regenPlan, resolve);
+    expect(outcome.status).toBe('succeeded');
+    expect(outcome.block?.type).toBe('paragraph');
+    expect(outcome.block?.specRefs).toEqual([{ fieldId: 'F1' }]);
+  });
+
+  it('fails (no block) when a cited field does not resolve (zero-hallucination)', async () => {
+    const outcome = await regenerateBlock(mockGateway(async () => sectionWith('F404')), regenPlan, resolve);
+    expect(outcome.status).toBe('failed');
+    expect(outcome.block).toBeUndefined();
+    expect(outcome.unresolvedFieldIds).toEqual(['F404']);
+  });
+
+  it('fails when the gateway throws', async () => {
+    const outcome = await regenerateBlock(
+      mockGateway(async () => {
+        throw new Error('model unavailable');
+      }),
+      regenPlan,
+      resolve,
+    );
+    expect(outcome.status).toBe('failed');
+    expect(outcome.error).toContain('model unavailable');
   });
 });
