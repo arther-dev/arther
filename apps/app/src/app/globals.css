@@ -684,6 +684,12 @@ body {
   border-radius: var(--radius-sm);
   padding: 0 var(--space-xs);
 }
+.comments__anchor {
+  font-size: 0.8125rem;
+  font-style: italic;
+  color: var(--text-secondary);
+  border-bottom: 1px dashed var(--border-subtle);
+}
 .comments__comments {
   list-style: none;
   padding: 0;

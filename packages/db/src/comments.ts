@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { isTextAnchorValid } from '@arther/types';
 import type {
   CommentAnchorType,
   CommentThreadStatus,
@@ -7,6 +8,16 @@ import type {
   UserId,
   WorkspaceId,
 } from '@arther/types';
+
+/** Read a stored `text_anchor` jsonb (snake_case) into a `TextAnchor`, or null. */
+function readTextAnchor(raw: unknown): TextAnchor | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const a = raw as { start_offset?: unknown; end_offset?: unknown; anchor_text?: unknown };
+  if (typeof a.start_offset !== 'number' || typeof a.end_offset !== 'number' || typeof a.anchor_text !== 'string') {
+    return null;
+  }
+  return { startOffset: a.start_offset, endOffset: a.end_offset, anchorText: a.anchor_text };
+}
 
 /**
  * C2 — block-anchored comment threads (collaboration spec §7; schema in 0007).
@@ -31,6 +42,8 @@ export interface CommentThreadView {
   id: string;
   blockId: string | null;
   anchorType: CommentAnchorType;
+  /** C2.1 — the anchored span for a `text_range` thread; null for block-level. */
+  textAnchor: TextAnchor | null;
   status: CommentThreadStatus;
   createdBy: string | null;
   createdAt: string;
@@ -207,6 +220,40 @@ export async function orphanBlockThreads(
   return (data ?? []).length;
 }
 
+/**
+ * C2.3 (text_edited) — after a block's prose is edited, orphan its OPEN
+ * text-range threads whose anchored span no longer matches the new text (collab
+ * spec §7.5). Block-level threads are untouched — only text-range anchors orphan
+ * on a text edit. Returns how many threads were orphaned.
+ */
+export async function orphanStaleTextAnchors(
+  client: SupabaseClient,
+  blockId: string,
+  textContent: string | null,
+): Promise<number> {
+  const { data, error } = await client
+    .from('comment_threads')
+    .select('id, text_anchor')
+    .eq('block_id', blockId)
+    .eq('status', 'open')
+    .eq('anchor_type', 'text_range');
+  if (error) throw new Error(`orphanStaleTextAnchors: ${error.message}`);
+
+  const stale: string[] = [];
+  for (const row of (data ?? []) as Array<{ id: string; text_anchor: unknown }>) {
+    const anchor = readTextAnchor(row.text_anchor);
+    if (!anchor || !isTextAnchorValid(textContent, anchor)) stale.push(row.id);
+  }
+  if (stale.length === 0) return 0;
+
+  const { error: ue } = await client
+    .from('comment_threads')
+    .update({ status: 'orphaned', orphaned_reason: 'text_edited' })
+    .in('id', stale);
+  if (ue) throw new Error(`orphanStaleTextAnchors.update: ${ue.message}`);
+  return stale.length;
+}
+
 /** C2.1 — every thread for a revision (oldest first), each with its comments. */
 export async function listCommentThreads(
   client: SupabaseClient,
@@ -215,7 +262,7 @@ export async function listCommentThreads(
   const { data: threads, error } = await client
     .from('comment_threads')
     .select(
-      'id, block_id, anchor_type, status, created_by, created_at, resolved_at, inherited_from_thread_id',
+      'id, block_id, anchor_type, text_anchor, status, created_by, created_at, resolved_at, inherited_from_thread_id',
     )
     .eq('revision_id', revisionId)
     .order('created_at', { ascending: true });
@@ -252,6 +299,7 @@ export async function listCommentThreads(
     id: t.id as string,
     blockId: (t.block_id as string | null) ?? null,
     anchorType: t.anchor_type as CommentAnchorType,
+    textAnchor: readTextAnchor(t.text_anchor),
     status: t.status as CommentThreadStatus,
     createdBy: (t.created_by as string | null) ?? null,
     createdAt: t.created_at as string,

@@ -20,6 +20,8 @@ import {
 export interface BlockOption {
   id: string;
   label: string;
+  /** Prose blocks (paragraph/heading) support text-range anchoring (C2.1). */
+  prose: boolean;
 }
 
 export function CommentsPanel({
@@ -91,19 +93,27 @@ function Composer({ documentId, blocks }: { documentId: string; blocks: BlockOpt
   const [pending, start] = useTransition();
   const [blockId, setBlockId] = useState(blocks[0]?.id ?? '');
   const [body, setBody] = useState('');
+  const [phrase, setPhrase] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   if (blocks.length === 0) {
     return <p className="specs-grid__meta">Add content to the document before commenting.</p>;
   }
 
+  const selectedProse = blocks.find((b) => b.id === blockId)?.prose ?? false;
+
   function submit(e: FormEvent) {
     e.preventDefault();
     setError(null);
     start(async () => {
-      const result = await addCommentAction(documentId, { blockId, body });
+      const result = await addCommentAction(documentId, {
+        blockId,
+        body,
+        phrase: selectedProse ? phrase : undefined,
+      });
       if (result.ok) {
         setBody('');
+        setPhrase('');
         router.refresh();
       } else {
         setError(result.error ?? 'Could not post the comment.');
@@ -130,6 +140,15 @@ function Composer({ documentId, blocks }: { documentId: string; blocks: BlockOpt
           </select>
         </label>
       </div>
+      {selectedProse && (
+        <input
+          className="ui-field__input"
+          value={phrase}
+          onChange={(e) => setPhrase(e.target.value)}
+          placeholder="Optional: a phrase from this block to anchor to"
+          aria-label="Phrase to anchor the comment to"
+        />
+      )}
       <textarea
         className="ui-field__input"
         rows={2}
@@ -199,6 +218,11 @@ function Thread({
     <li className={`comments__thread comments__thread--${thread.status}`}>
       <div className="comments__thread-head">
         <span className="specs-grid__meta">{anchorLabel}</span>
+        {thread.anchorType === 'text_range' && thread.textAnchor && (
+          <span className="comments__anchor" title="Anchored to this text">
+            “{thread.textAnchor.anchorText}”
+          </span>
+        )}
         {thread.inheritedFromThreadId && (
           <span className="comments__badge" title="Carried forward from the previous revision">
             inherited

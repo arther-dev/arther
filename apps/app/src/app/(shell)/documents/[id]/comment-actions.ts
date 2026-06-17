@@ -16,10 +16,14 @@ import {
   canManageDocumentLifecycle,
   canResolveThread,
   commentBodySchema,
+  findTextAnchor,
   type DocumentId,
   type DocumentRevisionId,
+  type TextAnchor,
   type UserId,
 } from '@arther/types';
+
+const PROSE_BLOCK_TYPES = new Set(['paragraph', 'heading']);
 import { getSupabaseServer } from '../../../../lib/supabase/server';
 
 /**
@@ -56,10 +60,14 @@ function revalidate(documentId: string) {
   revalidatePath(`/documents/${documentId}`);
 }
 
-/** C2.1 — start a block-anchored thread with its first comment (any member). */
+/**
+ * C2.1 — start a thread on a block with its first comment (any member). When a
+ * `phrase` is supplied (prose blocks only), the thread is anchored to that text
+ * span (`text_range`) rather than the whole block.
+ */
 export async function addCommentAction(
   documentId: string,
-  input: { blockId: string; body: string },
+  input: { blockId: string; body: string; phrase?: string },
 ): Promise<CommentActionResult> {
   const c = await ctx(documentId);
   if ('error' in c) return { ok: false, error: c.error };
@@ -72,12 +80,33 @@ export async function addCommentAction(
     return { ok: false, error: 'You don’t have access to comment.' };
   }
 
+  // C2.1 — resolve a text-range anchor from the phrase against the block's text.
+  let anchorType: 'block' | 'text_range' = 'block';
+  let textAnchor: TextAnchor | undefined;
+  const phrase = (input.phrase ?? '').trim();
+  if (phrase.length > 0) {
+    const { data: block, error } = await c.supabase
+      .from('blocks')
+      .select('type, text_content')
+      .eq('id', input.blockId)
+      .maybeSingle();
+    if (error || !block) return { ok: false, error: 'Block not found.' };
+    if (!PROSE_BLOCK_TYPES.has(block.type as string)) {
+      return { ok: false, error: 'Text-range comments are only available on prose blocks.' };
+    }
+    const found = findTextAnchor((block.text_content as string | null) ?? '', phrase);
+    if (!found) return { ok: false, error: 'Couldn’t find that phrase in the block.' };
+    anchorType = 'text_range';
+    textAnchor = found;
+  }
+
   try {
     await createCommentThread(c.supabase, {
       workspaceId: c.workspace.id,
       revisionId: c.document.current_revision_id as DocumentRevisionId,
       blockId: input.blockId,
-      anchorType: 'block',
+      anchorType,
+      textAnchor,
       authorId: c.user.id as UserId,
       body: parsed.data,
     });

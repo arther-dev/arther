@@ -178,6 +178,7 @@ export default async function DocumentPage({ params }: { params: Promise<{ id: s
   const blockOptions = tree.blocks.map((b) => ({
     id: b.id,
     label: blockAnchorLabel(b.display_order, b.content.type),
+    prose: b.content.type === 'paragraph' || b.content.type === 'heading',
   }));
 
   const stale = summarizeStaleness(await listStaleReferencesForDocument(supabase, tree.document.id));

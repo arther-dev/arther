@@ -31,7 +31,7 @@ import {
   type UserId,
   type WorkspaceId,
 } from '@arther/types';
-import { orphanBlockThreads } from './comments';
+import { orphanBlockThreads, orphanStaleTextAnchors } from './comments';
 
 /**
  * Documents & blocks repository (G3, migration 0005) over the user-JWT client —
@@ -373,6 +373,9 @@ export async function saveBlockContent(
   if (error) throw new Error(`saveBlockContent: ${error.message}`);
 
   if ((data ?? []).length === 1) {
+    // C2.3 — a prose edit may move or remove an anchored span: orphan the block's
+    // text-range threads whose anchor no longer matches the saved text (§7.5).
+    await orphanStaleTextAnchors(client, blockId, update.text_content);
     return { status: 'saved', lastEditedAt: (data![0]!.last_edited_at as string | null) ?? null };
   }
 
