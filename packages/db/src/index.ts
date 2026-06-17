@@ -52,6 +52,7 @@ export {
   listUnits,
   listUsersByIds,
   membershipLookupFor,
+  moveSpecFieldOrder,
   setArchived,
   setComponentOverride,
   updateFieldValue,

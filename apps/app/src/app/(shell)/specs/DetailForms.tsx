@@ -2,7 +2,7 @@
 
 import { useActionState, useRef } from 'react';
 import { Button } from '@arther/ui';
-import { addCommentAction, setArchivedAction, type SpecsFormState } from './actions';
+import { addCommentAction, moveFieldAction, setArchivedAction, type SpecsFormState } from './actions';
 
 /**
  * F5.8 composer — commenting is a member right, viewers included. With a
@@ -49,6 +49,48 @@ export function CommentForm({
         {state.error ? <p className="ui-field__error">{state.error}</p> : null}
       </div>
     </form>
+  );
+}
+
+/** F6 — reorder a field within its category. Two compact buttons; the action
+ * no-ops at the category boundary, but we disable them there for clarity. */
+export function FieldOrderControls({
+  fieldId,
+  isFirst,
+  isLast,
+}: {
+  fieldId: string;
+  isFirst: boolean;
+  isLast: boolean;
+}) {
+  const [, action, pending] = useActionState<SpecsFormState, FormData>(moveFieldAction, {});
+  return (
+    <span className="specs-form--inline" style={{ display: 'inline-flex', gap: 2 }}>
+      <form action={action} className="specs-form--inline">
+        <input type="hidden" name="fieldId" value={fieldId} />
+        <input type="hidden" name="direction" value="-1" />
+        <button
+          type="submit"
+          className="specs-value-button"
+          aria-label="Move field up"
+          disabled={pending || isFirst}
+        >
+          ↑
+        </button>
+      </form>
+      <form action={action} className="specs-form--inline">
+        <input type="hidden" name="fieldId" value={fieldId} />
+        <input type="hidden" name="direction" value="1" />
+        <button
+          type="submit"
+          className="specs-value-button"
+          aria-label="Move field down"
+          disabled={pending || isLast}
+        >
+          ↓
+        </button>
+      </form>
+    </span>
   );
 }
 

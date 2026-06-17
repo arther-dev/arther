@@ -22,6 +22,7 @@ import {
   listPlaceholdersForFragment,
   listReferenceEdges,
   membershipLookupFor,
+  moveSpecFieldOrder,
   propagateFieldChange,
   recordAnalyticsEvent,
   setArchived,
@@ -477,6 +478,36 @@ export async function createComponentAction(
     type: parsed.data.componentType,
     createdBy: auth.userId,
   });
+  revalidatePath('/specs/library');
+  return {};
+}
+
+const moveFieldSchema = z.object({
+  fieldId: z.string().uuid(),
+  direction: z.coerce.number().int().refine((n) => n === 1 || n === -1, 'Bad direction.'),
+});
+
+/** F6 — reorder a spec field one step within its category (editor-gated). */
+export async function moveFieldAction(
+  _prev: SpecsFormState,
+  formData: FormData,
+): Promise<SpecsFormState> {
+  const parsed = moveFieldSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { error: 'Invalid move.' };
+
+  const auth = await authorize('spec.write');
+  if ('error' in auth) return { error: auth.error };
+
+  try {
+    await moveSpecFieldOrder(auth.supabase, {
+      fieldId: parsed.data.fieldId as SpecFieldId,
+      direction: parsed.data.direction as -1 | 1,
+      userId: auth.userId,
+    });
+  } catch {
+    return { error: 'Could not reorder the field.' };
+  }
+  revalidatePath('/specs');
   revalidatePath('/specs/library');
   return {};
 }
