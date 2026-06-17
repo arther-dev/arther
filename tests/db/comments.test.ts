@@ -127,6 +127,19 @@ describe('commenting is a member right (C2.1)', () => {
   });
 });
 
+describe('producer recipients (C3.5)', () => {
+  it('a thread’s distinct participants are its comment authors', async () => {
+    const threadId = await newThread(member, memberId); // member posts the root
+    await owner`insert into public.comments (workspace_id, thread_id, author_id, body) values (${ws}, ${threadId}, ${ownerId}, 'owner reply')`;
+    await member`insert into public.comments (workspace_id, thread_id, author_id, body) values (${ws}, ${threadId}, ${memberId}, 'member again')`;
+    // What listThreadParticipantIds resolves: distinct author_id on the thread.
+    const participants = await admin`
+      select distinct author_id from public.comments where thread_id = ${threadId} order by author_id
+    `;
+    expect(participants.map((r) => r.author_id).sort()).toEqual([ownerId, memberId].sort());
+  });
+});
+
 describe('resolve / reopen (C2.2)', () => {
   it('an open thread resolves and reopens', async () => {
     const threadId = await newThread(member, memberId);

@@ -1,10 +1,14 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { createCanDo } from '@arther/authz';
 import {
+  createServiceClient,
   DbRuleError,
+  dispatchNotification,
   getActiveWorkspace,
+  getDocument,
   membershipLookupFor,
   overrideApproval,
   recordApproval,
@@ -13,10 +17,47 @@ import {
   overrideApprovalSchema,
   recordApprovalSchema,
   type ApprovalRoleId,
+  type DocumentId,
   type DocumentRevisionId,
   type UserId,
+  type WorkspaceId,
 } from '@arther/types';
 import { getSupabaseServer } from '../../../../lib/supabase/server';
+
+/**
+ * C3.5 — notify the document owner of an approval outcome (spec §9.2): a reached
+ * Approved state, or a Send-back to Draft. Best-effort; the owner never equals the
+ * actor (an owner can't review their own doc, and an owner override notifies no
+ * one). Service-role dispatch (notifications have no authenticated INSERT).
+ */
+async function notifyApprovalOutcome(
+  supabase: SupabaseClient,
+  workspaceId: WorkspaceId,
+  documentId: string,
+  state: string,
+  action: string,
+  actorId: string,
+): Promise<void> {
+  const eventType =
+    state === 'approved'
+      ? ('document_approved' as const)
+      : action === 'rejected'
+        ? ('document_rejected' as const)
+        : null;
+  if (!eventType) return;
+  try {
+    const doc = await getDocument(supabase, documentId as DocumentId);
+    if (!doc?.owner_id || doc.owner_id === actorId) return;
+    await dispatchNotification(createServiceClient(), {
+      workspaceId,
+      recipientIds: [doc.owner_id],
+      eventType,
+      payload: { documentId, documentTitle: doc.title },
+    });
+  } catch {
+    // ignore — notifications are best-effort
+  }
+}
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -66,6 +107,7 @@ export async function recordApprovalAction(
       action: parsed.data.action,
       reason: parsed.data.reason ?? null,
     });
+    await notifyApprovalOutcome(supabase, workspace.id, documentId, state, parsed.data.action, user.id);
     revalidatePath(`/documents/${documentId}`);
     revalidatePath(`/documents/${documentId}/edit`);
     return { ok: true, state };
@@ -113,6 +155,8 @@ export async function overrideApprovalAction(
       roleId: parsed.data.roleId as ApprovalRoleId,
       reason: parsed.data.reason,
     });
+    // An override can only complete approval (never rejects); 'override' isn't a reject.
+    await notifyApprovalOutcome(supabase, workspace.id, documentId, state, 'override', user.id);
     revalidatePath(`/documents/${documentId}`);
     revalidatePath(`/documents/${documentId}/edit`);
     return { ok: true, state };

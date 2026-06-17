@@ -18,6 +18,8 @@ export {
   createCommentThread,
   getCommentThreadMeta,
   listCommentThreads,
+  listRevisionCommenterIds,
+  listThreadParticipantIds,
   orphanBlockThreads,
   orphanStaleTextAnchors,
   reopenCommentThread,

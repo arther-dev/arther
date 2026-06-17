@@ -408,3 +408,45 @@ export async function carryForwardComments(
   }
   return carried;
 }
+
+/** C3.5 — distinct comment authors on a revision (recipients for `document_published`). */
+export async function listRevisionCommenterIds(
+  client: SupabaseClient,
+  revisionId: DocumentRevisionId,
+): Promise<UserId[]> {
+  const { data: threads, error } = await client
+    .from('comment_threads')
+    .select('id')
+    .eq('revision_id', revisionId);
+  if (error) throw new Error(`listRevisionCommenterIds.threads: ${error.message}`);
+  const threadIds = (threads ?? []).map((t) => (t as { id: string }).id);
+  if (threadIds.length === 0) return [];
+  const { data, error: cErr } = await client
+    .from('comments')
+    .select('author_id')
+    .in('thread_id', threadIds);
+  if (cErr) throw new Error(`listRevisionCommenterIds.comments: ${cErr.message}`);
+  return [
+    ...new Set(
+      (data ?? [])
+        .map((r) => (r as { author_id: string | null }).author_id)
+        .filter((id): id is string => id != null),
+    ),
+  ] as UserId[];
+}
+
+/** C3.5 — distinct comment authors in one thread (recipients for `comment_reply`). */
+export async function listThreadParticipantIds(
+  client: SupabaseClient,
+  threadId: string,
+): Promise<UserId[]> {
+  const { data, error } = await client.from('comments').select('author_id').eq('thread_id', threadId);
+  if (error) throw new Error(`listThreadParticipantIds: ${error.message}`);
+  return [
+    ...new Set(
+      (data ?? [])
+        .map((r) => (r as { author_id: string | null }).author_id)
+        .filter((id): id is string => id != null),
+    ),
+  ] as UserId[];
+}
