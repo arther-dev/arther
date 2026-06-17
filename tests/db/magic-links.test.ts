@@ -39,9 +39,11 @@ beforeAll(async () => {
 
   ws = (await owner`select public.create_workspace('Gated Co', ${uniqueSlug('gated')}) as id`)[0]!
     .id as string;
+  // 'member' is the write-capable role (private.is_workspace_editor); there is no
+  // 'editor' role. `editor` here names the member who can issue links.
   await owner`
     insert into public.workspace_members (workspace_id, user_id, role, invited_by)
-    values (${ws}, ${editorId}, 'editor', ${ownerId}), (${ws}, ${viewerId}, 'viewer', ${ownerId})
+    values (${ws}, ${editorId}, 'member', ${ownerId}), (${ws}, ${viewerId}, 'viewer', ${ownerId})
   `;
 
   const productId = (
