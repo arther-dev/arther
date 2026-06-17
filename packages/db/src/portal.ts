@@ -1,10 +1,11 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type {
-  BlockContent,
-  DocumentId,
-  ProductId,
-  SpecFieldResolution,
-  WorkspaceId,
+import {
+  searchSnippet,
+  type BlockContent,
+  type DocumentId,
+  type ProductId,
+  type SpecFieldResolution,
+  type WorkspaceId,
 } from '@arther/types';
 
 /**
@@ -39,6 +40,16 @@ export interface PortalDocument {
   version: string;
   blockTree: BlockContent[];
   resolutionManifest: SpecFieldResolution;
+}
+
+export interface PortalSearchHit {
+  documentId: DocumentId;
+  documentSlug: string;
+  title: string;
+  productId: ProductId;
+  productName: string;
+  version: string;
+  snippet: string;
 }
 
 function one<T>(v: T | T[]): T {
@@ -144,4 +155,64 @@ export async function getPortalDocument(
     blockTree: (snap.block_tree as BlockContent[]) ?? [],
     resolutionManifest: (snap.resolution_manifest as SpecFieldResolution) ?? {},
   };
+}
+
+/**
+ * C6.4 — full-text search across a workspace's published documentation, over the
+ * `published_snapshots.search_tsv` GIN index (the plain-text projection C4.5
+ * writes). Searches **only the latest non-archived public snapshot per
+ * document** (a two-step: resolve the current snapshot per document, then FTS
+ * those) so superseded versions never surface.
+ */
+export async function searchPortalDocuments(
+  service: SupabaseClient,
+  workspaceId: WorkspaceId,
+  query: string,
+): Promise<PortalSearchHit[]> {
+  const q = query.trim();
+  if (q.length === 0) return [];
+
+  // The current (latest, non-archived, public) snapshot id per document.
+  const { data: all, error: e1 } = await service
+    .from('published_snapshots')
+    .select('id, document_id, published_at, access_config')
+    .eq('workspace_id', workspaceId)
+    .is('archived_at', null)
+    .order('published_at', { ascending: false });
+  if (e1) throw new Error(`searchPortalDocuments.latest: ${e1.message}`);
+
+  const latest = new Map<string, string>();
+  for (const row of (all ?? []) as Array<Record<string, unknown>>) {
+    if (!isPublic(row.access_config)) continue;
+    const docId = row.document_id as string;
+    if (!latest.has(docId)) latest.set(docId, row.id as string); // ordered desc → latest first
+  }
+  const ids = [...latest.values()];
+  if (ids.length === 0) return [];
+
+  const { data, error } = await service
+    .from('published_snapshots')
+    .select(
+      'document_id, product_id, version, search_text, documents!inner(title, slug, archived_at), products!inner(name)',
+    )
+    .in('id', ids)
+    .textSearch('search_tsv', q, { type: 'websearch', config: 'english' })
+    .limit(50);
+  if (error) throw new Error(`searchPortalDocuments.fts: ${error.message}`);
+
+  const hits: PortalSearchHit[] = [];
+  for (const row of (data ?? []) as Array<Record<string, unknown>>) {
+    const doc = one(row.documents as { title: string; slug: string; archived_at: string | null });
+    if (doc.archived_at) continue;
+    hits.push({
+      documentId: row.document_id as DocumentId,
+      documentSlug: doc.slug,
+      title: doc.title,
+      productId: row.product_id as ProductId,
+      productName: one(row.products as { name: string }).name,
+      version: row.version as string,
+      snippet: searchSnippet((row.search_text as string | null) ?? '', q),
+    });
+  }
+  return hits;
 }

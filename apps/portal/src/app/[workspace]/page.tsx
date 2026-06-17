@@ -43,6 +43,18 @@ export default async function WorkspaceHome({
         <p className="portal-header__eyebrow">Documentation</p>
         <h1 className="portal-title">{workspace.name}</h1>
       </header>
+      <form className="portal-search" action={`/${workspaceSlug}/search`} method="get">
+        <input
+          className="portal-search__input"
+          type="search"
+          name="q"
+          placeholder="Search published documentation"
+          aria-label="Search published documentation"
+        />
+        <button className="portal-search__button" type="submit">
+          Search
+        </button>
+      </form>
       {documents.length === 0 ? (
         <p className="portal-empty">No documents have been published yet.</p>
       ) : (

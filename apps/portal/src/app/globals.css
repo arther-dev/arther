@@ -90,3 +90,29 @@ body {
 .portal-empty {
   color: #6b6b6b;
 }
+
+.portal-search {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 28px;
+}
+.portal-search__input {
+  flex: 1;
+  padding: 10px 12px;
+  font-size: 15px;
+  border: 1px solid #d6d6d6;
+  border-radius: 8px;
+}
+.portal-search__input:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 1px;
+}
+.portal-search__button {
+  padding: 10px 18px;
+  font-size: 15px;
+  border: 1px solid #1a1a1a;
+  border-radius: 8px;
+  background: #1a1a1a;
+  color: #fff;
+  cursor: pointer;
+}
