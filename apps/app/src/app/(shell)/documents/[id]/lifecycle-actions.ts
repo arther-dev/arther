@@ -13,6 +13,7 @@ import {
   getRevision,
   issueMagicLink,
   listApprovalRoles,
+  listRevisionCommenterIds,
   membershipUserIds,
   listSnapshotsForDocument,
   loadDocumentTree,
@@ -227,6 +228,36 @@ async function notifyReviewRequested(
   }
 }
 
+/**
+ * C3.5 — dispatch `document_published` to the owner + everyone who commented on
+ * the published revision (spec §9.2), minus the publisher. Best-effort.
+ */
+async function notifyPublished(
+  auth: {
+    supabase: Parameters<typeof listRevisionCommenterIds>[0];
+    userId: UserId;
+    workspaceId: WorkspaceId;
+    document: { owner_id: UserId | null; title: string };
+  },
+  documentId: string,
+  revisionId: DocumentRevisionId,
+): Promise<void> {
+  try {
+    const commenters = await listRevisionCommenterIds(auth.supabase, revisionId);
+    const owner = auth.document.owner_id ? [auth.document.owner_id] : [];
+    const recipients = [...new Set([...owner, ...commenters])].filter((id) => id !== auth.userId);
+    if (recipients.length === 0) return;
+    await dispatchNotification(createServiceClient(), {
+      workspaceId: auth.workspaceId,
+      recipientIds: recipients,
+      eventType: 'document_published',
+      payload: { documentId, documentTitle: auth.document.title },
+    });
+  } catch {
+    // ignore — notifications are best-effort
+  }
+}
+
 /** Draft → Review, with the optional review brief + due date (spec §5.1; C0.4). */
 export async function submitForReviewAction(
   documentId: string,
@@ -300,6 +331,8 @@ export async function publishDocumentAction(documentId: string): Promise<Lifecyc
         searchText,
       },
     );
+    // C3.5 — notify the owner + everyone who commented on this revision (§9.2).
+    await notifyPublished(auth, documentId, tree.revision.id);
     revalidateDocument(documentId);
     // C6.5 — bust the workspace's portal CDN cache (best-effort, env-gated).
     await revalidatePortal([`portal:${auth.workspaceSlug}`]);

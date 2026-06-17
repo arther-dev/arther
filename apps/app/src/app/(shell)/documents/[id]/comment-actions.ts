@@ -10,6 +10,7 @@ import {
   getActiveWorkspace,
   getCommentThreadMeta,
   getDocument,
+  listThreadParticipantIds,
   membershipLookupFor,
   reopenCommentThread,
   resolveCommentThread,
@@ -67,38 +68,64 @@ function revalidate(documentId: string) {
 type CommentCtx = Exclude<Awaited<ReturnType<typeof ctx>>, { error: string }>;
 
 /**
- * C2.5 — dispatch `comment_mention` to the workspace members named in a comment
- * body, through the unified notification system (invariant 8). Resolves only real
- * members (spec §8), excludes the author, and is best-effort (a dispatch failure
- * never fails the comment). Service-role write (notifications have no client INSERT).
+ * C2.5/C3.5 — dispatch a comment's notifications through the unified system
+ * (invariant 8): `comment_mention` to the members named in the body (resolved to
+ * real members, spec §8), plus the structural event (`comment_added` to the doc
+ * owner, or `comment_reply` to the thread participants). A mention supersedes the
+ * structural notice for the same person, and the author is never notified.
+ * Best-effort: a dispatch failure never fails the comment. Service-role write.
  */
-async function dispatchMentions(c: CommentCtx, body: string, threadId: string): Promise<void> {
-  const mentioned = extractMentionUserIds(body);
-  if (mentioned.length === 0) return;
+async function dispatchCommentNotifications(
+  c: CommentCtx,
+  input: {
+    body: string;
+    threadId: string;
+    event: 'comment_added' | 'comment_reply';
+    structuralRecipients: string[];
+  },
+): Promise<void> {
   try {
     const service = createServiceClient();
-    const recipients = (await workspaceMemberUserIds(service, c.workspace.id, mentioned)).filter(
-      (id) => id !== c.user.id,
+    const mentioned = new Set<string>(
+      (await workspaceMemberUserIds(service, c.workspace.id, extractMentionUserIds(input.body))).filter(
+        (id) => id !== c.user.id,
+      ),
     );
-    if (recipients.length === 0) return;
+    const structural = [...new Set(input.structuralRecipients)].filter(
+      (id) => id !== c.user.id && !mentioned.has(id),
+    );
+    if (mentioned.size === 0 && structural.length === 0) return;
+
     const { data: author } = await c.supabase
       .from('users')
       .select('name, email')
       .eq('id', c.user.id)
       .maybeSingle();
-    await dispatchNotification(service, {
-      workspaceId: c.workspace.id,
-      recipientIds: recipients,
-      eventType: 'comment_mention',
-      payload: {
-        documentId: c.document.id,
-        documentTitle: c.document.title,
-        actorName: (author?.name as string | null) ?? (author?.email as string | undefined) ?? 'Someone',
-        threadId,
-      },
-    });
+    const payload = {
+      documentId: c.document.id,
+      documentTitle: c.document.title,
+      actorName: (author?.name as string | null) ?? (author?.email as string | undefined) ?? 'Someone',
+      threadId: input.threadId,
+    };
+
+    if (mentioned.size > 0) {
+      await dispatchNotification(service, {
+        workspaceId: c.workspace.id,
+        recipientIds: [...mentioned],
+        eventType: 'comment_mention',
+        payload,
+      });
+    }
+    if (structural.length > 0) {
+      await dispatchNotification(service, {
+        workspaceId: c.workspace.id,
+        recipientIds: structural,
+        eventType: input.event,
+        payload,
+      });
+    }
   } catch {
-    // ignore — mentions are best-effort
+    // ignore — comment notifications are best-effort
   }
 }
 
@@ -152,7 +179,12 @@ export async function addCommentAction(
       authorId: c.user.id as UserId,
       body: parsed.data,
     });
-    await dispatchMentions(c, parsed.data, threadId);
+    await dispatchCommentNotifications(c, {
+      body: parsed.data,
+      threadId,
+      event: 'comment_added',
+      structuralRecipients: c.document.owner_id ? [c.document.owner_id] : [],
+    });
     revalidate(documentId);
     return { ok: true };
   } catch {
@@ -183,7 +215,12 @@ export async function replyToThreadAction(
       authorId: c.user.id as UserId,
       body: parsed.data,
     });
-    await dispatchMentions(c, parsed.data, input.threadId);
+    await dispatchCommentNotifications(c, {
+      body: parsed.data,
+      threadId: input.threadId,
+      event: 'comment_reply',
+      structuralRecipients: await listThreadParticipantIds(c.supabase, input.threadId),
+    });
     revalidate(documentId);
     return { ok: true };
   } catch {
