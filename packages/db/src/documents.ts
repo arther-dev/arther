@@ -54,7 +54,7 @@ import {
 const DOCUMENT_COLUMNS =
   'id, workspace_id, product_id, document_type_id, brand_profile_id, title, slug, owner_id, current_revision_id, archived_at, created_at';
 export const REVISION_COLUMNS =
-  'id, document_id, revision_number, state, review_brief, review_due_date, published_at, published_by, created_by, created_at';
+  'id, document_id, revision_number, state, review_cycle, review_brief, review_due_date, published_at, published_by, created_by, created_at';
 const BLOCK_COLUMNS =
   'id, document_id, revision_id, type, parent_block_id, display_order, source, content, degradation, text_content, last_edited_at, last_edited_by';
 const SPEC_REFERENCE_COLUMNS =
@@ -79,6 +79,8 @@ export interface DocumentRevisionRow {
   document_id: DocumentId;
   revision_number: number;
   state: DocumentState;
+  /** Increments each time the revision (re)enters Review — the approval cycle (C1). */
+  review_cycle: number;
   /** Submission metadata (C0.4) — set when sent for review. */
   review_brief: string | null;
   review_due_date: string | null;

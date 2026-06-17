@@ -18,6 +18,7 @@ export type Action =
   | 'doc.submit'
   | 'doc.revise'
   | 'doc.publish'
+  | 'doc.approve'
   | 'comment.write'
   | 'workspace.manage'
   | 'workspace.delete'
@@ -64,7 +65,8 @@ export function createCanDo(membership: MembershipLookup) {
       case 'spec.read':
       case 'doc.read':
       case 'comment.write':
-        return true; // any member, incl. viewer (commenting is a viewer right)
+      case 'doc.approve': // approving/rejecting is a spec'd viewer right (billing spec)
+        return true; // any member, incl. viewer
       case 'workspace.delete':
         return m.role === 'owner';
       default:

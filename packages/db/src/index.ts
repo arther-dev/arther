@@ -109,6 +109,11 @@ export {
   type TransitionOutcome,
 } from './document-lifecycle';
 export {
+  listApprovalRecords,
+  recordApproval,
+  type ApprovalRecordRow,
+} from './approvals';
+export {
   createGenerationRun,
   getGenerationRun,
   listGenerationRunsForProduct,

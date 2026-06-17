@@ -29,6 +29,7 @@ describe('canDo', () => {
     ['spec.read', { owner: true, admin: true, member: true, viewer: true }],
     ['doc.read', { owner: true, admin: true, member: true, viewer: true }],
     ['comment.write', { owner: true, admin: true, member: true, viewer: true }],
+    ['doc.approve', { owner: true, admin: true, member: true, viewer: true }],
     ['workspace.delete', { owner: true, admin: false, member: false, viewer: false }],
   ];
 
