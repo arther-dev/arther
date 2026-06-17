@@ -3,11 +3,14 @@ export { DbRuleError, rpcError } from './errors';
 export {
   dispatchNotification,
   getNotificationFeed,
+  listNotificationPreferences,
   markAllNotificationsRead,
   markNotificationRead,
   membershipUserIds,
+  setNotificationPreference,
   workspaceMemberUserIds,
   type NotificationFeed,
+  type StoredNotificationPreference,
 } from './notifications';
 export {
   addCommentReply,

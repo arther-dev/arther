@@ -18,10 +18,11 @@ import {
  */
 
 /**
- * C3.1/C3.5 — write an in-app notification to each recipient (deduped). Honors the
- * in-app default (on for every event); the per-user, per-event in-app toggle
- * filter lands with the preferences UI (C3.2). Service-role only. Returns the
- * number of rows written.
+ * C3.1/C3.2/C3.5 — write an in-app notification to each recipient (deduped),
+ * honoring their per-event in-app preference (C3.2): a recipient who turned the
+ * event's in-app channel off is skipped (default = on). Recipients are also
+ * confirmed members of the workspace, so a stale/foreign id never receives one.
+ * Service-role only. Returns the number of rows written.
  */
 export async function dispatchNotification(
   service: SupabaseClient,
@@ -34,8 +35,41 @@ export async function dispatchNotification(
 ): Promise<number> {
   const recipients = [...new Set(input.recipientIds)].filter((id) => id.length > 0);
   if (recipients.length === 0) return 0;
+
+  // Map recipients → their membership in this workspace (drops non-members).
+  const { data: members, error: mErr } = await service
+    .from('workspace_members')
+    .select('id, user_id')
+    .eq('workspace_id', input.workspaceId)
+    .in('user_id', recipients);
+  if (mErr) throw new Error(`dispatchNotification.members: ${mErr.message}`);
+  const membershipByUser = new Map<string, string>();
+  for (const m of (members ?? []) as Array<{ id: string; user_id: string }>) {
+    membershipByUser.set(m.user_id, m.id);
+  }
+
+  // Memberships that have turned this event's in-app channel OFF (default on).
+  let disabled = new Set<string>();
+  const membershipIds = [...membershipByUser.values()];
+  if (membershipIds.length > 0) {
+    const { data: off, error: pErr } = await service
+      .from('notification_preferences')
+      .select('workspace_member_id')
+      .eq('event_type', input.eventType)
+      .eq('in_app_enabled', false)
+      .in('workspace_member_id', membershipIds);
+    if (pErr) throw new Error(`dispatchNotification.prefs: ${pErr.message}`);
+    disabled = new Set((off ?? []).map((r) => r.workspace_member_id as string));
+  }
+
+  const enabled = recipients.filter((uid) => {
+    const membershipId = membershipByUser.get(uid);
+    return membershipId != null && !disabled.has(membershipId);
+  });
+  if (enabled.length === 0) return 0;
+
   const { error } = await service.from('notifications').insert(
-    recipients.map((recipientId) => ({
+    enabled.map((recipientId) => ({
       workspace_id: input.workspaceId,
       recipient_id: recipientId,
       event_type: input.eventType,
@@ -43,7 +77,57 @@ export async function dispatchNotification(
     })),
   );
   if (error) throw new Error(`dispatchNotification: ${error.message}`);
-  return recipients.length;
+  return enabled.length;
+}
+
+export interface StoredNotificationPreference {
+  eventType: NotificationEventType;
+  inAppEnabled: boolean;
+  emailEnabled: boolean;
+}
+
+/** C3.2 — a member's stored notification preferences (rows they've customised). */
+export async function listNotificationPreferences(
+  client: SupabaseClient,
+  membershipId: string,
+): Promise<StoredNotificationPreference[]> {
+  const { data, error } = await client
+    .from('notification_preferences')
+    .select('event_type, in_app_enabled, email_enabled')
+    .eq('workspace_member_id', membershipId);
+  if (error) throw new Error(`listNotificationPreferences: ${error.message}`);
+  const out: StoredNotificationPreference[] = [];
+  for (const row of (data ?? []) as Array<Record<string, unknown>>) {
+    if (!isNotificationEventType(row.event_type)) continue;
+    out.push({
+      eventType: row.event_type,
+      inAppEnabled: row.in_app_enabled as boolean,
+      emailEnabled: row.email_enabled as boolean,
+    });
+  }
+  return out;
+}
+
+/** C3.2 — upsert a member's preference for one event (RLS: own membership only). */
+export async function setNotificationPreference(
+  client: SupabaseClient,
+  input: {
+    membershipId: string;
+    eventType: NotificationEventType;
+    inAppEnabled: boolean;
+    emailEnabled: boolean;
+  },
+): Promise<void> {
+  const { error } = await client.from('notification_preferences').upsert(
+    {
+      workspace_member_id: input.membershipId,
+      event_type: input.eventType,
+      in_app_enabled: input.inAppEnabled,
+      email_enabled: input.emailEnabled,
+    },
+    { onConflict: 'workspace_member_id,event_type' },
+  );
+  if (error) throw new Error(`setNotificationPreference: ${error.message}`);
 }
 
 export interface NotificationFeed {
