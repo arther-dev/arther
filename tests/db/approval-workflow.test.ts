@@ -233,3 +233,54 @@ describe('append-only audit trail + RLS', () => {
     expect(msg).toMatch(/not in review/i);
   });
 });
+
+describe('owner override (C1.5)', () => {
+  it('requires an override reason', async () => {
+    await enterReview(4);
+    const msg = await expectDenied(
+      () => editor`select public.override_approval(${revisionId}, ${roleReg}, '')`,
+    );
+    expect(msg).toMatch(/reason is required/i);
+  });
+
+  it('only the document owner or a workspace admin can override', async () => {
+    // tech is a plain member, not the document owner.
+    const techMsg = await expectDenied(
+      () => tech`select public.override_approval(${revisionId}, ${roleReg}, 'on their behalf')`,
+    );
+    expect(techMsg).toMatch(/owner or a workspace admin/i);
+    // A non-member must not slip through the three-valued role check.
+    const strangerMsg = await expectDenied(
+      () => stranger`select public.override_approval(${revisionId}, ${roleReg}, 'sneaky')`,
+    );
+    expect(strangerMsg).toMatch(/owner or a workspace admin/i);
+  });
+
+  it('completes the gate and writes a flagged, immutable audit entry', async () => {
+    // Technical approves; the owner overrides the absent Regulatory reviewer.
+    await tech`select public.record_approval(${revisionId}, ${roleTech}, 'approved')`;
+    const state = (
+      await editor`select public.override_approval(${revisionId}, ${roleReg}, 'Regulatory lead on leave') as state`
+    )[0]!.state as string;
+    expect(state).toBe('approved');
+
+    const rec = await editor`
+      select override_on_behalf_of, reason from public.approval_records
+      where revision_id = ${revisionId} and action = 'owner_override'
+      order by recorded_at desc limit 1
+    `;
+    expect(rec[0]!.override_on_behalf_of).toBe('Regulatory Reviewer');
+    expect(rec[0]!.reason).toBe('Regulatory lead on leave');
+
+    // audit_log is service-role only — read it as admin; it's a distinct entry.
+    const audit = await admin`
+      select metadata from public.audit_log
+      where resource_id = ${revisionId} and action = 'document.approval_overridden'
+      order by occurred_at desc limit 1
+    `;
+    expect(audit).toHaveLength(1);
+    const meta =
+      typeof audit[0]!.metadata === 'string' ? JSON.parse(audit[0]!.metadata) : audit[0]!.metadata;
+    expect(meta.role_label).toBe('Regulatory Reviewer');
+  });
+});

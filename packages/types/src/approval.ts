@@ -33,6 +33,16 @@ export const recordApprovalSchema = z
   });
 export type RecordApproval = z.infer<typeof recordApprovalSchema>;
 
+/**
+ * The owner-override input (C1.5; spec §3.3): approve on behalf of a role with a
+ * mandatory reason. The reason is part of the permanent audit record.
+ */
+export const overrideApprovalSchema = z.object({
+  roleId: z.string().uuid(),
+  reason: transitionReasonSchema,
+});
+export type OverrideApproval = z.infer<typeof overrideApprovalSchema>;
+
 // --- The reviewer status summary (spec §5.3) ---------------------------------
 
 export type ReviewRoleStatus = 'pending' | 'approved' | 'rejected';

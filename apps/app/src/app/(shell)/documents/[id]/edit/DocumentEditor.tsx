@@ -129,6 +129,13 @@ export function DocumentEditor({
     { persistKey: `arther:save-queue:${documentId}` },
   );
 
+  // C0.3 / C1.4 — outside Draft the document is locked: content edits are still
+  // allowed (an approver's minor corrections in Review go through the same save
+  // path, gated server-side), but structural ops (insert / delete / reorder /
+  // paste / regenerate) are Draft-only. They share the offline guard.
+  const locked = state !== 'draft';
+  const structuralBlocked = offline || locked;
+
   function keepMine(id: string) {
     clearConflict(id);
     const block = blocks.find((b) => b.id === id);
@@ -268,7 +275,7 @@ export function DocumentEditor({
 
   // Structural ops are immediate, not queued — blocked offline (G5.5).
   async function insertBlock(type: InsertableBlockType) {
-    if (offline) return;
+    if (structuralBlocked) return;
     const res = await addBlockAfterAction({ revisionId, documentId, afterBlockId: selected, type });
     if (!res.ok || !res.block || !res.orderedIds) return;
     const block = res.block;
@@ -281,7 +288,7 @@ export function DocumentEditor({
   }
 
   async function removeSelected() {
-    if (!selected || offline) return;
+    if (!selected || structuralBlocked) return;
     const id = selected;
     const res = await deleteBlockAction(id);
     if (!res.ok) return;
@@ -291,7 +298,7 @@ export function DocumentEditor({
 
   // G4.6 — bulk delete every block in the selection (structural, blocked offline).
   async function deleteSelectedBlocks() {
-    if (selectedIds.size === 0 || offline) return;
+    if (selectedIds.size === 0 || structuralBlocked) return;
     const ids = [...selectedIds];
     const results = await Promise.all(ids.map((id) => deleteBlockAction(id)));
     const removed = new Set(ids.filter((_, i) => results[i]?.ok));
@@ -310,7 +317,7 @@ export function DocumentEditor({
   // G4.6 — paste the clipboard blocks after the selection (or at the end), as new
   // manual blocks. Structural, so blocked offline; selects what landed.
   async function pasteBlocks() {
-    if (offline) return;
+    if (structuralBlocked) return;
     const payload = readBlockClipboard();
     if (payload.length === 0) return;
     const res = await pasteBlocksAction({ revisionId, documentId, afterBlockId: selected, blocks: payload });
@@ -331,7 +338,7 @@ export function DocumentEditor({
   }
 
   async function moveSelected(direction: -1 | 1) {
-    if (!selected || offline) return;
+    if (!selected || structuralBlocked) return;
     const idx = blocks.findIndex((b) => b.id === selected);
     const target = idx + direction;
     if (idx < 0 || target < 0 || target >= blocks.length) return;
@@ -346,7 +353,7 @@ export function DocumentEditor({
     const fromId = dragId;
     setDragId(null);
     setDragOverId(null);
-    if (!fromId || fromId === toId || offline) return;
+    if (!fromId || fromId === toId || structuralBlocked) return;
     const moved = blocks.find((b) => b.id === fromId);
     const rest = blocks.filter((b) => b.id !== fromId);
     const at = rest.findIndex((b) => b.id === toId);
@@ -360,7 +367,7 @@ export function DocumentEditor({
   // The action writes through the DB, so on success we replace the local content
   // to match (no save enqueue). The resolution for a staleness-flagged block.
   async function regenerateSelected() {
-    if (!selectedBlock || offline || regeneratingId) return;
+    if (!selectedBlock || structuralBlocked || regeneratingId) return;
     const id = selectedBlock.id;
     setRegenError(null);
     setRegeneratingId(id);
@@ -419,13 +426,13 @@ export function DocumentEditor({
       role="button"
       aria-label="Drag to reorder"
       className="editor-drag-handle"
-      draggable={!offline}
+      draggable={!structuralBlocked}
       onDragStart={() => setDragId(id)}
       onDragEnd={() => {
         setDragId(null);
         setDragOverId(null);
       }}
-      style={{ cursor: offline ? 'default' : 'grab', userSelect: 'none', color: 'var(--text-tertiary, #888)', lineHeight: 1.4 }}
+      style={{ cursor: structuralBlocked ? 'default' : 'grab', userSelect: 'none', color: 'var(--text-tertiary, #888)', lineHeight: 1.4 }}
     >
       ⠿
     </span>
@@ -474,7 +481,7 @@ export function DocumentEditor({
                   <Button size="sm" variant="secondary" onClick={copySelected}>
                     Copy
                   </Button>
-                  <Button size="sm" variant="danger" disabled={offline} onClick={deleteSelectedBlocks}>
+                  <Button size="sm" variant="danger" disabled={structuralBlocked} onClick={deleteSelectedBlocks}>
                     Delete selected
                   </Button>
                   <Button size="sm" variant="ghost" onClick={clearSelection}>
@@ -501,16 +508,16 @@ export function DocumentEditor({
                   onCommit={(c) => persist(selectedBlock.id, c)}
                 />
                 <div className="specs-form--row" style={{ marginTop: 12, gap: 4 }}>
-                  <Button size="sm" variant="ghost" disabled={offline} onClick={() => moveSelected(-1)}>
+                  <Button size="sm" variant="ghost" disabled={structuralBlocked} onClick={() => moveSelected(-1)}>
                     Move up
                   </Button>
-                  <Button size="sm" variant="ghost" disabled={offline} onClick={() => moveSelected(1)}>
+                  <Button size="sm" variant="ghost" disabled={structuralBlocked} onClick={() => moveSelected(1)}>
                     Move down
                   </Button>
                   <Button size="sm" variant="ghost" onClick={copySelected}>
                     Copy
                   </Button>
-                  <Button size="sm" variant="danger" disabled={offline} onClick={removeSelected}>
+                  <Button size="sm" variant="danger" disabled={structuralBlocked} onClick={removeSelected}>
                     Delete
                   </Button>
                 </div>
@@ -519,7 +526,7 @@ export function DocumentEditor({
                     <Button
                       size="sm"
                       variant="secondary"
-                      disabled={offline || regeneratingId === selectedBlock.id}
+                      disabled={structuralBlocked || regeneratingId === selectedBlock.id}
                       onClick={regenerateSelected}
                     >
                       {regeneratingId === selectedBlock.id
@@ -576,7 +583,7 @@ export function DocumentEditor({
                 aria-label="Block type to insert"
                 className="ui-field__input"
                 value={insertType}
-                disabled={offline}
+                disabled={structuralBlocked}
                 onChange={(e) => setInsertType(e.target.value as InsertableBlockType)}
               >
                 {INSERTABLE_BLOCK_TYPES.map((t) => (
@@ -585,13 +592,13 @@ export function DocumentEditor({
                   </option>
                 ))}
               </select>
-              <Button size="sm" variant="primary" disabled={offline} onClick={() => insertBlock(insertType)}>
+              <Button size="sm" variant="primary" disabled={structuralBlocked} onClick={() => insertBlock(insertType)}>
                 + Insert
               </Button>
               <Button
                 size="sm"
                 variant="ghost"
-                disabled={offline || clipboardCount === 0}
+                disabled={structuralBlocked || clipboardCount === 0}
                 onClick={pasteBlocks}
                 title={clipboardCount === 0 ? 'Copy blocks first' : `Paste ${clipboardCount} copied block${clipboardCount === 1 ? '' : 's'}`}
               >
@@ -627,6 +634,14 @@ export function DocumentEditor({
             Done
           </Link>
         </header>
+
+        {locked ? (
+          <p className="ui-field__error" role="status" style={{ marginBottom: 8 }}>
+            {state === 'review'
+              ? 'In review — assigned approvers can make minor text corrections; structural changes (insert, delete, reorder, regenerate) need the document back in Draft.'
+              : 'This document is locked. Create a new revision to make changes.'}
+          </p>
+        ) : null}
 
         {staleFields.length > 0 ? (
           <p className="ui-field__error" role="status" style={{ marginBottom: 8 }}>
