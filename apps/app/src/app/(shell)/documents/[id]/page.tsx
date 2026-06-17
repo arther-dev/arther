@@ -13,6 +13,7 @@ import {
 } from '@arther/db';
 import {
   canManageDocumentLifecycle,
+  parseDocumentAccess,
   summarizeBriefStaleness,
   summarizeReview,
   summarizeStaleness,
@@ -20,6 +21,7 @@ import {
 } from '@arther/types';
 import { AppShell, EmptyState } from '@arther/ui';
 import { getSupabaseServer } from '../../../../lib/supabase/server';
+import { AccessControl } from './AccessControl';
 import { DocumentLifecycle } from './DocumentLifecycle';
 import { ApprovalPanel, type PanelRole } from './ApprovalPanel';
 
@@ -157,6 +159,8 @@ export default async function DocumentPage({ params }: { params: Promise<{ id: s
         : latestSnapshot
           ? 'unpublished'
           : null;
+  // C7.1 — the live publication's portal access tier (public ↔ link-gated).
+  const accessMode = snapshot ? parseDocumentAccess(snapshot.access_config) : 'public';
 
   const stale = summarizeStaleness(await listStaleReferencesForDocument(supabase, tree.document.id));
   const briefStale = summarizeBriefStaleness(
@@ -222,6 +226,9 @@ export default async function DocumentPage({ params }: { params: Promise<{ id: s
             state={tree.revision.state}
             portalVisibility={portalVisibility}
           />
+        ) : null}
+        {canManage && portalVisibility === 'live' ? (
+          <AccessControl documentId={tree.document.id} access={accessMode} />
         ) : null}
         {state === 'review' ? (
           panelRoles.length > 0 ? (

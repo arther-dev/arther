@@ -12,6 +12,7 @@ export * from './table-paste';
 export * from './brief';
 export * from './block-content';
 export * from './document';
+export * from './document-access';
 export * from './document-lifecycle';
 export * from './approval';
 export * from './publish-preflight';

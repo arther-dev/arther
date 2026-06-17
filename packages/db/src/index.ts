@@ -128,6 +128,7 @@ export {
   type PublishedSnapshotRow,
 } from './snapshots';
 export {
+  getGatedPortalDocument,
   getPortalDocument,
   getPortalWorkspace,
   listPortalPublishedDocuments,
@@ -137,6 +138,14 @@ export {
   type PortalSearchHit,
   type PortalWorkspace,
 } from './portal';
+export {
+  issueMagicLink,
+  logMagicLinkAccess,
+  setDocumentAccess,
+  validateMagicLink,
+  type IssuedMagicLink,
+  type ValidatedMagicLink,
+} from './magic-links';
 export {
   createGenerationRun,
   getGenerationRun,

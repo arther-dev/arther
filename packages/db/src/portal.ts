@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
+  isPublicAccess,
   searchSnippet,
   type BlockContent,
   type DocumentId,
@@ -56,11 +57,14 @@ function one<T>(v: T | T[]): T {
   return Array.isArray(v) ? v[0]! : v;
 }
 
-/** Only public snapshots are portal-visible (gated access is a C6 follow-up). */
+/**
+ * Only public snapshots are portal-visible anonymously; gated (`link`/allowlist)
+ * snapshots are served by the magic-link path (C7), never these public queries.
+ * Delegates to the one access-tier reader in `@arther/types` so the public/gated
+ * decision is identical wherever it's made.
+ */
 function isPublic(accessConfig: unknown): boolean {
-  if (!accessConfig || typeof accessConfig !== 'object') return true;
-  const access = (accessConfig as { access?: string }).access;
-  return access === undefined || access === 'public';
+  return isPublicAccess(accessConfig);
 }
 
 /** Resolve a workspace by its (immutable) portal slug. */
@@ -147,6 +151,47 @@ export async function getPortalDocument(
     | { version: string; block_tree: unknown; resolution_manifest: unknown; access_config: unknown }
     | undefined;
   if (!snap || !isPublic(snap.access_config)) return null;
+
+  return {
+    title: doc.title as string,
+    productName: one(doc.products as unknown as { name: string } | { name: string }[]).name,
+    version: snap.version,
+    blockTree: (snap.block_tree as BlockContent[]) ?? [],
+    resolutionManifest: (snap.resolution_manifest as SpecFieldResolution) ?? {},
+  };
+}
+
+/**
+ * C7.2 — the gated read: the latest non-archived snapshot for a document by id,
+ * **regardless of access tier**. Used only after a magic-link session has been
+ * verified (the public queries deliberately exclude gated docs), so the access
+ * decision is made by the caller, not this query.
+ */
+export async function getGatedPortalDocument(
+  service: SupabaseClient,
+  documentId: DocumentId,
+): Promise<PortalDocument | null> {
+  const { data: doc, error: docErr } = await service
+    .from('documents')
+    .select('id, title, archived_at, products!inner(name)')
+    .eq('id', documentId)
+    .maybeSingle();
+  if (docErr) throw new Error(`getGatedPortalDocument.document: ${docErr.message}`);
+  if (!doc || doc.archived_at) return null;
+
+  const { data: snaps, error: snapErr } = await service
+    .from('published_snapshots')
+    .select('version, block_tree, resolution_manifest')
+    .eq('document_id', documentId)
+    .is('archived_at', null)
+    .order('published_at', { ascending: false })
+    .limit(1);
+  if (snapErr) throw new Error(`getGatedPortalDocument.snapshot: ${snapErr.message}`);
+
+  const snap = (snaps ?? [])[0] as
+    | { version: string; block_tree: unknown; resolution_manifest: unknown }
+    | undefined;
+  if (!snap) return null;
 
   return {
     title: doc.title as string,
