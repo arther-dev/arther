@@ -45,4 +45,14 @@ test.describe('public portal (C6)', () => {
     await expect(page.getByRole('searchbox')).toBeVisible();
     await context.close();
   });
+
+  test('a gated document shows the access gate, never content, without a session (C7)', async ({
+    page,
+  }) => {
+    // No valid session cookie → the gate is shown, and no document is served.
+    const res = await page.goto(`${PORTAL}/acme/access?d=${UUID}`);
+    expect(res?.status()).toBeLessThan(400);
+    await expect(page.getByRole('heading', { level: 1, name: /access required/i })).toBeVisible();
+    await expect(page.getByText(/access link/i)).toBeVisible();
+  });
 });

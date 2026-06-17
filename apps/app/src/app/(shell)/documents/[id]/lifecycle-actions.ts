@@ -10,20 +10,25 @@ import {
   getActiveWorkspace,
   getDocument,
   getRevision,
+  issueMagicLink,
   listApprovalRoles,
   loadDocumentTree,
   membershipLookupFor,
   publishDocument,
   resolveSpecFields,
   restoreLatestSnapshot,
+  setDocumentAccess,
   transitionDocumentRevision,
 } from '@arther/db';
+import { generateMagicToken, hashMagicToken } from '@arther/config/magic-link';
 import {
   blockPlainText,
   canManageDocumentLifecycle,
   computePublishPreflight,
+  DOCUMENT_ACCESS_MODES,
   resolveTransition,
   submitForReviewSchema,
+  type DocumentAccessMode,
   type DocumentId,
   type DocumentRevisionId,
   type UserId,
@@ -336,5 +341,92 @@ export async function createRevisionAction(documentId: string): Promise<Lifecycl
     return { ok: true, state: 'draft' };
   } catch {
     return { ok: false, error: 'Could not create a new revision.' };
+  }
+}
+
+// --- C7 access control & magic links -----------------------------------------
+
+export interface AccessActionResult {
+  ok: boolean;
+  error?: string;
+  /** The new access tier on success (setDocumentAccessAction). */
+  access?: DocumentAccessMode;
+  /** A freshly issued magic-link URL — shown once (issueOpenMagicLinkAction). */
+  url?: string;
+}
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * C7.1 — set a published document's portal access tier (public ↔ link-gated) by
+ * writing `access_config` on its live snapshots (owner/admin; audited by the
+ * DB trigger). Busts the portal cache so the visibility change takes effect now.
+ */
+export async function setDocumentAccessAction(
+  documentId: string,
+  access: DocumentAccessMode,
+): Promise<AccessActionResult> {
+  if (!DOCUMENT_ACCESS_MODES.includes(access)) return { ok: false, error: 'Unknown access tier.' };
+  const auth = await authorize(documentId, 'publish');
+  if ('error' in auth) return { ok: false, error: auth.error };
+
+  try {
+    const updated = await setDocumentAccess(auth.supabase, {
+      documentId: documentId as DocumentId,
+      access,
+    });
+    if (updated === 0) return { ok: false, error: 'Publish the document before setting access.' };
+    revalidateDocument(documentId);
+    await revalidatePortal([`portal:${auth.workspaceSlug}`]);
+    return { ok: true, access };
+  } catch {
+    return { ok: false, error: 'Could not update access.' };
+  }
+}
+
+/**
+ * C7.2 — issue an open magic link for a gated document. Generates a high-entropy
+ * token, stores only its hash (`@arther/config`), and inserts the `magic_links`
+ * row under the caller's JWT (RLS: editor; the audit trigger records the actor).
+ * The raw token is returned **once** as a shareable URL — never persisted. Email
+ * delivery routes through the unified notification system later (C3); for now the
+ * owner copies the link. Requires `PORTAL_BASE_URL` to build an absolute URL.
+ */
+export async function issueOpenMagicLinkAction(
+  documentId: string,
+  input: { email: string; expiresInDays: number },
+): Promise<AccessActionResult> {
+  const email = (input.email ?? '').trim().toLowerCase();
+  if (!EMAIL_RE.test(email)) return { ok: false, error: 'Enter a valid email.' };
+  const days = Math.floor(input.expiresInDays);
+  if (!Number.isFinite(days) || days < 1 || days > 90) {
+    return { ok: false, error: 'Expiry must be 1–90 days.' };
+  }
+
+  const auth = await authorize(documentId, 'publish');
+  if ('error' in auth) return { ok: false, error: auth.error };
+
+  const base = process.env.PORTAL_BASE_URL;
+  if (!base) return { ok: false, error: 'Portal URL isn’t configured in this environment yet.' };
+
+  try {
+    const token = generateMagicToken();
+    const expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+    await issueMagicLink(auth.supabase, {
+      workspaceId: auth.workspaceId,
+      documentId: documentId as DocumentId,
+      email,
+      type: 'open',
+      tokenHash: hashMagicToken(token),
+      expiresAt,
+      createdBy: auth.userId,
+    });
+    const url = new URL('/api/access', base);
+    url.searchParams.set('w', auth.workspaceSlug);
+    url.searchParams.set('d', documentId);
+    url.searchParams.set('t', token);
+    return { ok: true, url: url.toString() };
+  } catch {
+    return { ok: false, error: 'Could not issue the access link.' };
   }
 }

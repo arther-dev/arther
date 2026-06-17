@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./env": "./src/env.ts",
+    "./magic-link": "./src/magic-link.ts",
     "./security": "./src/security.ts"
   },
   "scripts": {

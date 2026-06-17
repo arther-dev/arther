@@ -581,6 +581,23 @@ body {
   padding: var(--space-md);
 }
 
+/* C7 — portal access tier + magic-link issuance on a published document. */
+.doc-access {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  max-width: 40rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--space-md);
+}
+.doc-access__issue,
+.doc-access__issued {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
 /* C1 — the reviewer status panel on a document in Review. */
 .approval-panel {
   border: 1px solid var(--border-subtle);

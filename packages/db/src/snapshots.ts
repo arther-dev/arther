@@ -24,10 +24,12 @@ export interface PublishedSnapshotRow {
   archived_at: string | null;
   published_at: string;
   published_by: UserId | null;
+  /** C7.1 — the access tier (`{"access":"public"|"link"}`); default public. */
+  access_config: unknown;
 }
 
 const SNAPSHOT_COLUMNS =
-  'id, document_id, version, pdf_ready, archived_at, published_at, published_by';
+  'id, document_id, version, pdf_ready, archived_at, published_at, published_by, access_config';
 
 export async function publishDocument(
   service: SupabaseClient,
