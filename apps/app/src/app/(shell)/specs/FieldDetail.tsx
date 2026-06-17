@@ -7,7 +7,7 @@ import {
   listUsersByIds,
   type UnitRow,
 } from '@arther/db';
-import { formatFieldValue, type SpecFieldId, type UserId } from '@arther/types';
+import { formatFieldValue, groupReplies, type SpecFieldId, type UserId } from '@arther/types';
 import { ArchiveToggle, CommentForm } from './DetailForms';
 import type { ComponentOption } from './FieldValueEditor';
 
@@ -60,7 +60,14 @@ export async function FieldDetail({
           ?.name
       : undefined;
 
-  // F6.5: one chronological feed, newest first.
+  // F6 — thread replies under their parent; only root comments enter the feed.
+  const { roots, repliesByParent } = groupReplies(
+    comments,
+    (c) => c.id,
+    (c) => c.parent_comment_id,
+  );
+
+  // F6.5: one chronological feed, newest first (versions + root comments).
   const feed = [
     ...versions.map((v) => ({
       kind: 'version' as const,
@@ -68,12 +75,17 @@ export async function FieldDetail({
       body: `${fmt(v.value)}${v.note ? ` — ${v.note}` : ''}`,
       author: who(v.changed_by),
     })),
-    ...comments.map((c) => ({
+    ...roots.map((c) => ({
       kind: 'comment' as const,
+      id: c.id,
       at: c.created_at,
       body: c.body,
       context: c.value_snapshot !== null ? fmt(c.value_snapshot) : null,
       author: who(c.author_id),
+      replies: (repliesByParent.get(c.id) ?? [])
+        .slice()
+        .sort((a, b) => (a.created_at < b.created_at ? -1 : 1))
+        .map((r) => ({ at: r.created_at, body: r.body, author: who(r.author_id) })),
     })),
   ].sort((a, b) => (a.at < b.at ? 1 : -1));
 
@@ -122,12 +134,31 @@ export async function FieldDetail({
                   <span className="specs-override-chip">Value</span> {item.body}
                 </p>
               ) : (
-                <p className="specs-feed__body">
-                  {item.body}
-                  {item.context ? (
-                    <span className="specs-grid__meta"> · at this comment: {item.context}</span>
+                <div className="specs-feed__body">
+                  <p>
+                    {item.body}
+                    {item.context ? (
+                      <span className="specs-grid__meta"> · at this comment: {item.context}</span>
+                    ) : null}
+                  </p>
+                  {item.replies.length > 0 ? (
+                    <ul
+                      className="specs-feed"
+                      aria-label="Replies"
+                      style={{ marginLeft: 16, marginTop: 4 }}
+                    >
+                      {item.replies.map((r, ri) => (
+                        <li key={ri} className="specs-feed__item">
+                          <span className="specs-grid__meta">
+                            {new Date(r.at).toLocaleString()} · {r.author}
+                          </span>
+                          <p className="specs-feed__body">{r.body}</p>
+                        </li>
+                      ))}
+                    </ul>
                   ) : null}
-                </p>
+                  <CommentForm fieldId={field.id} parentCommentId={item.id} />
+                </div>
               )}
             </li>
           ))}

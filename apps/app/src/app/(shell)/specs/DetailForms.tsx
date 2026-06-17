@@ -4,8 +4,19 @@ import { useActionState, useRef } from 'react';
 import { Button } from '@arther/ui';
 import { addCommentAction, setArchivedAction, type SpecsFormState } from './actions';
 
-/** F5.8 composer — commenting is a member right, viewers included. */
-export function CommentForm({ fieldId }: { fieldId: string }) {
+/**
+ * F5.8 composer — commenting is a member right, viewers included. With a
+ * `parentCommentId` it posts a reply (F6 threading) in a compact inline form.
+ */
+export function CommentForm({
+  fieldId,
+  parentCommentId,
+}: {
+  fieldId: string;
+  parentCommentId?: string;
+}) {
+  const isReply = Boolean(parentCommentId);
+  const domId = parentCommentId ? `reply-${parentCommentId}` : `comment-${fieldId}`;
   const formRef = useRef<HTMLFormElement>(null);
   const [state, action, pending] = useActionState<SpecsFormState, FormData>(
     async (prev, formData) => {
@@ -18,19 +29,22 @@ export function CommentForm({ fieldId }: { fieldId: string }) {
   return (
     <form ref={formRef} action={action} className="specs-form" noValidate>
       <input type="hidden" name="fieldId" value={fieldId} />
-      <label className="ui-field__label" htmlFor={`comment-${fieldId}`}>
-        Comment
+      {parentCommentId ? (
+        <input type="hidden" name="parentCommentId" value={parentCommentId} />
+      ) : null}
+      <label className="ui-field__label" htmlFor={domId}>
+        {isReply ? 'Reply' : 'Comment'}
       </label>
       <textarea
-        id={`comment-${fieldId}`}
+        id={domId}
         name="body"
-        rows={2}
+        rows={isReply ? 1 : 2}
         className="ui-field__input"
-        placeholder="The value snapshot rides along automatically."
+        placeholder={isReply ? 'Reply…' : 'The value snapshot rides along automatically.'}
       />
       <div className="specs-form--row">
-        <Button type="submit" size="sm" disabled={pending}>
-          {pending ? 'Posting…' : 'Comment'}
+        <Button type="submit" size="sm" variant={isReply ? 'ghost' : 'secondary'} disabled={pending}>
+          {pending ? 'Posting…' : isReply ? 'Reply' : 'Comment'}
         </Button>
         {state.error ? <p className="ui-field__error">{state.error}</p> : null}
       </div>

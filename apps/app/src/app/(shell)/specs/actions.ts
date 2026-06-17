@@ -513,6 +513,8 @@ export async function attachComponentAction(
 const commentSchema = z.object({
   fieldId: z.string().uuid(),
   body: requiredText('Write the comment first.', TEXT_LIMITS.comment),
+  // F6 — a reply threads under its parent; absent/empty means a top-level comment.
+  parentCommentId: z.string().uuid().optional().or(z.literal('')),
 });
 
 /** F5.8 — commenting is a member right (viewers included). */
@@ -532,6 +534,7 @@ export async function addCommentAction(
       fieldId: parsed.data.fieldId as SpecFieldId,
       body: parsed.data.body,
       authorId: auth.userId,
+      parentCommentId: parsed.data.parentCommentId || undefined,
     });
   } catch {
     return { error: 'Could not post the comment.' };
