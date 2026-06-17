@@ -4,6 +4,7 @@ import { useActionState } from 'react';
 import type { ComponentRow } from '@arther/db';
 import { Button, TextField } from '@arther/ui';
 import { attachComponentAction, createComponentAction, type SpecsFormState } from './actions';
+import { Combobox } from './Combobox';
 
 export function NewComponentForm() {
   const [state, action, pending] = useActionState<SpecsFormState, FormData>(
@@ -55,21 +56,13 @@ export function AttachComponentForm({
   return (
     <form action={action} className="specs-form specs-form--row" noValidate>
       <input type="hidden" name="productId" value={productId} />
-      <div className="ui-field">
-        <label className="ui-field__label" htmlFor="attach-component">
-          Add component
-        </label>
-        <select id="attach-component" name="componentId" className="ui-field__input" defaultValue="">
-          <option value="" disabled>
-            From the library…
-          </option>
-          {components.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
-      </div>
+      <Combobox
+        id="attach-component"
+        name="componentId"
+        label="Add component"
+        placeholder="Search the library…"
+        options={components.map((c) => ({ value: c.id, label: c.name }))}
+      />
       {edges.length > 0 ? (
         <div className="ui-field">
           <label className="ui-field__label" htmlFor="attach-parent">
