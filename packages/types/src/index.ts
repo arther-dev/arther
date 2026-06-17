@@ -11,6 +11,7 @@ export * from './reference-graph';
 export * from './table-paste';
 export * from './brief';
 export * from './block-content';
+export * from './comment';
 export * from './document';
 export * from './document-access';
 export * from './document-lifecycle';

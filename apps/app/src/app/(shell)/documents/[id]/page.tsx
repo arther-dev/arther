@@ -4,6 +4,7 @@ import {
   getActiveWorkspace,
   listApprovalRecords,
   listApprovalRoles,
+  listCommentThreads,
   listDocumentMagicLinks,
   listMembers,
   listSnapshotsForDocument,
@@ -13,6 +14,7 @@ import {
   resolveSpecFields,
 } from '@arther/db';
 import {
+  blockAnchorLabel,
   canManageDocumentLifecycle,
   parseDocumentAccess,
   parseDocumentAllowlist,
@@ -24,6 +26,7 @@ import {
 import { AppShell, EmptyState } from '@arther/ui';
 import { getSupabaseServer } from '../../../../lib/supabase/server';
 import { AccessControl } from './AccessControl';
+import { CommentsPanel } from './CommentsPanel';
 import { DocumentLifecycle } from './DocumentLifecycle';
 import { ApprovalPanel, type PanelRole } from './ApprovalPanel';
 
@@ -170,6 +173,13 @@ export default async function DocumentPage({ params }: { params: Promise<{ id: s
       ? await listDocumentMagicLinks(supabase, tree.document.id)
       : [];
 
+  // C2 — block-anchored comment threads for the current revision (all members).
+  const commentThreads = user ? await listCommentThreads(supabase, tree.revision.id) : [];
+  const blockOptions = tree.blocks.map((b) => ({
+    id: b.id,
+    label: blockAnchorLabel(b.display_order, b.content.type),
+  }));
+
   const stale = summarizeStaleness(await listStaleReferencesForDocument(supabase, tree.document.id));
   const briefStale = summarizeBriefStaleness(
     await listStaleBriefReferencesForDocument(supabase, tree.document.id),
@@ -277,6 +287,15 @@ export default async function DocumentPage({ params }: { params: Promise<{ id: s
         ) : (
           <p className="specs-grid__meta">This document has no content yet.</p>
         )}
+        {user ? (
+          <CommentsPanel
+            documentId={tree.document.id}
+            threads={commentThreads}
+            blocks={blockOptions}
+            currentUserId={user.id}
+            canResolveAny={canManage}
+          />
+        ) : null}
         <p className="specs-grid__meta">
           <Link href="/specs">← Back to Specs</Link>
         </p>
