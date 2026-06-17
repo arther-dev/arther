@@ -1,34 +1,19 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import {
-  STATIC_SECURITY_HEADERS,
-  buildContentSecurityPolicy,
-  generateCspNonce,
-} from '@arther/config/security';
+import { STATIC_SECURITY_HEADERS, buildCacheableCsp } from '@arther/config/security';
 
 /**
- * Security headers for the public portal (F8.3). The portal serves published,
- * cacheable documents and must stay readable without JavaScript (C6.2), so it
- * carries the tighter (non-app) CSP profile. The per-request nonce is injected
- * into the request headers for Next's bootstrap scripts and the CSP + static
- * baseline are set on the response.
- *
- * Note (revisit at C6): the nonce makes responses per-request and forecloses
- * full static optimisation of published-doc pages. The portal is a stub today;
- * when cached SSR published docs land, switch to a hash-based CSP so pages stay
- * cacheable while keeping the strict policy.
+ * Security headers for the public portal (F8.3 + C6.5). The portal serves
+ * frozen, CDN-cacheable published documents and must stay readable without
+ * JavaScript, so it carries a **static (nonce-free) CSP** — responses are
+ * identical across requests and therefore cacheable (the per-request nonce CSP
+ * the app uses forecloses caching). Every directive stays tight (default-src
+ * 'self', object-src 'none', frame-ancestors 'none'); only `script-src` allows
+ * Next's deterministic bootstrap via `'unsafe-inline'`, justified by the portal
+ * rendering only React-escaped published content (see buildCacheableCsp).
  */
-export function middleware(request: NextRequest) {
-  const nonce = generateCspNonce();
-  const csp = buildContentSecurityPolicy(nonce, {
-    app: false,
-    isDev: process.env.NODE_ENV !== 'production',
-  });
-
-  const requestHeaders = new Headers(request.headers);
-  requestHeaders.set('x-nonce', nonce);
-  requestHeaders.set('Content-Security-Policy', csp);
-
-  const response = NextResponse.next({ request: { headers: requestHeaders } });
+export function middleware(_request: NextRequest) {
+  const csp = buildCacheableCsp({ isDev: process.env.NODE_ENV !== 'production' });
+  const response = NextResponse.next();
   for (const [name, value] of Object.entries(STATIC_SECURITY_HEADERS)) {
     response.headers.set(name, value);
   }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   STATIC_SECURITY_HEADERS,
+  buildCacheableCsp,
   buildContentSecurityPolicy,
   generateCspNonce,
 } from './security';
@@ -56,6 +57,27 @@ describe('STATIC_SECURITY_HEADERS', () => {
     expect(STATIC_SECURITY_HEADERS['X-Frame-Options']).toBe('DENY');
     expect(STATIC_SECURITY_HEADERS['X-Content-Type-Options']).toBe('nosniff');
     expect(STATIC_SECURITY_HEADERS['Strict-Transport-Security']).toContain('includeSubDomains');
+  });
+});
+
+describe('buildCacheableCsp (C6.5 portal)', () => {
+  it('is nonce-free (cacheable) but keeps the tight directives, no unsafe-eval in prod', () => {
+    const csp = buildCacheableCsp();
+    const d = directives(csp);
+    expect(csp).not.toMatch(/nonce-/);
+    expect(csp).not.toContain('strict-dynamic');
+    expect(csp).not.toContain('unsafe-eval');
+    expect(d.get('default-src')).toBe("'self'");
+    expect(d.get('object-src')).toBe("'none'");
+    expect(d.get('frame-ancestors')).toBe("'none'");
+    expect(d.get('base-uri')).toBe("'self'");
+    // script-src allows Next's bootstrap without a per-request nonce.
+    expect(d.get('script-src')).toBe("'self' 'unsafe-inline'");
+    expect(csp).toContain('upgrade-insecure-requests');
+  });
+
+  it('relaxes script-src for the dev server only', () => {
+    expect(buildCacheableCsp({ isDev: true })).toContain('unsafe-eval');
   });
 });
 

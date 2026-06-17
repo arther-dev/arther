@@ -1,9 +1,47 @@
 import Link from 'next/link';
+import { unstable_cache } from 'next/cache';
 import { BlockRenderer } from '@arther/block-renderer';
-import { getPortalDocument, getPortalWorkspace } from '@arther/db';
+import { getPortalDocument, getPortalWorkspace, type PortalDocument } from '@arther/db';
+import { portalTag } from '../../../../lib/portal-cache';
 import { getPortalDb } from '../../../../lib/portal-db';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+type Loaded =
+  | { state: 'unprovisioned' }
+  | { state: 'notfound' }
+  | { state: 'ok'; doc: PortalDocument; workspaceName: string };
+
+/**
+ * C6.5 — the snapshot read is wrapped in Next's data cache (tagged per workspace)
+ * so the rendered document page is CDN-cacheable (ISR), independent of Supabase's
+ * uncached fetch. Publishing busts `portalTag(workspace)` (the revalidate
+ * endpoint), and the per-route `revalidate` is the slow time fallback.
+ */
+function loadDocument(
+  workspaceSlug: string,
+  productId: string,
+  documentSlug: string,
+  version: string | undefined,
+): Promise<Loaded> {
+  return unstable_cache(
+    async (): Promise<Loaded> => {
+      const db = getPortalDb();
+      if (!db) return { state: 'unprovisioned' };
+      const workspace = await getPortalWorkspace(db, workspaceSlug);
+      if (!workspace || !UUID_RE.test(productId)) return { state: 'notfound' };
+      const doc = await getPortalDocument(db, {
+        workspaceId: workspace.id,
+        productId,
+        documentSlug,
+        version,
+      });
+      return doc ? { state: 'ok', doc, workspaceName: workspace.name } : { state: 'notfound' };
+    },
+    ['portal-document', workspaceSlug, productId, documentSlug, version ?? 'latest'],
+    { revalidate: 600, tags: [portalTag(workspaceSlug)] },
+  )();
+}
 
 function Message({ title, body }: { title: string; body: string }) {
   return (
@@ -33,8 +71,8 @@ export async function PortalDocumentView({
   documentSlug: string;
   version?: string;
 }) {
-  const db = getPortalDb();
-  if (!db) {
+  const result = await loadDocument(workspaceSlug, productId, documentSlug, version);
+  if (result.state === 'unprovisioned') {
     return (
       <Message
         title="Portal"
@@ -42,29 +80,18 @@ export async function PortalDocumentView({
       />
     );
   }
-
-  const workspace = await getPortalWorkspace(db, workspaceSlug);
-  const doc =
-    workspace && UUID_RE.test(productId)
-      ? await getPortalDocument(db, {
-          workspaceId: workspace.id,
-          productId,
-          documentSlug,
-          version,
-        })
-      : null;
-
-  if (!workspace || !doc) {
+  if (result.state === 'notfound') {
     return <Message title="Not found" body="This document isn’t published, or the link is wrong." />;
   }
 
+  const { doc, workspaceName } = result;
   return (
     <main className="portal-shell">
       <header className="portal-header">
         <p className="portal-header__eyebrow">{doc.productName}</p>
         <h1 className="portal-title">{doc.title}</h1>
         <p className="portal-meta">
-          Version {doc.version} · <Link href={`/${workspaceSlug}`}>{workspace.name}</Link>
+          Version {doc.version} · <Link href={`/${workspaceSlug}`}>{workspaceName}</Link>
         </p>
       </header>
       <article className="br-document">

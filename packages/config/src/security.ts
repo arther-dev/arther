@@ -101,3 +101,39 @@ export function buildContentSecurityPolicy(nonce: string, options: CspOptions = 
 export function generateCspNonce(): string {
   return crypto.randomUUID().replace(/-/g, '');
 }
+
+/**
+ * C6.5 — a static (nonce-free) CSP for the public portal so its published-doc
+ * responses are identical across requests and therefore CDN-cacheable. The
+ * per-request nonce CSP forecloses caching; the portal serves only frozen,
+ * React-escaped published content (no user-controlled HTML, no `connect-src`
+ * beyond `'self'`), so `script-src 'self' 'unsafe-inline'` — which covers Next's
+ * deterministic bootstrap/flight scripts without a per-request nonce — is an
+ * acceptable trade for cacheability while every other directive stays tight.
+ * (A hash-based CSP isn't viable: Next's inline flight script varies per page.)
+ */
+export function buildCacheableCsp(options: { isDev?: boolean } = {}): string {
+  const { isDev = false } = options;
+  const scriptSrc = isDev
+    ? ["'self'", "'unsafe-inline'", "'unsafe-eval'"]
+    : ["'self'", "'unsafe-inline'"];
+
+  const directives: Array<[string, string[]]> = [
+    ['default-src', ["'self'"]],
+    ['base-uri', ["'self'"]],
+    ['object-src', ["'none'"]],
+    ['frame-ancestors', ["'none'"]],
+    ['form-action', ["'self'"]],
+    ['img-src', ["'self'", 'data:', 'blob:', 'https://*.supabase.co']],
+    ['font-src', ["'self'", 'data:']],
+    ['style-src', ["'self'", "'unsafe-inline'"]],
+    ['script-src', scriptSrc],
+    ['connect-src', ["'self'"]],
+    ['worker-src', ["'self'", 'blob:']],
+    ['manifest-src', ["'self'"]],
+  ];
+
+  const policy = directives.map(([name, values]) => `${name} ${values.join(' ')}`);
+  if (!isDev) policy.push('upgrade-insecure-requests');
+  return policy.join('; ');
+}
