@@ -140,10 +140,13 @@ export {
 } from './portal';
 export {
   issueMagicLink,
+  listDocumentMagicLinks,
   logMagicLinkAccess,
+  revokeMagicLink,
   setDocumentAccess,
   validateMagicLink,
   type IssuedMagicLink,
+  type MagicLinkSummary,
   type ValidatedMagicLink,
 } from './magic-links';
 export {

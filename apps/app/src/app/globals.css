@@ -581,21 +581,40 @@ body {
   padding: var(--space-md);
 }
 
-/* C7 — portal access tier + magic-link issuance on a published document. */
+/* C7 — portal access tier, allowlist, magic-link issuance + revocation. */
 .doc-access {
   display: flex;
   flex-direction: column;
   gap: var(--space-sm);
-  max-width: 40rem;
+  max-width: 44rem;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   padding: var(--space-md);
 }
-.doc-access__issue,
+.doc-access__panel,
 .doc-access__issued {
   display: flex;
   flex-direction: column;
   gap: var(--space-sm);
+}
+.doc-access__links {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+.doc-access__links th,
+.doc-access__links td {
+  text-align: left;
+  padding: var(--space-xs) var(--space-sm);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.doc-access__links th {
+  color: var(--text-tertiary);
+  font-weight: 500;
+}
+.doc-access__link--revoked,
+.doc-access__link--expired {
+  color: var(--text-tertiary);
 }
 
 /* C1 — the reviewer status panel on a document in Review. */
