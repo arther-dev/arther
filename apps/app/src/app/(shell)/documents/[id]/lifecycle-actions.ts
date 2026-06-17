@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { createCanDo, type Action } from '@arther/authz';
 import {
+  archiveDocumentSnapshots,
   createDocumentRevision,
   createServiceClient,
   DbRuleError,
@@ -14,6 +15,7 @@ import {
   membershipLookupFor,
   publishDocument,
   resolveSpecFields,
+  restoreLatestSnapshot,
   transitionDocumentRevision,
 } from '@arther/db';
 import {
@@ -256,6 +258,56 @@ export async function publishDocumentAction(documentId: string): Promise<Lifecyc
   } catch (err) {
     if (err instanceof DbRuleError) return { ok: false, error: err.message };
     return { ok: false, error: 'Could not publish the document.' };
+  }
+}
+
+/**
+ * C4.6 — unpublish = archive. Take the document off the public portal by
+ * archiving all of its live snapshots (rows are never deleted; the audit trigger
+ * logs `snapshot.archived`). This is a portal-visibility operation, deliberately
+ * decoupled from the lifecycle state machine: the document stays Published (its
+ * working copy is untouched) — only its public visibility changes. Owner/admin
+ * only (the `doc.publish` gate + the 0008 RLS UPDATE policy). Busts the portal
+ * cache so it disappears immediately.
+ */
+export async function unpublishDocumentAction(documentId: string): Promise<LifecycleResult> {
+  const auth = await authorize(documentId, 'publish');
+  if ('error' in auth) return { ok: false, error: auth.error };
+
+  try {
+    const archived = await archiveDocumentSnapshots(auth.supabase, {
+      documentId: documentId as DocumentId,
+      userId: auth.userId,
+    });
+    if (archived === 0) return { ok: false, error: 'This document isn’t live on the portal.' };
+    revalidateDocument(documentId);
+    await revalidatePortal([`portal:${auth.workspaceSlug}`]);
+    return { ok: true, state: 'published' };
+  } catch {
+    return { ok: false, error: 'Could not unpublish the document.' };
+  }
+}
+
+/**
+ * C4.6 — restore a previously-unpublished document to the portal by un-archiving
+ * its most recent snapshot (the audit trigger logs `snapshot.restored`). Same
+ * owner/admin gate and portal-cache bust as unpublishing.
+ */
+export async function restoreToPortalAction(documentId: string): Promise<LifecycleResult> {
+  const auth = await authorize(documentId, 'publish');
+  if ('error' in auth) return { ok: false, error: auth.error };
+
+  try {
+    const version = await restoreLatestSnapshot(auth.supabase, {
+      documentId: documentId as DocumentId,
+      userId: auth.userId,
+    });
+    if (!version) return { ok: false, error: 'There’s no snapshot to restore.' };
+    revalidateDocument(documentId);
+    await revalidatePortal([`portal:${auth.workspaceSlug}`]);
+    return { ok: true, state: 'published' };
+  } catch {
+    return { ok: false, error: 'Could not restore the document.' };
   }
 }
 

@@ -68,3 +68,54 @@ export async function listSnapshotsForDocument(
   if (error) throw new Error(`listSnapshotsForDocument: ${error.message}`);
   return (data ?? []) as PublishedSnapshotRow[];
 }
+
+/**
+ * C4.6 — unpublish = archive. Take a document off the public portal by archiving
+ * all of its currently-live snapshots; rows are never deleted (history is kept
+ * for restore/audit). Runs under the caller's JWT, so the 0008 RLS UPDATE policy
+ * gates it to owner/admin, the freeze guard permits the `archived_*` change, and
+ * the audit trigger records the real actor (`auth.uid()`) + a `snapshot.archived`
+ * row per version. Returns how many snapshots were archived (0 = nothing live).
+ */
+export async function archiveDocumentSnapshots(
+  client: SupabaseClient,
+  input: { documentId: DocumentId; userId: UserId },
+): Promise<number> {
+  const { data, error } = await client
+    .from('published_snapshots')
+    .update({ archived_at: new Date().toISOString(), archived_by: input.userId })
+    .eq('document_id', input.documentId)
+    .is('archived_at', null)
+    .select('id');
+  if (error) throw new Error(`archiveDocumentSnapshots: ${error.message}`);
+  return (data ?? []).length;
+}
+
+/**
+ * C4.6 — restore a document to the portal: un-archive its most recent snapshot
+ * (the portal serves the latest non-archived version, so this republishes the
+ * newest publication; older versions stay archived). Same RLS/audit path as
+ * archiving (logs `snapshot.restored`). Returns the restored version, or null if
+ * the document has never been published.
+ */
+export async function restoreLatestSnapshot(
+  client: SupabaseClient,
+  input: { documentId: DocumentId; userId: UserId },
+): Promise<string | null> {
+  const { data: latest, error: selErr } = await client
+    .from('published_snapshots')
+    .select('id, version')
+    .eq('document_id', input.documentId)
+    .order('published_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (selErr) throw new Error(`restoreLatestSnapshot: ${selErr.message}`);
+  if (!latest) return null;
+
+  const { error: updErr } = await client
+    .from('published_snapshots')
+    .update({ archived_at: null, archived_by: null })
+    .eq('id', latest.id as PublishedSnapshotId);
+  if (updErr) throw new Error(`restoreLatestSnapshot: ${updErr.message}`);
+  return latest.version as string;
+}

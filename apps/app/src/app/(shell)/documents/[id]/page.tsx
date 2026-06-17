@@ -143,12 +143,20 @@ export default async function DocumentPage({ params }: { params: Promise<{ id: s
     }
   }
 
-  // C4 — the live published snapshot (if any) for the version indicator.
-  const snapshot =
-    state === 'published'
-      ? ((await listSnapshotsForDocument(supabase, tree.document.id)).find((s) => !s.archived_at) ??
-        null)
-      : null;
+  // C4 — the live published snapshot for the version indicator; C4.6 — portal
+  // visibility (live vs. unpublished/archived), decoupled from the state machine.
+  const snapshots =
+    state === 'published' ? await listSnapshotsForDocument(supabase, tree.document.id) : [];
+  const snapshot = snapshots.find((s) => !s.archived_at) ?? null;
+  const latestSnapshot = snapshots[0] ?? null;
+  const portalVisibility: 'live' | 'unpublished' | null =
+    state !== 'published'
+      ? null
+      : snapshot
+        ? 'live'
+        : latestSnapshot
+          ? 'unpublished'
+          : null;
 
   const stale = summarizeStaleness(await listStaleReferencesForDocument(supabase, tree.document.id));
   const briefStale = summarizeBriefStaleness(
@@ -190,6 +198,17 @@ export default async function DocumentPage({ params }: { params: Promise<{ id: s
             Published <strong>v{snapshot.version}</strong> ·{' '}
             {snapshot.pdf_ready ? 'PDF ready' : 'PDF pending (C5)'}
           </p>
+        ) : portalVisibility === 'unpublished' ? (
+          <p className="specs-grid__meta" role="status">
+            Unpublished from the portal
+            {latestSnapshot ? (
+              <>
+                {' '}
+                (was <strong>v{latestSnapshot.version}</strong>)
+              </>
+            ) : null}{' '}
+            — restore it to make it public again.
+          </p>
         ) : null}
         {rejection ? (
           <p className="ui-field__error" role="status">
@@ -198,7 +217,11 @@ export default async function DocumentPage({ params }: { params: Promise<{ id: s
           </p>
         ) : null}
         {canManage ? (
-          <DocumentLifecycle documentId={tree.document.id} state={tree.revision.state} />
+          <DocumentLifecycle
+            documentId={tree.document.id}
+            state={tree.revision.state}
+            portalVisibility={portalVisibility}
+          />
         ) : null}
         {state === 'review' ? (
           panelRoles.length > 0 ? (
