@@ -146,6 +146,14 @@ export default async function SettingsPage() {
           </table>
         </section>
 
+        <section className="specs-section">
+          <h2 className="specs-section__title">Notifications</h2>
+          <p className="specs-grid__meta">
+            <Link href="/settings/notifications">Notification preferences</Link> — choose which
+            events notify you, in-app and by email.
+          </p>
+        </section>
+
         {canManage ? (
           <section className="specs-section">
             <h2 className="specs-section__title">Document types</h2>

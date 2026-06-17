@@ -61,6 +61,37 @@ export function isNotificationEventType(value: unknown): value is NotificationEv
   );
 }
 
+/** Friendly labels for the preference grid (C3.2), in a sensible display order. */
+export const NOTIFICATION_EVENT_LABELS: Record<NotificationEventType, string> = {
+  review_requested: 'Review requested',
+  document_approved: 'Document approved',
+  document_rejected: 'Document sent back',
+  document_published: 'Document published',
+  comment_mention: 'You’re mentioned',
+  comment_added: 'New comment on your document',
+  comment_reply: 'Reply in a thread',
+  spec_stale: 'A spec change affects your document',
+  review_overdue: 'Review overdue',
+};
+
+export interface NotificationChannelPrefs {
+  inApp: boolean;
+  email: boolean;
+}
+
+/**
+ * C3.2 — the effective channel preferences for an event: a stored row when the
+ * member set one, else the defaults (in-app on for everything; email per
+ * `EMAIL_DEFAULT_ON`). Pure so the settings UI and the dispatch agree.
+ */
+export function resolveNotificationPreference(
+  stored: { inAppEnabled: boolean; emailEnabled: boolean } | undefined,
+  eventType: NotificationEventType,
+): NotificationChannelPrefs {
+  if (stored) return { inApp: stored.inAppEnabled, email: stored.emailEnabled };
+  return { inApp: true, email: EMAIL_DEFAULT_ON[eventType] };
+}
+
 /**
  * Pure — the in-app render for a notification: a title and a deep link (or null).
  * The notification centre and any future channel (Slack, §9.3) read from here so

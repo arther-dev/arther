@@ -132,4 +132,22 @@ describe('preferences are self-managed (C3.2)', () => {
       `,
     );
   });
+
+  it('the dispatch in-app filter (C3.2) sees a disabled event; a default stays on', async () => {
+    await member`
+      insert into public.notification_preferences (workspace_member_id, event_type, in_app_enabled, email_enabled)
+      values (${memberMembershipId}, 'review_requested', false, true)
+    `;
+    // What dispatchNotification queries: memberships that turned this event OFF.
+    const memberOff = await admin`
+      select 1 from public.notification_preferences
+      where event_type = 'review_requested' and in_app_enabled = false and workspace_member_id = ${memberMembershipId}
+    `;
+    const ownerOff = await admin`
+      select 1 from public.notification_preferences
+      where event_type = 'review_requested' and in_app_enabled = false and workspace_member_id = ${ownerMembershipId}
+    `;
+    expect(memberOff).toHaveLength(1); // member disabled it
+    expect(ownerOff).toHaveLength(0); // owner has no row → default on
+  });
 });
