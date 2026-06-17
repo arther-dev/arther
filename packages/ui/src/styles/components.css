@@ -492,3 +492,72 @@
   outline: 2px solid var(--border-focus);
   outline-offset: 2px;
 }
+
+/* C3.4 — notification centre (bell + unread badge + popover feed). */
+.notif__trigger {
+  position: relative;
+  list-style: none;
+  cursor: pointer;
+}
+.notif__trigger::-webkit-details-marker {
+  display: none;
+}
+.notif__badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--accent-strong, #c0392b);
+  color: #fff;
+  font-size: 0.6875rem;
+  line-height: 16px;
+  text-align: center;
+}
+.notif__panel {
+  min-width: 320px;
+  max-width: 360px;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+.notif__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-xs) var(--space-md);
+}
+.notif__title {
+  font: var(--type-label);
+  font-weight: 600;
+}
+.notif__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.notif__item--unread {
+  border-left: 2px solid var(--accent-strong, #c0392b);
+}
+.notif__link {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: var(--space-sm) var(--space-md);
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font: var(--type-label);
+  text-decoration: none;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+}
+.notif__link:hover {
+  background: var(--bg-active);
+}
+.notif__empty {
+  padding: var(--space-sm) var(--space-md);
+  color: var(--text-tertiary);
+  font: var(--type-label);
+}

@@ -8,6 +8,8 @@ export interface TopBarProps {
   connectivity?: 'connected' | 'saving' | 'offline';
   /** Account affordance (menu); falls back to the bare avatar button. */
   account?: ReactNode;
+  /** Notification affordance (bell + unread badge, C3.4); falls back to a bare bell. */
+  notifications?: ReactNode;
   /** Where the ⌘K search control navigates (G4.7); a bare button when unset. */
   searchHref?: string;
   /** Slot for future tab-strip items beyond the active one. */
@@ -24,6 +26,7 @@ export function TopBar({
   activeTab,
   connectivity = 'connected',
   account,
+  notifications,
   searchHref,
   children,
 }: TopBarProps) {
@@ -56,9 +59,11 @@ export function TopBar({
             <SearchIcon />
           </button>
         )}
-        <button type="button" className="ui-icon-btn" aria-label="Notifications">
-          <BellIcon />
-        </button>
+        {notifications ?? (
+          <button type="button" className="ui-icon-btn" aria-label="Notifications">
+            <BellIcon />
+          </button>
+        )}
         <button type="button" className="ui-icon-btn" aria-label="Ask Arther (⌘J)">
           <HelpIcon />
         </button>

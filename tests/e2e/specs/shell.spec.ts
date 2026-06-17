@@ -14,7 +14,9 @@ test.describe('app shell frame (Handoff 02)', () => {
     await expect(page.getByRole('button', { name: 'Switch module' })).toBeVisible();
     // G4.7 — the search control navigates to /search, so it's a link now.
     await expect(page.getByRole('link', { name: 'Search (⌘K)' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Notifications' })).toBeVisible();
+    // C3.4 — the bell is now a disclosure menu (the notification centre), so it's
+    // a labelled <summary> like the Account control below.
+    await expect(page.getByLabel(/Notifications/)).toBeVisible();
     await expect(page.getByRole('button', { name: 'Ask Arther (⌘J)' })).toBeVisible();
     // The account control is the menu's <summary> trigger since F4.5.
     await expect(page.getByLabel('Account')).toBeVisible();

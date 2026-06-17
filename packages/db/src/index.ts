@@ -1,6 +1,14 @@
 export { createServiceClient, createUserClient } from './client';
 export { DbRuleError, rpcError } from './errors';
 export {
+  dispatchNotification,
+  getNotificationFeed,
+  markAllNotificationsRead,
+  markNotificationRead,
+  membershipUserIds,
+  type NotificationFeed,
+} from './notifications';
+export {
   addCommentReply,
   carryForwardComments,
   createCommentThread,
