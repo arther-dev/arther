@@ -215,6 +215,52 @@ describe('orphaning (C2.3)', () => {
   });
 });
 
+describe('text-range anchoring (C2.1) + text_edited orphaning', () => {
+  // The anchor match is pure (isTextAnchorValid, unit-tested); these validate the
+  // schema contract orphanStaleTextAnchors relies on — the text_range anchor type
+  // and the text_anchor jsonb shape.
+  it('stores a text_range thread with its anchor', async () => {
+    const anchor = { start_offset: 9, end_offset: 13, anchor_text: '36 V' };
+    const id = (
+      await owner`
+        insert into public.comment_threads (workspace_id, revision_id, block_id, anchor_type, text_anchor, created_by)
+        values (${ws}, ${revisionId}, ${blockId}, 'text_range', ${owner.json(anchor)}, ${ownerId}) returning id
+      `
+    )[0]!.id as string;
+    const row = (
+      await admin`select anchor_type, text_anchor from public.comment_threads where id = ${id}`
+    )[0]!;
+    expect(row.anchor_type).toBe('text_range');
+    expect((row.text_anchor as { anchor_text: string }).anchor_text).toBe('36 V');
+  });
+
+  it('anchor_type rejects an unknown value (CHECK)', async () => {
+    await expectDenied(
+      () => owner`
+        insert into public.comment_threads (workspace_id, revision_id, block_id, anchor_type, created_by)
+        values (${ws}, ${revisionId}, ${blockId}, 'bogus', ${ownerId})
+      `,
+    );
+  });
+
+  it('a stale text_range thread orphans with reason text_edited', async () => {
+    const id = (
+      await owner`
+        insert into public.comment_threads (workspace_id, revision_id, block_id, anchor_type, text_anchor, created_by)
+        values (${ws}, ${revisionId}, ${blockId}, 'text_range', ${owner.json({ start_offset: 0, end_offset: 4, anchor_text: 'gone' })}, ${ownerId})
+        returning id
+      `
+    )[0]!.id as string;
+    // What orphanStaleTextAnchors does once the anchored span no longer matches:
+    await owner`
+      update public.comment_threads set status = 'orphaned', orphaned_reason = 'text_edited' where id = ${id}
+    `;
+    const row = (await admin`select status, orphaned_reason from public.comment_threads where id = ${id}`)[0]!;
+    expect(row.status).toBe('orphaned');
+    expect(row.orphaned_reason).toBe('text_edited');
+  });
+});
+
 describe('carry-forward (C2.4)', () => {
   // The carry-forward orchestration lives in TS (createDocumentRevision); this
   // validates the migration 0022 schema contract it relies on — the inherited

@@ -24,6 +24,39 @@ export interface TextAnchor {
   anchorText: string;
 }
 
+/**
+ * C2.1 — locate a snippet in a block's plain text, producing a text-range anchor
+ * (the first occurrence). The snippet is trimmed; returns null when it isn't
+ * found, so the caller can fall back to a block-level anchor.
+ */
+export function findTextAnchor(textContent: string, snippet: string): TextAnchor | null {
+  const needle = snippet.trim();
+  if (needle.length === 0) return null;
+  const start = textContent.indexOf(needle);
+  if (start < 0) return null;
+  return { startOffset: start, endOffset: start + needle.length, anchorText: needle };
+}
+
+/**
+ * C2.3 — is a text-range anchor still valid against the block's current text?
+ * The span at the stored offsets must still equal the anchored text (collab spec
+ * §7.5): a writer editing or deleting the anchored span fails this check, so the
+ * thread orphans (reason `text_edited`) rather than silently re-pointing.
+ */
+export function isTextAnchorValid(textContent: string | null, anchor: TextAnchor): boolean {
+  if (textContent == null) return false;
+  if (
+    !Number.isInteger(anchor.startOffset) ||
+    !Number.isInteger(anchor.endOffset) ||
+    anchor.startOffset < 0 ||
+    anchor.endOffset > textContent.length ||
+    anchor.startOffset >= anchor.endOffset
+  ) {
+    return false;
+  }
+  return textContent.slice(anchor.startOffset, anchor.endOffset) === anchor.anchorText;
+}
+
 /** Comment body: required, trimmed, bounded (rich text may carry @mention tokens). */
 export const commentBodySchema = requiredText('Write a comment.', TEXT_LIMITS.comment);
 
