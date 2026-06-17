@@ -2,7 +2,9 @@
 
 import { usePathname } from 'next/navigation';
 import { TopBar } from '@arther/ui';
+import type { NotificationView } from '@arther/types';
 import { AccountMenu } from './AccountMenu';
+import { NotificationBell } from './NotificationBell';
 
 /** The active tab = the mode, derived from the route segment (Handoff 02 §3). */
 const MODE_TITLES: Array<[prefix: string, title: string]> = [
@@ -15,8 +17,21 @@ const MODE_TITLES: Array<[prefix: string, title: string]> = [
   ['/design-tokens', 'Design tokens'],
 ];
 
-export function ShellTopBar() {
+export function ShellTopBar({
+  notifications = [],
+  unreadCount = 0,
+}: {
+  notifications?: NotificationView[];
+  unreadCount?: number;
+}) {
   const pathname = usePathname() ?? '/';
   const activeTab = MODE_TITLES.find(([prefix]) => pathname.startsWith(prefix))?.[1] ?? 'Arther';
-  return <TopBar activeTab={activeTab} account={<AccountMenu />} searchHref="/search" />;
+  return (
+    <TopBar
+      activeTab={activeTab}
+      account={<AccountMenu />}
+      notifications={<NotificationBell items={notifications} unreadCount={unreadCount} />}
+      searchHref="/search"
+    />
+  );
 }

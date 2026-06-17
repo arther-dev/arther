@@ -7,11 +7,13 @@ import {
   createDocumentRevision,
   createServiceClient,
   DbRuleError,
+  dispatchNotification,
   getActiveWorkspace,
   getDocument,
   getRevision,
   issueMagicLink,
   listApprovalRoles,
+  membershipUserIds,
   listSnapshotsForDocument,
   loadDocumentTree,
   membershipLookupFor,
@@ -40,6 +42,7 @@ import {
   type DocumentId,
   type DocumentRevisionId,
   type UserId,
+  type WorkspaceId,
 } from '@arther/types';
 import { getSupabaseServer } from '../../../../lib/supabase/server';
 
@@ -157,6 +160,7 @@ async function runOwnerTransition(
 
   // C1 (spec §4.2) — a document can't enter Review while a required approval
   // role is vacant: there would be no one able to approve it.
+  let approverMembershipIds: string[] = [];
   if (action === 'submit_for_review') {
     const roles = await listApprovalRoles(auth.supabase, auth.document.document_type_id);
     const vacant = roles.filter((r) => r.required && r.assignments.length === 0);
@@ -168,6 +172,7 @@ async function runOwnerTransition(
           .join(', ')} before sending for review.`,
       };
     }
+    approverMembershipIds = roles.flatMap((r) => r.assignments.map((a) => a.workspace_member_id));
   }
 
   try {
@@ -184,10 +189,41 @@ async function runOwnerTransition(
     if (outcome.status === 'conflict') {
       return { ok: false, error: 'The document’s status changed elsewhere — reload and try again.' };
     }
+    // C3.5 — notify the assigned approvers a review is requested (spec §9.2).
+    if (action === 'submit_for_review' && outcome.state === 'review') {
+      await notifyReviewRequested(auth, documentId, approverMembershipIds);
+    }
     revalidateDocument(documentId);
     return { ok: true, state: outcome.state };
   } catch {
     return { ok: false, error: 'Could not update the document’s status.' };
+  }
+}
+
+/**
+ * C3.5 — dispatch `review_requested` to the assigned approvers through the unified
+ * notification system (invariant 8). Best-effort: a dispatch failure never fails
+ * the transition. Service-role write (notifications have no authenticated INSERT).
+ */
+async function notifyReviewRequested(
+  auth: { userId: UserId; workspaceId: WorkspaceId; document: { title: string } },
+  documentId: string,
+  approverMembershipIds: string[],
+): Promise<void> {
+  if (approverMembershipIds.length === 0) return;
+  try {
+    const service = createServiceClient();
+    const recipients = (await membershipUserIds(service, approverMembershipIds)).filter(
+      (id) => id !== auth.userId, // the submitter doesn't notify themselves
+    );
+    await dispatchNotification(service, {
+      workspaceId: auth.workspaceId,
+      recipientIds: recipients,
+      eventType: 'review_requested',
+      payload: { documentId, documentTitle: auth.document.title },
+    });
+  } catch {
+    // ignore — notifications are best-effort
   }
 }
 
