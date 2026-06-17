@@ -121,8 +121,10 @@ export {
 } from './edit-authz';
 export { recordAuditEvent, type AuditEvent } from './audit';
 export {
+  archiveDocumentSnapshots,
   listSnapshotsForDocument,
   publishDocument,
+  restoreLatestSnapshot,
   type PublishedSnapshotRow,
 } from './snapshots';
 export {

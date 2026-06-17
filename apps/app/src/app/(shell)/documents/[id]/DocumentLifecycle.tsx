@@ -12,23 +12,37 @@ import {
   publishDocumentAction,
   pullBackToDraftAction,
   pullBackToReviewAction,
+  restoreToPortalAction,
   submitForReviewAction,
+  unpublishDocumentAction,
   type LifecycleResult,
 } from './lifecycle-actions';
+
+/**
+ * The document's portal visibility (C4.6), independent of the lifecycle state:
+ * `live` = a current snapshot is served on the portal; `unpublished` = published
+ * but its snapshots are archived (removed from the portal); `null` = never
+ * published / not applicable.
+ */
+export type PortalVisibility = 'live' | 'unpublished' | null;
 
 /**
  * C0.1/C0.2 — the document owner's lifecycle controls on the document header.
  * Buttons are derived from the pure transition map for the current state
  * (`transitionActionsFor(state, 'owner')`); each calls its server action, which
- * re-authorizes (canDo + ownership) and runs the guarded transition. Rendered
- * only when the viewer may manage the document (computed server-side).
+ * re-authorizes (canDo + ownership) and runs the guarded transition. C4.6 adds
+ * the portal-visibility controls (unpublish / restore) — a snapshot operation
+ * decoupled from the state machine. Rendered only when the viewer may manage the
+ * document (computed server-side).
  */
 export function DocumentLifecycle({
   documentId,
   state,
+  portalVisibility = null,
 }: {
   documentId: string;
   state: DocumentState;
+  portalVisibility?: PortalVisibility;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -121,6 +135,39 @@ export function DocumentLifecycle({
             }
           >
             {DOCUMENT_TRANSITION_LABELS.create_revision}
+          </button>
+        )}
+
+        {/* C4.6 — portal visibility, decoupled from the lifecycle state. */}
+        {portalVisibility === 'live' && (
+          <button
+            type="button"
+            className="ui-btn ui-btn--ghost"
+            disabled={pending}
+            onClick={() =>
+              run(
+                () => unpublishDocumentAction(documentId),
+                'Unpublish from the portal? It will be removed from public view; the document and its history are kept and can be restored.',
+              )
+            }
+          >
+            Unpublish from portal
+          </button>
+        )}
+
+        {portalVisibility === 'unpublished' && (
+          <button
+            type="button"
+            className="ui-btn ui-btn--primary"
+            disabled={pending}
+            onClick={() =>
+              run(
+                () => restoreToPortalAction(documentId),
+                'Restore to the portal? The latest published version becomes public again.',
+              )
+            }
+          >
+            Restore to portal
           </button>
         )}
       </div>
