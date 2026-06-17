@@ -10,10 +10,9 @@ import {
 import { setNotificationPreferenceAction } from './notification-preference-actions';
 
 /**
- * C3.2 — the per-event notification preference grid (in-app · email). Each toggle
- * persists immediately (optimistic, reverting on failure). Email gating is wired
- * into the model now; the email channel itself ships with C3.3 — the column is
- * labelled accordingly.
+ * C3.2/C3.3 — the per-event notification preference grid (in-app · email). Each
+ * toggle persists immediately (optimistic, reverting on failure). Both channels
+ * are live: in-app always; email when the workspace has Resend configured.
  */
 export function NotificationPreferences({
   initial,
@@ -75,8 +74,8 @@ export function NotificationPreferences({
         </tbody>
       </table>
       <p className="specs-grid__meta">
-        In-app delivery is live now; email delivery follows (C3.3). Preferences apply across the
-        workspace for your account.
+        Comment and staleness emails are batched into a daily digest; review, approval, and mention
+        emails are sent immediately. Preferences apply across the workspace for your account.
       </p>
       {error && (
         <p className="ui-field__error" role="alert">

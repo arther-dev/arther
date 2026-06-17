@@ -80,6 +80,50 @@ export interface NotificationChannelPrefs {
 }
 
 /**
+ * §9.3 — comment events (outside @mentions) and staleness alerts are batched into
+ * a daily digest, not emailed immediately; state-transition and mention events go
+ * out immediately. C3.3 sends the immediate set; the digest rides the C3.6 cron.
+ */
+export const EMAIL_BATCHED: ReadonlySet<NotificationEventType> = new Set<NotificationEventType>([
+  'comment_added',
+  'comment_reply',
+  'spec_stale',
+]);
+
+/** True if this event emails immediately (vs. batched into the daily digest). */
+export function isImmediateEmailEvent(eventType: NotificationEventType): boolean {
+  return !EMAIL_BATCHED.has(eventType);
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/**
+ * C3.3 — the email rendering for a notification: subject + text + html, with an
+ * absolute deep link. Pure (reuses `describeNotification`); user-supplied fields
+ * (document title, actor) are HTML-escaped in the html body.
+ */
+export function renderNotificationEmail(
+  eventType: NotificationEventType,
+  payload: NotificationPayload,
+  appBaseUrl: string,
+): { subject: string; text: string; html: string } {
+  const { title, href } = describeNotification(eventType, payload);
+  const base = appBaseUrl.replace(/\/$/, '');
+  const url = href ? `${base}${href}` : base || '#';
+  return {
+    subject: title,
+    text: `${title}\n\nOpen in Arther: ${url}`,
+    html: `<p>${escapeHtml(title)}</p><p><a href="${escapeHtml(url)}">Open in Arther</a></p>`,
+  };
+}
+
+/**
  * C3.2 — the effective channel preferences for an event: a stored row when the
  * member set one, else the defaults (in-app on for everything; email per
  * `EMAIL_DEFAULT_ON`). Pure so the settings UI and the dispatch agree.
