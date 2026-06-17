@@ -4,15 +4,22 @@ import { revalidatePath } from 'next/cache';
 import { createCanDo, type Action } from '@arther/authz';
 import {
   createDocumentRevision,
+  createServiceClient,
+  DbRuleError,
   getActiveWorkspace,
   getDocument,
   getRevision,
   listApprovalRoles,
+  loadDocumentTree,
   membershipLookupFor,
+  publishDocument,
+  resolveSpecFields,
   transitionDocumentRevision,
 } from '@arther/db';
 import {
+  blockPlainText,
   canManageDocumentLifecycle,
+  computePublishPreflight,
   resolveTransition,
   submitForReviewSchema,
   type DocumentId,
@@ -165,12 +172,61 @@ export async function pullBackToReviewAction(documentId: string): Promise<Lifecy
 }
 
 /**
- * Approved → Published. C0 flips the lifecycle state and stamps the publish
- * metadata; the snapshot resolver + immutable `published_snapshots` write (and
- * the pre-flight gate) land in C4 — wired into this transition there.
+ * C4 — Approved → Published. Runs the blocking pre-flight (C4.1), resolves the
+ * spec-field map (C4.2) + search text (C4.5), then atomically freezes the
+ * working revision into an immutable, versioned `published_snapshots` row and
+ * flips the state (C4.3/C4.4) via the service-role `publish_document` RPC. The
+ * snapshot is self-contained — inline tokens carry their (G6.2-current) values
+ * and the resolution manifest freezes the spec map, so a later spec change never
+ * alters it. (PDF generation flips `pdf_ready` at C5; the portal serves it at C6.)
  */
 export async function publishDocumentAction(documentId: string): Promise<LifecycleResult> {
-  return runOwnerTransition(documentId, 'publish');
+  const auth = await authorize(documentId, 'publish');
+  if ('error' in auth) return { ok: false, error: auth.error };
+
+  const tree = await loadDocumentTree(auth.supabase, documentId as DocumentId);
+  if (!tree) return { ok: false, error: 'Document not found.' };
+  if (tree.revision.state !== 'approved') {
+    return { ok: false, error: 'Only an approved document can be published.' };
+  }
+
+  // C4.1 — a placeholder block has no content to freeze; block the publish.
+  const preflight = computePublishPreflight({
+    blocks: tree.blocks.map((b) => ({ source: b.source, content: b.content })),
+  });
+  if (!preflight.canPublish) {
+    return { ok: false, error: preflight.blocking.join(' ') };
+  }
+
+  try {
+    const resolutionManifest = await resolveSpecFields(
+      auth.supabase,
+      tree.document.product_id,
+      auth.workspaceId,
+    );
+    const blockTree = tree.blocks.map((b) => b.content);
+    const searchText = tree.blocks
+      .map((b) => b.text_content ?? blockPlainText(b.content))
+      .filter((t): t is string => Boolean(t && t.trim().length > 0))
+      .join('\n');
+
+    await publishDocument(
+      createServiceClient(),
+      { workspaceId: auth.workspaceId },
+      {
+        revisionId: tree.revision.id,
+        publishedBy: auth.userId,
+        blockTree,
+        resolutionManifest,
+        searchText,
+      },
+    );
+    revalidateDocument(documentId);
+    return { ok: true, state: 'published' };
+  } catch (err) {
+    if (err instanceof DbRuleError) return { ok: false, error: err.message };
+    return { ok: false, error: 'Could not publish the document.' };
+  }
 }
 
 /** Published → Draft: fork a new working copy from the published snapshot (C0.2). */

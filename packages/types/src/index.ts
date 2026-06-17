@@ -14,6 +14,7 @@ export * from './block-content';
 export * from './document';
 export * from './document-lifecycle';
 export * from './approval';
+export * from './publish-preflight';
 export * from './generation-run';
 export * from './generation-preflight';
 export * from './generation-assembly';
