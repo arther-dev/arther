@@ -1,6 +1,41 @@
 import Link from 'next/link';
-import { getPortalWorkspace, listPortalPublishedDocuments } from '@arther/db';
+import { unstable_cache } from 'next/cache';
+import {
+  getPortalWorkspace,
+  listPortalPublishedDocuments,
+  type PortalDocumentListing,
+} from '@arther/db';
+import { portalTag } from '../../lib/portal-cache';
 import { getPortalDb } from '../../lib/portal-db';
+
+// C6.5 — the library is CDN-cached (ISR) and busted on publish (revalidate tag).
+// `generateStaticParams` returning `[]` prebuilds nothing (tenants are open-ended)
+// but opts the route into the on-demand ISR / full-route cache instead of dynamic
+// rendering: each workspace is rendered once, cached, then served from the edge.
+export const revalidate = 600;
+export async function generateStaticParams() {
+  return [] as Array<{ workspace: string }>;
+}
+
+type Loaded =
+  | { state: 'unprovisioned' }
+  | { state: 'notfound' }
+  | { state: 'ok'; name: string; documents: PortalDocumentListing[] };
+
+function loadLibrary(workspaceSlug: string): Promise<Loaded> {
+  return unstable_cache(
+    async (): Promise<Loaded> => {
+      const db = getPortalDb();
+      if (!db) return { state: 'unprovisioned' };
+      const workspace = await getPortalWorkspace(db, workspaceSlug);
+      if (!workspace) return { state: 'notfound' };
+      const documents = await listPortalPublishedDocuments(db, workspace.id);
+      return { state: 'ok', name: workspace.name, documents };
+    },
+    ['portal-library', workspaceSlug],
+    { revalidate: 600, tags: [portalTag(workspaceSlug)] },
+  )();
+}
 
 /**
  * C6.3 — the workspace portal home: the published documentation library (latest
@@ -13,8 +48,9 @@ export default async function WorkspaceHome({
   params: Promise<{ workspace: string }>;
 }) {
   const { workspace: workspaceSlug } = await params;
-  const db = getPortalDb();
-  if (!db) {
+  const result = await loadLibrary(workspaceSlug);
+
+  if (result.state === 'unprovisioned') {
     return (
       <main className="portal-shell">
         <h1 className="portal-title">Portal</h1>
@@ -24,9 +60,7 @@ export default async function WorkspaceHome({
       </main>
     );
   }
-
-  const workspace = await getPortalWorkspace(db, workspaceSlug);
-  if (!workspace) {
+  if (result.state === 'notfound') {
     return (
       <main className="portal-shell">
         <h1 className="portal-title">Not found</h1>
@@ -35,13 +69,12 @@ export default async function WorkspaceHome({
     );
   }
 
-  const documents = await listPortalPublishedDocuments(db, workspace.id);
-
+  const { name, documents } = result;
   return (
     <main className="portal-shell">
       <header className="portal-header">
         <p className="portal-header__eyebrow">Documentation</p>
-        <h1 className="portal-title">{workspace.name}</h1>
+        <h1 className="portal-title">{name}</h1>
       </header>
       <form className="portal-search" action={`/${workspaceSlug}/search`} method="get">
         <input

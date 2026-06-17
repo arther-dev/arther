@@ -6,17 +6,12 @@ export const metadata: Metadata = {
   description: 'Published product documentation',
 };
 
-// Required for the per-request CSP nonce (F8.3) to reach Next's scripts.
-// REVISIT at C6: published-doc pages must be CDN-cacheable (static), which a
-// per-request nonce forecloses — switch the portal to a build-time hash-based
-// CSP (or a static-nonce strategy) when cached published docs land. The stub
-// has no such pages today, so forcing dynamic costs nothing now.
-export const dynamic = 'force-dynamic';
-
 /**
- * Public portal stub (F0.1). Light + customer-brand-skinned at Phase 3 C6 —
- * deliberately NOT bound to the dark app design system (two accent systems;
- * Handoff 01 §2.5.4). Reads only published_snapshots when it ships.
+ * Public portal (Phase 3 C6). Light + customer-brand-skinned — deliberately NOT
+ * bound to the dark app design system (Handoff 01 §2.5.4). Reads only
+ * published_snapshots. As of C6.5 the per-request nonce CSP is replaced by a
+ * static CSP (middleware) so document pages are CDN-cacheable (ISR); `revalidate`
+ * is set per route and on-publish revalidation busts the cache (C6.5).
  */
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (

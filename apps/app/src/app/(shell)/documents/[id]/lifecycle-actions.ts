@@ -86,12 +86,40 @@ async function authorize(documentId: string, action: OwnerAction) {
     return { error: 'Only the document owner or a workspace admin can change its status.' as const };
   }
 
-  return { supabase, userId: user.id as UserId, workspaceId: workspace.id, document };
+  return {
+    supabase,
+    userId: user.id as UserId,
+    workspaceId: workspace.id,
+    workspaceSlug: workspace.slug,
+    document,
+  };
 }
 
 function revalidateDocument(documentId: string) {
   revalidatePath(`/documents/${documentId}`);
   revalidatePath(`/documents/${documentId}/edit`);
+}
+
+/**
+ * C6.5 — bust the affected workspace's portal cache on publish (the portal is a
+ * separate deployment, so this is a cross-deployment webhook). The portal tags
+ * its snapshot reads `portal:{slug}`, so one tag busts every cached page for the
+ * workspace. Best-effort + env-gated: without `PORTAL_REVALIDATE_URL`/`_SECRET`
+ * the portal's ISR interval is the only refresh path. Never fails the publish.
+ */
+async function revalidatePortal(tags: string[]): Promise<void> {
+  const url = process.env.PORTAL_REVALIDATE_URL;
+  const secret = process.env.PORTAL_REVALIDATE_SECRET;
+  if (!url || !secret || tags.length === 0) return;
+  try {
+    await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${secret}` },
+      body: JSON.stringify({ tags }),
+    });
+  } catch (e) {
+    console.error('[portal revalidate] failed', e);
+  }
 }
 
 async function runOwnerTransition(
@@ -222,6 +250,8 @@ export async function publishDocumentAction(documentId: string): Promise<Lifecyc
       },
     );
     revalidateDocument(documentId);
+    // C6.5 — bust the workspace's portal CDN cache (best-effort, env-gated).
+    await revalidatePortal([`portal:${auth.workspaceSlug}`]);
     return { ok: true, state: 'published' };
   } catch (err) {
     if (err instanceof DbRuleError) return { ok: false, error: err.message };
