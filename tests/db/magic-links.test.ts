@@ -99,6 +99,28 @@ describe('access tiers (C7.1)', () => {
     `;
     expect(publicRows).toHaveLength(0);
   });
+
+  it('C7.3 — an allowlist tier stores emails/domains in access_config and audits the flip', async () => {
+    await owner`
+      update public.published_snapshots
+      set access_config = '{"access":"allowlist","allowlist":{"emails":["alice@acme.com"],"domains":["partner.io"]}}'::jsonb
+      where id = ${snapshotId}
+    `;
+    const row = (
+      await admin`select access_config from public.published_snapshots where id = ${snapshotId}`
+    )[0]!.access_config as { access: string; allowlist: { emails: string[]; domains: string[] } };
+    expect(row.access).toBe('allowlist');
+    expect(row.allowlist.emails).toContain('alice@acme.com');
+    expect(row.allowlist.domains).toContain('partner.io');
+
+    // Every access_config change (incl. the security-sensitive allowlist↔public
+    // flip) is audited — there are now multiple change rows for this snapshot.
+    const audit = await admin`
+      select count(*)::int as n from public.audit_log
+      where action = 'snapshot.access_config_changed' and resource_id = ${snapshotId}
+    `;
+    expect(audit[0]!.n).toBeGreaterThanOrEqual(2);
+  });
 });
 
 describe('magic-link issuance (C7.2)', () => {

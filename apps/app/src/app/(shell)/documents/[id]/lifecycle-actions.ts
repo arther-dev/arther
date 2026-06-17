@@ -12,11 +12,13 @@ import {
   getRevision,
   issueMagicLink,
   listApprovalRoles,
+  listSnapshotsForDocument,
   loadDocumentTree,
   membershipLookupFor,
   publishDocument,
   resolveSpecFields,
   restoreLatestSnapshot,
+  revokeMagicLink,
   setDocumentAccess,
   transitionDocumentRevision,
 } from '@arther/db';
@@ -26,9 +28,15 @@ import {
   canManageDocumentLifecycle,
   computePublishPreflight,
   DOCUMENT_ACCESS_MODES,
+  isEmailAllowed,
+  normalizeDomains,
+  normalizeEmails,
+  parseDocumentAccess,
+  parseDocumentAllowlist,
   resolveTransition,
   submitForReviewSchema,
   type DocumentAccessMode,
+  type DocumentAllowlist,
   type DocumentId,
   type DocumentRevisionId,
   type UserId,
@@ -351,29 +359,54 @@ export interface AccessActionResult {
   error?: string;
   /** The new access tier on success (setDocumentAccessAction). */
   access?: DocumentAccessMode;
-  /** A freshly issued magic-link URL — shown once (issueOpenMagicLinkAction). */
+  /** A freshly issued magic-link URL — shown once (issueMagicLinkAction). */
   url?: string;
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+/** The access tier + allowlist of a document's live snapshot, or null if unpublished. */
+async function loadLiveAccess(
+  supabase: Parameters<typeof listSnapshotsForDocument>[0],
+  documentId: string,
+): Promise<{ access: DocumentAccessMode; allowlist: DocumentAllowlist } | null> {
+  const snapshots = await listSnapshotsForDocument(supabase, documentId as DocumentId);
+  const live = snapshots.find((s) => !s.archived_at);
+  if (!live) return null;
+  return {
+    access: parseDocumentAccess(live.access_config),
+    allowlist: parseDocumentAllowlist(live.access_config),
+  };
+}
+
 /**
- * C7.1 — set a published document's portal access tier (public ↔ link-gated) by
- * writing `access_config` on its live snapshots (owner/admin; audited by the
- * DB trigger). Busts the portal cache so the visibility change takes effect now.
+ * C7.1/C7.3 — set a published document's portal access tier (public · link-gated ·
+ * allowlist) by writing `access_config` on its live snapshots (owner/admin;
+ * audited by the DB trigger). For the allowlist tier the supplied emails/domains
+ * are normalised and stored. Busts the portal cache so the change takes effect now.
  */
 export async function setDocumentAccessAction(
   documentId: string,
   access: DocumentAccessMode,
+  allowlistInput?: { emails: string[]; domains: string[] },
 ): Promise<AccessActionResult> {
   if (!DOCUMENT_ACCESS_MODES.includes(access)) return { ok: false, error: 'Unknown access tier.' };
   const auth = await authorize(documentId, 'publish');
   if ('error' in auth) return { ok: false, error: auth.error };
 
+  const allowlist: DocumentAllowlist | undefined =
+    access === 'allowlist'
+      ? {
+          emails: normalizeEmails(allowlistInput?.emails ?? []),
+          domains: normalizeDomains(allowlistInput?.domains ?? []),
+        }
+      : undefined;
+
   try {
     const updated = await setDocumentAccess(auth.supabase, {
       documentId: documentId as DocumentId,
       access,
+      allowlist,
     });
     if (updated === 0) return { ok: false, error: 'Publish the document before setting access.' };
     revalidateDocument(documentId);
@@ -385,14 +418,16 @@ export async function setDocumentAccessAction(
 }
 
 /**
- * C7.2 — issue an open magic link for a gated document. Generates a high-entropy
+ * C7.2/C7.3 — issue a magic link for a gated document. Generates a high-entropy
  * token, stores only its hash (`@arther/config`), and inserts the `magic_links`
  * row under the caller's JWT (RLS: editor; the audit trigger records the actor).
- * The raw token is returned **once** as a shareable URL — never persisted. Email
- * delivery routes through the unified notification system later (C3); for now the
- * owner copies the link. Requires `PORTAL_BASE_URL` to build an absolute URL.
+ * The link `type` follows the document's tier: `allowlist` docs issue `allowlist`
+ * links and the recipient email must be on the allowlist; `link` docs issue `open`
+ * links (any holder). The raw token is returned **once** as a shareable URL —
+ * never persisted (email delivery arrives with notifications, C3). Requires
+ * `PORTAL_BASE_URL` to build an absolute URL.
  */
-export async function issueOpenMagicLinkAction(
+export async function issueMagicLinkAction(
   documentId: string,
   input: { email: string; expiresInDays: number },
 ): Promise<AccessActionResult> {
@@ -409,6 +444,15 @@ export async function issueOpenMagicLinkAction(
   const base = process.env.PORTAL_BASE_URL;
   if (!base) return { ok: false, error: 'Portal URL isn’t configured in this environment yet.' };
 
+  const live = await loadLiveAccess(auth.supabase, documentId);
+  if (!live) return { ok: false, error: 'Publish the document before issuing links.' };
+  if (live.access === 'public') return { ok: false, error: 'This document is public — no link needed.' };
+
+  const type = live.access === 'allowlist' ? 'allowlist' : 'open';
+  if (type === 'allowlist' && !isEmailAllowed({ access: 'allowlist', allowlist: live.allowlist }, email)) {
+    return { ok: false, error: 'That email isn’t on the allowlist.' };
+  }
+
   try {
     const token = generateMagicToken();
     const expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
@@ -416,7 +460,7 @@ export async function issueOpenMagicLinkAction(
       workspaceId: auth.workspaceId,
       documentId: documentId as DocumentId,
       email,
-      type: 'open',
+      type,
       tokenHash: hashMagicToken(token),
       expiresAt,
       createdBy: auth.userId,
@@ -428,5 +472,26 @@ export async function issueOpenMagicLinkAction(
     return { ok: true, url: url.toString() };
   } catch {
     return { ok: false, error: 'Could not issue the access link.' };
+  }
+}
+
+/**
+ * C7.4 — revoke an issued magic link (owner/admin; audited). Idempotent. Blocks
+ * new token exchanges immediately; live sessions run to expiry by design.
+ */
+export async function revokeMagicLinkAction(
+  documentId: string,
+  magicLinkId: string,
+): Promise<AccessActionResult> {
+  if (!UUID_RE.test(magicLinkId)) return { ok: false, error: 'Unknown link.' };
+  const auth = await authorize(documentId, 'publish');
+  if ('error' in auth) return { ok: false, error: auth.error };
+
+  try {
+    await revokeMagicLink(auth.supabase, magicLinkId);
+    revalidateDocument(documentId);
+    return { ok: true };
+  } catch {
+    return { ok: false, error: 'Could not revoke the link.' };
   }
 }

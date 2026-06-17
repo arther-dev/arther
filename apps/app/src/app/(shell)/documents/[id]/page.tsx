@@ -4,6 +4,7 @@ import {
   getActiveWorkspace,
   listApprovalRecords,
   listApprovalRoles,
+  listDocumentMagicLinks,
   listMembers,
   listSnapshotsForDocument,
   listStaleBriefReferencesForDocument,
@@ -14,6 +15,7 @@ import {
 import {
   canManageDocumentLifecycle,
   parseDocumentAccess,
+  parseDocumentAllowlist,
   summarizeBriefStaleness,
   summarizeReview,
   summarizeStaleness,
@@ -159,8 +161,14 @@ export default async function DocumentPage({ params }: { params: Promise<{ id: s
         : latestSnapshot
           ? 'unpublished'
           : null;
-  // C7.1 — the live publication's portal access tier (public ↔ link-gated).
+  // C7.1/C7.3 — the live publication's portal access tier + allowlist, and the
+  // issued magic links (for the owner's revocation UI, C7.4).
   const accessMode = snapshot ? parseDocumentAccess(snapshot.access_config) : 'public';
+  const accessAllowlist = parseDocumentAllowlist(snapshot?.access_config);
+  const magicLinks =
+    canManage && portalVisibility === 'live'
+      ? await listDocumentMagicLinks(supabase, tree.document.id)
+      : [];
 
   const stale = summarizeStaleness(await listStaleReferencesForDocument(supabase, tree.document.id));
   const briefStale = summarizeBriefStaleness(
@@ -228,7 +236,12 @@ export default async function DocumentPage({ params }: { params: Promise<{ id: s
           />
         ) : null}
         {canManage && portalVisibility === 'live' ? (
-          <AccessControl documentId={tree.document.id} access={accessMode} />
+          <AccessControl
+            documentId={tree.document.id}
+            access={accessMode}
+            allowlist={accessAllowlist}
+            links={magicLinks}
+          />
         ) : null}
         {state === 'review' ? (
           panelRoles.length > 0 ? (
