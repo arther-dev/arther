@@ -2,6 +2,7 @@ export { createServiceClient, createUserClient } from './client';
 export { DbRuleError, rpcError } from './errors';
 export {
   addCommentReply,
+  carryForwardComments,
   createCommentThread,
   getCommentThreadMeta,
   listCommentThreads,

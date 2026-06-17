@@ -22,6 +22,7 @@ let memberId: string;
 let viewerId: string;
 let strangerId: string;
 let ws: string;
+let documentId: string;
 let revisionId: string;
 let blockId: string;
 
@@ -52,7 +53,7 @@ beforeAll(async () => {
   const docTypeId = (
     await owner`select id from public.document_types where workspace_id is null limit 1`
   )[0]!.id as string;
-  const documentId = (
+  documentId = (
     await owner`
       insert into public.documents (workspace_id, product_id, document_type_id, title, slug, owner_id, created_by)
       values (${ws}, ${productId}, ${docTypeId}, 'Widget Guide', 'widget', ${ownerId}, ${ownerId})
@@ -175,5 +176,80 @@ describe('threading + orphaning schema', () => {
       await admin`select block_id from public.comment_threads where id = ${threadId}`
     )[0]!;
     expect(row.block_id).toBeNull();
+  });
+});
+
+describe('carry-forward (C2.4)', () => {
+  // The carry-forward orchestration lives in TS (createDocumentRevision); this
+  // validates the migration 0022 schema contract it relies on — the inherited
+  // marker column, its FK behaviour, and the open-only / block-remap semantics.
+  it('carries unresolved threads onto a new revision, remapped + flagged inherited', async () => {
+    const rev1 = (
+      await owner`
+        insert into public.document_revisions (workspace_id, document_id, revision_number, state, created_by)
+        values (${ws}, ${documentId}, 100, 'published', ${ownerId}) returning id
+      `
+    )[0]!.id as string;
+    const blk1 = (
+      await owner`
+        insert into public.blocks (workspace_id, document_id, revision_id, type, display_order, source, content, created_by)
+        values (${ws}, ${documentId}, ${rev1}, 'paragraph', 1, 'manual', ${owner.json(paragraph)}, ${ownerId})
+        returning id
+      `
+    )[0]!.id as string;
+    const tOpen = await (async () => {
+      const id = (
+        await owner`
+          insert into public.comment_threads (workspace_id, revision_id, block_id, anchor_type, created_by)
+          values (${ws}, ${rev1}, ${blk1}, 'block', ${ownerId}) returning id
+        `
+      )[0]!.id as string;
+      await owner`insert into public.comments (workspace_id, thread_id, author_id, body) values (${ws}, ${id}, ${ownerId}, 'carry me')`;
+      return id;
+    })();
+    // A resolved thread that must be left behind.
+    await owner`
+      insert into public.comment_threads (workspace_id, revision_id, block_id, anchor_type, status, created_by, resolved_by, resolved_at)
+      values (${ws}, ${rev1}, ${blk1}, 'block', 'resolved', ${ownerId}, ${ownerId}, now())
+    `;
+
+    // The forked revision + its remapped block.
+    const rev2 = (
+      await owner`
+        insert into public.document_revisions (workspace_id, document_id, revision_number, state, created_by)
+        values (${ws}, ${documentId}, 101, 'draft', ${ownerId}) returning id
+      `
+    )[0]!.id as string;
+    const blk2 = (
+      await owner`
+        insert into public.blocks (workspace_id, document_id, revision_id, type, display_order, source, content, created_by)
+        values (${ws}, ${documentId}, ${rev2}, 'paragraph', 1, 'manual', ${owner.json(paragraph)}, ${ownerId})
+        returning id
+      `
+    )[0]!.id as string;
+
+    // Carry-forward, as createDocumentRevision does it: open threads only,
+    // block remapped, inherited marker pointing at the source thread.
+    await owner`
+      insert into public.comment_threads
+        (workspace_id, revision_id, block_id, anchor_type, text_anchor, created_by, inherited_from_thread_id)
+      select workspace_id, ${rev2}, ${blk2}, anchor_type, text_anchor, created_by, id
+        from public.comment_threads where revision_id = ${rev1} and status = 'open'
+    `;
+
+    const carried = await admin`
+      select id, block_id, inherited_from_thread_id from public.comment_threads where revision_id = ${rev2}
+    `;
+    expect(carried).toHaveLength(1); // only the open thread
+    expect(carried[0]!.block_id).toBe(blk2); // remapped onto the new block
+    expect(carried[0]!.inherited_from_thread_id).toBe(tOpen); // flagged inherited
+
+    // FK is ON DELETE SET NULL: pruning the source revision leaves the inherited
+    // thread intact, just unlinked.
+    await owner`delete from public.comment_threads where id = ${tOpen}`;
+    expect(
+      (await admin`select inherited_from_thread_id from public.comment_threads where revision_id = ${rev2}`)[0]!
+        .inherited_from_thread_id,
+    ).toBeNull();
   });
 });

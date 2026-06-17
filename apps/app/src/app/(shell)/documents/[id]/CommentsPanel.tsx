@@ -196,6 +196,11 @@ function Thread({
     <li className={`comments__thread comments__thread--${thread.status}`}>
       <div className="comments__thread-head">
         <span className="specs-grid__meta">{anchorLabel}</span>
+        {thread.inheritedFromThreadId && (
+          <span className="comments__badge" title="Carried forward from the previous revision">
+            inherited
+          </span>
+        )}
         {thread.status === 'orphaned' && <span className="comments__badge">orphaned</span>}
         {thread.status === 'resolved' && <span className="comments__badge">resolved</span>}
         {canResolve && thread.status !== 'orphaned' && (

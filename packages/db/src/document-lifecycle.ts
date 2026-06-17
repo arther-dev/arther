@@ -13,6 +13,7 @@ import {
   loadRevisionBlocks,
   type DocumentRevisionRow,
 } from './documents';
+import { carryForwardComments } from './comments';
 
 /**
  * C0 — document lifecycle state machine over the user-JWT client (RLS active:
@@ -164,6 +165,15 @@ export async function createDocumentRevision(
     workspaceId: input.workspaceId,
     documentId: input.documentId,
     idMap,
+  });
+
+  // 4.5 C2.4 — carry unresolved comment threads onto the new working copy,
+  // re-anchored to the remapped blocks and flagged inherited (collab spec §7.3).
+  await carryForwardComments(client, {
+    workspaceId: input.workspaceId,
+    fromRevisionId: input.fromRevisionId,
+    toRevisionId: revision.id,
+    blockIdMap: idMap,
   });
 
   // 5. Point the document at the new working copy.
