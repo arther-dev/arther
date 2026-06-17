@@ -2,7 +2,8 @@
 
 import { useMemo, useState, useTransition, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
-import type { CommentThreadView } from '@arther/db';
+import type { CommentThreadView, CommentView } from '@arther/db';
+import { formatMentionToken, renderMentionSegments } from '@arther/types';
 import {
   addCommentAction,
   replyToThreadAction,
@@ -11,11 +12,16 @@ import {
 } from './comment-actions';
 
 /**
- * C2.1/C2.2 — the document comment panel: block-anchored threads with one-level
- * replies and resolve/reopen. Commenting is open to any member (incl. viewers);
- * resolve is gated server-side (§7.4). Text-range anchoring, orphan badges, and
- * @mention routing (C3) layer on later.
+ * C2.1/C2.2/C2.5 — the document comment panel: block-anchored threads with
+ * one-level replies, resolve/reopen, text-range anchoring, and @mentions (which
+ * notify through C3). Commenting is open to any member (incl. viewers); resolve
+ * is gated server-side (§7.4).
  */
+
+export interface MentionMember {
+  userId: string;
+  name: string;
+}
 
 export interface BlockOption {
   id: string;
@@ -28,12 +34,14 @@ export function CommentsPanel({
   documentId,
   threads,
   blocks,
+  members,
   currentUserId,
   canResolveAny,
 }: {
   documentId: string;
   threads: CommentThreadView[];
   blocks: BlockOption[];
+  members: MentionMember[];
   currentUserId: string;
   canResolveAny: boolean;
 }) {
@@ -63,7 +71,7 @@ export function CommentsPanel({
         )}
       </div>
 
-      <Composer documentId={documentId} blocks={blocks} />
+      <Composer documentId={documentId} blocks={blocks} members={members} />
 
       {visible.length === 0 ? (
         <p className="specs-grid__meta">No comments yet. Anchor feedback to a block above.</p>
@@ -88,7 +96,15 @@ export function CommentsPanel({
   );
 }
 
-function Composer({ documentId, blocks }: { documentId: string; blocks: BlockOption[] }) {
+function Composer({
+  documentId,
+  blocks,
+  members,
+}: {
+  documentId: string;
+  blocks: BlockOption[];
+  members: MentionMember[];
+}) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [blockId, setBlockId] = useState(blocks[0]?.id ?? '');
@@ -101,6 +117,10 @@ function Composer({ documentId, blocks }: { documentId: string; blocks: BlockOpt
   }
 
   const selectedProse = blocks.find((b) => b.id === blockId)?.prose ?? false;
+
+  function insertMention(member: MentionMember) {
+    setBody((b) => `${b}${b.length > 0 && !b.endsWith(' ') ? ' ' : ''}${formatMentionToken(member.name, member.userId)} `);
+  }
 
   function submit(e: FormEvent) {
     e.preventDefault();
@@ -162,6 +182,24 @@ function Composer({ documentId, blocks }: { documentId: string; blocks: BlockOpt
         <button type="submit" className="ui-btn ui-btn--primary" disabled={pending}>
           {pending ? 'Posting…' : 'Comment'}
         </button>
+        {members.length > 0 && (
+          <select
+            className="ui-field__input"
+            value=""
+            aria-label="Mention a member"
+            onChange={(e) => {
+              const member = members.find((m) => m.userId === e.target.value);
+              if (member) insertMention(member);
+            }}
+          >
+            <option value="">@ Mention…</option>
+            {members.map((m) => (
+              <option key={m.userId} value={m.userId}>
+                {m.name}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
       {error && (
         <p className="ui-field__error" role="alert">
@@ -249,7 +287,7 @@ function Thread({
             className={`comments__comment ${comment.parentCommentId ? 'comments__comment--reply' : ''}`}
           >
             <span className="comments__author">{comment.authorName}</span>
-            <span className="comments__body">{comment.body}</span>
+            <CommentBody comment={comment} />
           </li>
         ))}
       </ul>
@@ -275,5 +313,23 @@ function Thread({
         </p>
       )}
     </li>
+  );
+}
+
+/** C2.5 — render a comment body, surfacing @mention tokens as styled handles. */
+function CommentBody({ comment }: { comment: CommentView }) {
+  const segments = renderMentionSegments(comment.body);
+  return (
+    <span className="comments__body">
+      {segments.map((segment, i) =>
+        segment.type === 'mention' ? (
+          <span key={i} className="comments__mention">
+            {segment.value}
+          </span>
+        ) : (
+          <span key={i}>{segment.value}</span>
+        ),
+      )}
+    </span>
   );
 }

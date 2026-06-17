@@ -5,17 +5,21 @@ import { createCanDo } from '@arther/authz';
 import {
   addCommentReply,
   createCommentThread,
+  createServiceClient,
+  dispatchNotification,
   getActiveWorkspace,
   getCommentThreadMeta,
   getDocument,
   membershipLookupFor,
   reopenCommentThread,
   resolveCommentThread,
+  workspaceMemberUserIds,
 } from '@arther/db';
 import {
   canManageDocumentLifecycle,
   canResolveThread,
   commentBodySchema,
+  extractMentionUserIds,
   findTextAnchor,
   type DocumentId,
   type DocumentRevisionId,
@@ -60,6 +64,44 @@ function revalidate(documentId: string) {
   revalidatePath(`/documents/${documentId}`);
 }
 
+type CommentCtx = Exclude<Awaited<ReturnType<typeof ctx>>, { error: string }>;
+
+/**
+ * C2.5 — dispatch `comment_mention` to the workspace members named in a comment
+ * body, through the unified notification system (invariant 8). Resolves only real
+ * members (spec §8), excludes the author, and is best-effort (a dispatch failure
+ * never fails the comment). Service-role write (notifications have no client INSERT).
+ */
+async function dispatchMentions(c: CommentCtx, body: string, threadId: string): Promise<void> {
+  const mentioned = extractMentionUserIds(body);
+  if (mentioned.length === 0) return;
+  try {
+    const service = createServiceClient();
+    const recipients = (await workspaceMemberUserIds(service, c.workspace.id, mentioned)).filter(
+      (id) => id !== c.user.id,
+    );
+    if (recipients.length === 0) return;
+    const { data: author } = await c.supabase
+      .from('users')
+      .select('name, email')
+      .eq('id', c.user.id)
+      .maybeSingle();
+    await dispatchNotification(service, {
+      workspaceId: c.workspace.id,
+      recipientIds: recipients,
+      eventType: 'comment_mention',
+      payload: {
+        documentId: c.document.id,
+        documentTitle: c.document.title,
+        actorName: (author?.name as string | null) ?? (author?.email as string | undefined) ?? 'Someone',
+        threadId,
+      },
+    });
+  } catch {
+    // ignore — mentions are best-effort
+  }
+}
+
 /**
  * C2.1 — start a thread on a block with its first comment (any member). When a
  * `phrase` is supplied (prose blocks only), the thread is anchored to that text
@@ -101,7 +143,7 @@ export async function addCommentAction(
   }
 
   try {
-    await createCommentThread(c.supabase, {
+    const { threadId } = await createCommentThread(c.supabase, {
       workspaceId: c.workspace.id,
       revisionId: c.document.current_revision_id as DocumentRevisionId,
       blockId: input.blockId,
@@ -110,6 +152,7 @@ export async function addCommentAction(
       authorId: c.user.id as UserId,
       body: parsed.data,
     });
+    await dispatchMentions(c, parsed.data, threadId);
     revalidate(documentId);
     return { ok: true };
   } catch {
@@ -140,6 +183,7 @@ export async function replyToThreadAction(
       authorId: c.user.id as UserId,
       body: parsed.data,
     });
+    await dispatchMentions(c, parsed.data, input.threadId);
     revalidate(documentId);
     return { ok: true };
   } catch {
