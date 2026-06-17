@@ -1,0 +1,505 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Arther — Build Progress (live waffle)</title>
+<style>
+  :root {
+    --bg: #0b0e14;
+    --surface: #11161f;
+    --surface-2: #161c28;
+    --line: #232b3a;
+    --text: #e6e9ef;
+    --muted: #97a2b4;
+    --faint: #5c6678;
+    /* phase hues */
+    --p1: #3b82f6;
+    --p2: #8b5cf6;
+    --p3: #14b8a6;
+    --p4: #f59e0b;
+    --blocked: #ef4444;
+    --good: #22c55e;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: radial-gradient(1200px 600px at 70% -10%, #141a26 0%, var(--bg) 60%) fixed;
+    color: var(--text);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    padding: 28px clamp(16px, 4vw, 56px) 80px;
+  }
+  a { color: #8ab4ff; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
+  .sub { color: var(--muted); margin: 6px 0 0; max-width: 70ch; }
+
+  header { display: flex; flex-wrap: wrap; gap: 18px 28px; align-items: flex-end; justify-content: space-between; }
+  .controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  .controls label { color: var(--muted); font-size: 12px; display: inline-flex; align-items: center; gap: 6px; }
+  input[type=text] {
+    background: var(--surface-2); border: 1px solid var(--line); color: var(--text);
+    border-radius: 8px; padding: 7px 10px; width: 130px; font: inherit;
+  }
+  button {
+    background: var(--surface-2); border: 1px solid var(--line); color: var(--text);
+    border-radius: 8px; padding: 7px 12px; font: inherit; cursor: pointer;
+  }
+  button:hover { border-color: #36425a; background: #1b2331; }
+  .pill { font-size: 12px; color: var(--muted); }
+
+  /* KPI cards */
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; margin: 24px 0 8px; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; }
+  .card .n { font-size: 30px; font-weight: 650; letter-spacing: -0.02em; }
+  .card .k { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+  .bar { height: 10px; border-radius: 6px; background: var(--surface-2); overflow: hidden; display: flex; margin-top: 12px; }
+  .bar > span { display: block; height: 100%; }
+
+  section { margin-top: 30px; }
+  .h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 0 0 12px; }
+
+  /* legend */
+  .legend { display: flex; flex-wrap: wrap; gap: 10px 22px; align-items: center; }
+  .legend .item { display: flex; align-items: center; gap: 9px; }
+  .swatch { width: 14px; height: 14px; border-radius: 4px; flex: none; }
+  .legend .meta { color: var(--muted); font-size: 12px; }
+  .legend strong { color: var(--text); font-weight: 600; }
+
+  /* waffle */
+  .waffle { display: flex; flex-wrap: wrap; gap: 5px; }
+  .cell {
+    width: 22px; height: 22px; border-radius: 4px; flex: none; cursor: pointer;
+    border: 1px solid rgba(255,255,255,0.06); position: relative; transition: transform .06s ease;
+  }
+  .cell:hover { transform: scale(1.18); z-index: 3; outline: 2px solid rgba(255,255,255,.25); }
+  .cell.s-done { /* color via inline var */ }
+  .cell.s-todo { opacity: 1; }
+  .cell.s-blocked::after {
+    content: ""; position: absolute; inset: 0; border-radius: 3px;
+    background-image: repeating-linear-gradient(45deg, rgba(0,0,0,.0) 0 3px, rgba(0,0,0,.45) 3px 6px);
+  }
+  .cell.ovr { box-shadow: 0 0 0 2px var(--bg), 0 0 0 3px #ffffff; }
+
+  /* phase detail */
+  .phase { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; margin-bottom: 16px; }
+  .phase > .head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+  .phase .title { font-weight: 650; font-size: 15px; }
+  .phase .count { color: var(--muted); font-size: 12px; }
+  .phase .pbar { flex: 1 1 160px; max-width: 280px; }
+  .epic { display: grid; grid-template-columns: 230px 1fr; gap: 14px; align-items: start; padding: 9px 0; border-top: 1px dashed var(--line); }
+  .epic:first-of-type { border-top: 0; }
+  .epic .label { color: var(--muted); font-size: 12.5px; }
+  .epic .label b { color: var(--text); font-weight: 600; }
+  .epic .label .ec { color: var(--faint); }
+  @media (max-width: 640px) { .epic { grid-template-columns: 1fr; gap: 6px; } }
+
+  /* tooltip */
+  #tip {
+    position: fixed; z-index: 50; pointer-events: none; max-width: 320px;
+    background: #0a0d13; border: 1px solid #2c3647; border-radius: 10px;
+    padding: 10px 12px; font-size: 12.5px; box-shadow: 0 14px 40px rgba(0,0,0,.55);
+    opacity: 0; transform: translateY(4px); transition: opacity .1s ease; display: none;
+  }
+  #tip .id { font-weight: 700; }
+  #tip .row { color: var(--muted); margin-top: 3px; }
+  #tip .tag { display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+
+  .note { color: var(--muted); font-size: 12.5px; }
+  details { margin-top: 22px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); padding: 0 16px; }
+  details[open] { padding-bottom: 14px; }
+  summary { cursor: pointer; padding: 13px 0; color: var(--text); font-weight: 600; list-style: none; }
+  summary::-webkit-details-marker { display: none; }
+  summary::before { content: "▸ "; color: var(--muted); }
+  details[open] summary::before { content: "▾ "; }
+  code { background: var(--surface-2); padding: 1px 5px; border-radius: 5px; font-size: 12px; }
+
+  #status { color: var(--muted); font-size: 12px; min-height: 18px; }
+  .err { color: #ffb4b4; }
+  .spin { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--line); border-top-color: var(--text); border-radius: 50%; animation: sp .7s linear infinite; vertical-align: -2px; margin-right: 6px; }
+  @keyframes sp { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Arther — Build Progress</h1>
+      <p class="sub">A live waffle of the v1 roadmap. Every block is one discrete task, coloured by phase. Status is read straight from
+        <a id="srcLink" href="#" target="_blank" rel="noopener"><code>IMPLEMENTATION_PLAN.md</code></a> and the four phase task docs on GitHub.</p>
+    </div>
+    <div class="controls">
+      <label>branch <input type="text" id="branch" value="main" spellcheck="false" /></label>
+      <button id="reload">↻ Refresh</button>
+      <label><input type="checkbox" id="auto" /> auto (2 min)</label>
+    </div>
+  </header>
+
+  <div id="status"><span class="spin"></span>Loading from GitHub…</div>
+
+  <div id="app" hidden>
+    <div class="kpis" id="kpis"></div>
+
+    <section>
+      <div class="h2">Phases</div>
+      <div class="legend" id="legend"></div>
+    </section>
+
+    <section>
+      <div class="h2">All tasks — <span id="waffleCount"></span></div>
+      <div class="waffle" id="waffle"></div>
+      <p class="note" style="margin-top:12px">
+        <span class="swatch" style="background:#fff;display:inline-block;vertical-align:-2px"></span> solid = shipped ·
+        <span style="display:inline-block;width:14px;height:14px;border-radius:4px;background:repeating-linear-gradient(45deg,#7a818f 0 3px,#000 3px 6px);vertical-align:-2px"></span> hatched = blocked/gated ·
+        <span style="display:inline-block;width:14px;height:14px;border-radius:4px;background:#3b82f6;opacity:.16;vertical-align:-2px"></span> faded = not started.
+        Click any block to override its status locally.
+      </p>
+    </section>
+
+    <section>
+      <div class="h2">By phase &amp; epic</div>
+      <div id="phases"></div>
+    </section>
+
+    <details>
+      <summary>How status is derived (and its limits)</summary>
+      <div class="note">
+        <p>The task list (the blocks) comes from the four canonical phase task docs
+        (<code>arther-phase{1..4}-tasks.md</code>) — the plan itself names these as the source of the ~213 tasks.
+        <b>Done/blocked/not-started is inferred from the <code>§10 Session log</code></b> in <code>IMPLEMENTATION_PLAN.md</code>,
+        which records merged work:</p>
+        <ul>
+          <li><b>Shipped</b> — the task ID appears in the log in a non-deferred context, <i>or</i> its epic/milestone is
+            declared complete (e.g. “F5/F6 closed”, “M5 — Generate — is structurally complete”). Milestone→epic mapping is read live from <code>§4</code>.</li>
+          <li><b>Blocked / gated</b> — the ID appears only alongside blocking language (e.g. “blocked on a paid plan”,
+            “gated on Trigger.dev creds”, “needs Feature 4”). Currently: <span id="blockedList"></span>.</li>
+          <li><b>Not started</b> — never referenced as shipped, and its epic isn’t complete.</li>
+        </ul>
+        <p>This is a best-effort read of prose, not a formal status field, so a few foundational tasks logged without
+        their ID may under-report. Click a block to set a local override (stored in your browser);
+        <a href="#" id="resetOvr">reset overrides</a>.</p>
+      </div>
+    </details>
+
+    <p class="note" id="footer" style="margin-top:22px"></p>
+  </div>
+
+  <div id="tip"></div>
+
+<script>
+const REPO = "arther-dev/arther";
+const PHASES = [
+  { id:1, key:"F", name:"Phase 1 · Foundation",          color:"var(--p1)", hex:"#3b82f6", doc:"Development/Architecture/arther-phase1-tasks.md" },
+  { id:2, key:"G", name:"Phase 2 · Generate & Edit",     color:"var(--p2)", hex:"#8b5cf6", doc:"Development/Architecture/arther-phase2-tasks.md" },
+  { id:3, key:"C", name:"Phase 3 · Lifecycle & Publish", color:"var(--p3)", hex:"#14b8a6", doc:"Development/Architecture/arther-phase3-tasks.md" },
+  { id:4, key:"P4",name:"Phase 4 · Advanced",            color:"var(--p4)", hex:"#f59e0b", doc:"Development/Architecture/arther-phase4-tasks.md" },
+];
+const PLAN = "IMPLEMENTATION_PLAN.md";
+const raw = (path, branch) => `https://raw.githubusercontent.com/${REPO}/${branch}/${encodeURI(path)}?_=${Date.now()}`;
+
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;" }[c]));
+
+/* ---------- parsing ---------- */
+const TASK_RE = /^\|\s*([A-Z]\d*\.\d+)\s*\|\s*([^|]+?)\s*\|/;
+const EPIC_HEAD_RE = /^##\s+([A-Z]\d*)\s+[—-]\s+(.+?)\s*$/;
+const epicOf = (id) => id.split(".")[0];
+
+function parsePhaseDoc(md, phaseId) {
+  const tasks = [], epicNames = {};
+  for (const line of md.split("\n")) {
+    const e = line.match(EPIC_HEAD_RE);
+    if (e) { epicNames[e[1]] = e[2].replace(/`/g, ""); continue; }
+    const t = line.match(TASK_RE);
+    if (t) tasks.push({ id: t[1], title: t[2].replace(/`/g, "").replace(/\*\*/g, "").trim(), epic: epicOf(t[1]), phase: phaseId });
+  }
+  return { tasks, epicNames };
+}
+
+function sectionText(planLines, headRe) {
+  let s = -1;
+  for (let i = 0; i < planLines.length; i++) if (headRe.test(planLines[i])) { s = i; break; }
+  if (s < 0) return "";
+  let e = planLines.length;
+  for (let i = s + 1; i < planLines.length; i++) if (/^##\s/.test(planLines[i])) { e = i; break; }
+  return planLines.slice(s, e).join("\n");
+}
+
+function parseMilestones(roadmap) {
+  const map = {};
+  for (const line of roadmap.split("\n")) {
+    const m = line.match(/^\|\s*(M\d+)\b[^|]*\|[^|]*\|\s*([^|]+?)\s*\|/);
+    if (!m) continue;
+    const col = m[2], epics = new Set(), tasks = new Set();
+    for (const r of col.matchAll(/([A-Z])(\d+)\s*[–\-]\s*([A-Z]?)(\d+)/g)) {
+      const a = +r[2], b = +r[4]; if (b >= a && b - a < 30) for (let i = a; i <= b; i++) epics.add(r[1] + i);
+    }
+    for (const r of col.matchAll(/\b([A-Z]\d+)\.(\d+)\b/g)) tasks.add(`${r[1]}.${r[2]}`);
+    for (const r of col.matchAll(/\b([A-Z]\d+)\b(?!\.)/g)) epics.add(r[1]);
+    map[m[1]] = { epics: [...epics], tasks: [...tasks] };
+  }
+  return map;
+}
+
+const NEG = /(remain|deferr|defer\b|pending|parked|block|next slice|the next|until |still\b|open item|the open|open [A-Z]\d|awaiting|not yet|not run|to apply|todo|future|follow-up|needs |gated|red herring)/i;
+const STRONG = /(blocked on|still blocked|gated on|genuinely gated|paid plan|pitr|needs (a paid|resend|trigger|upstash|anthropic|provision|realtime|feature|the block model)|trigger\.dev|presence \(realtime\)|remains the open|the open g\d)/i;
+const DONE = /(complete|completed|closed|code-complete|done|proven|verified)/i;
+const IDT = /\b([A-Z]\d*\.\d+)\b/g;
+const RNG = /([A-Z]\d*\.\d+)\s*[–\-—]\s*([A-Z]?\d*\.?\d+)/g;
+const EPICRUN = /\b((?:[FGC]\d+)(?:\s*[\/,]\s*(?:[FGC]\d+))*)\b([^.|]{0,15}?)(complete|completed|closed|code-complete|done)\b/gi;
+
+function expandRange(a, b) {
+  const ma = a.match(/^([A-Z]\d*)\.(\d+)$/); if (!ma) return [];
+  const s = +ma[2], mb = b.match(/(\d+)$/); if (!mb) return [];
+  const e = +mb[1]; if (e < s || e - s > 30) return [];
+  const out = []; for (let i = s; i <= e; i++) out.push(`${ma[1]}.${i}`); return out;
+}
+
+function deriveStatus(logText, milestones) {
+  const negBefore = (i) => NEG.test(logText.slice(Math.max(0, i - 50), i));
+  const strongNear = (i, len) => STRONG.test(logText.slice(Math.max(0, i - 45), i + len + 45));
+  // deferred-after: within the same table cell, before the next task ID, a
+  // "next slice / deferred / remains" phrase that precedes any shipped word.
+  const DEFER = /(next slice|is the next|the next slice|deferred|\bremains\b|follow-up slice|future slice|is a follow-up)/i;
+  const DONEW = /(complete|completed|closed|shipped|wired|\blive\b|verified|proven|\bdone\b|✓)/i;
+  const deferredAfter = (i, len) => {
+    const cell = logText.slice(i + len, i + len + 240).split("|")[0];
+    const nx = cell.search(/\b[A-Z]\d*\.\d+\b/);
+    const span = nx >= 0 ? cell.slice(0, nx) : cell;
+    const d = span.search(DEFER); if (d < 0) return false;
+    const w = span.search(DONEW); return w < 0 || d < w;
+  };
+  const positive = new Set(), blocked = new Set();
+  let m;
+  RNG.lastIndex = 0;
+  while ((m = RNG.exec(logText))) for (const id of expandRange(m[1], m[2]))
+    if (!negBefore(m.index) && !strongNear(m.index, m[0].length) && !deferredAfter(m.index, m[0].length)) positive.add(id);
+  IDT.lastIndex = 0;
+  while ((m = IDT.exec(logText))) {
+    const id = m[1];
+    if (strongNear(m.index, id.length)) blocked.add(id);
+    else if (!negBefore(m.index) && !deferredAfter(m.index, id.length)) positive.add(id);
+  }
+  for (const id of [...blocked]) if (positive.has(id)) blocked.delete(id);
+
+  const completeEpics = new Set();
+  EPICRUN.lastIndex = 0;
+  while ((m = EPICRUN.exec(logText))) {
+    if (/[FGC]\d+\.\d+|\bM\d+\b/.test(m[2])) continue;
+    for (const e of m[1].split(/[\/,\s]+/)) if (/^[FGC]\d+$/.test(e)) completeEpics.add(e);
+  }
+  for (const r of logText.matchAll(/\bM\d+\b/g)) {
+    const tail = logText.slice(r.index + r[0].length, r.index + r[0].length + 40);
+    const cut = tail.split(/[.|]/)[0];
+    const dw = cut.match(DONE); if (!dw) continue;
+    if (/[FGC]\d+|\bM\d+\b/.test(cut.slice(0, dw.index))) continue;
+    const ms = milestones[r[0]];
+    if (ms) { ms.epics.forEach((e) => completeEpics.add(e)); ms.tasks.forEach((t) => { if (!blocked.has(t)) positive.add(t); }); }
+  }
+  return { positive, blocked, completeEpics };
+}
+
+function autoStatus(task, st) {
+  if (st.positive.has(task.id)) return "done";
+  if (st.blocked.has(task.id)) return "blocked";
+  if (st.completeEpics.has(task.epic)) return "done";
+  return "todo";
+}
+
+/* ---------- state ---------- */
+let MODEL = null;            // { tasks, epicNames, lastDate, status }
+let OVERRIDES = {};          // id -> 'done'|'blocked'|'todo'
+const ovrKey = () => "arther.progress.ovr." + $("#branch").value.trim();
+function loadOvr() { try { OVERRIDES = JSON.parse(localStorage.getItem(ovrKey()) || "{}"); } catch { OVERRIDES = {}; } }
+function saveOvr() { try { localStorage.setItem(ovrKey(), JSON.stringify(OVERRIDES)); } catch {} }
+const effStatus = (t) => OVERRIDES[t.id] || autoStatus(t, MODEL.status);
+
+const STATUS_LABEL = { done: "Shipped", blocked: "Blocked / gated", todo: "Not started" };
+
+/* ---------- fetch + build ---------- */
+async function load() {
+  const branch = $("#branch").value.trim() || "main";
+  $("#srcLink").href = `https://github.com/${REPO}/blob/${branch}/${PLAN}`;
+  $("#status").innerHTML = '<span class="spin"></span>Fetching from GitHub (' + esc(branch) + ')…';
+  $("#status").classList.remove("err");
+  try {
+    const [planText, ...docTexts] = await Promise.all(
+      [PLAN, ...PHASES.map((p) => p.doc)].map((path) =>
+        fetch(raw(path, branch), { cache: "no-store" }).then((r) => {
+          if (!r.ok) throw new Error(path + " → HTTP " + r.status);
+          return r.text();
+        })
+      )
+    );
+    const tasks = [], epicNames = {};
+    docTexts.forEach((md, i) => {
+      const { tasks: ts, epicNames: en } = parsePhaseDoc(md, PHASES[i].id);
+      tasks.push(...ts); Object.assign(epicNames, en);
+    });
+    const planLines = planText.split("\n");
+    const logText = sectionText(planLines, /^##\s+10\.\s+Session log/i);
+    const roadmap = sectionText(planLines, /^##\s+4\.\s+Execution roadmap/i);
+    const milestones = parseMilestones(roadmap);
+    const status = deriveStatus(logText, milestones);
+    const dates = [...logText.matchAll(/\|\s*(\d{4}-\d{2}-\d{2})\s*\|/g)].map((x) => x[1]).sort();
+
+    MODEL = { tasks, epicNames, lastDate: dates[dates.length - 1] || "—", status, branch };
+    loadOvr();
+    render();
+    $("#app").hidden = false;
+    $("#status").textContent = "Fetched " + new Date().toLocaleTimeString() + " · branch " + branch +
+      " · last session log entry " + MODEL.lastDate;
+  } catch (e) {
+    $("#status").classList.add("err");
+    $("#status").innerHTML = "Couldn’t load: " + esc(e.message) +
+      ". Check the branch name and your network (the file is fetched live from raw.githubusercontent.com).";
+  }
+}
+
+/* ---------- render ---------- */
+function tallies(filter) {
+  const t = MODEL.tasks.filter(filter);
+  const c = { done: 0, blocked: 0, todo: 0, total: t.length };
+  for (const x of t) c[effStatus(x)]++;
+  return c;
+}
+
+function render() {
+  const all = tallies(() => true);
+  const pct = all.total ? Math.round((all.done / all.total) * 100) : 0;
+
+  // KPIs
+  $("#kpis").innerHTML = `
+    <div class="card">
+      <div class="k">Overall complete</div>
+      <div class="n">${pct}%</div>
+      <div class="bar">
+        <span style="width:${pc(all.done, all.total)}%;background:var(--good)"></span>
+        <span style="width:${pc(all.blocked, all.total)}%;background:var(--blocked)"></span>
+      </div>
+    </div>
+    <div class="card"><div class="k">Shipped</div><div class="n" style="color:var(--good)">${all.done}</div><div class="k">of ${all.total} tasks</div></div>
+    <div class="card"><div class="k">Blocked / gated</div><div class="n" style="color:var(--blocked)">${all.blocked}</div><div class="k">awaiting an external unlock</div></div>
+    <div class="card"><div class="k">Not started</div><div class="n" style="color:var(--muted)">${all.todo}</div><div class="k">remaining</div></div>`;
+
+  // legend
+  $("#legend").innerHTML = PHASES.map((p) => {
+    const c = tallies((t) => t.phase === p.id);
+    return `<div class="item"><span class="swatch" style="background:${p.hex}"></span>
+      <span><strong>${esc(p.name)}</strong> <span class="meta">${c.done}/${c.total} · ${c.total ? Math.round(c.done / c.total * 100) : 0}%${c.blocked ? " · " + c.blocked + " blocked" : ""}</span></span></div>`;
+  }).join("");
+
+  // hero waffle (phase → epic → task order)
+  const ordered = [...MODEL.tasks].sort(cmpTask);
+  $("#waffleCount").textContent = `${all.done} shipped · ${all.blocked} blocked · ${all.todo} to go`;
+  $("#waffle").innerHTML = ordered.map(cellHTML).join("");
+
+  // per-phase / per-epic
+  $("#phases").innerHTML = PHASES.map((p) => {
+    const c = tallies((t) => t.phase === p.id);
+    const epics = [...new Set(MODEL.tasks.filter((t) => t.phase === p.id).map((t) => t.epic))]
+      .sort((a, b) => natCmp(a, b));
+    const rows = epics.map((ep) => {
+      const ets = MODEL.tasks.filter((t) => t.epic === ep).sort(cmpTask);
+      const ec = ets.reduce((m, t) => (m[effStatus(t)]++, m), { done: 0, blocked: 0, todo: 0 });
+      return `<div class="epic">
+        <div class="label"><b>${esc(ep)}</b> — ${esc(MODEL.epicNames[ep] || "")}
+          <span class="ec">· ${ec.done}/${ets.length}${ec.blocked ? " · " + ec.blocked + " blocked" : ""}</span></div>
+        <div class="waffle">${ets.map(cellHTML).join("")}</div>
+      </div>`;
+    }).join("");
+    return `<div class="phase">
+      <div class="head">
+        <span class="swatch" style="background:${p.hex};width:16px;height:16px"></span>
+        <span class="title">${esc(p.name)}</span>
+        <span class="count">${c.done}/${c.total} shipped${c.blocked ? " · " + c.blocked + " blocked" : ""}</span>
+        <div class="pbar bar">
+          <span style="width:${pc(c.done, c.total)}%;background:${p.hex}"></span>
+          <span style="width:${pc(c.blocked, c.total)}%;background:var(--blocked)"></span>
+        </div>
+      </div>${rows}</div>`;
+  }).join("");
+
+  // methodology + footer
+  const blk = MODEL.tasks.filter((t) => effStatus(t) === "blocked").map((t) => t.id);
+  $("#blockedList").textContent = blk.length ? blk.join(", ") : "none";
+  const nOvr = Object.keys(OVERRIDES).length;
+  $("#footer").innerHTML = `Data source: <a href="https://github.com/${REPO}/blob/${MODEL.branch}/${PLAN}" target="_blank" rel="noopener">${PLAN}</a>
+    §10 session log + §4 roadmap, and the four phase task docs, fetched live from <code>${MODEL.branch}</code>.
+    ${nOvr ? nOvr + " local override" + (nOvr > 1 ? "s" : "") + " applied." : ""}`;
+}
+
+const pc = (a, b) => (b ? (a / b) * 100 : 0);
+function phaseColor(id) { return PHASES.find((p) => p.id === id).hex; }
+function natCmp(a, b) {
+  const na = a.match(/^([A-Z]+)(\d*)/), nb = b.match(/^([A-Z]+)(\d*)/);
+  if (na[1] !== nb[1]) return na[1] < nb[1] ? -1 : 1;
+  return (+na[2] || 0) - (+nb[2] || 0);
+}
+function cmpTask(a, b) {
+  if (a.phase !== b.phase) return a.phase - b.phase;
+  if (a.epic !== b.epic) return natCmp(a.epic, b.epic);
+  return (+a.id.split(".")[1]) - (+b.id.split(".")[1]);
+}
+function cellHTML(t) {
+  const s = effStatus(t), color = phaseColor(t.phase);
+  const ovr = OVERRIDES[t.id] ? " ovr" : "";
+  let style = `--c:${color};`;
+  if (s === "done") style += `background:${color};`;
+  else if (s === "blocked") style += `background:${color};opacity:.85;`;
+  else style += `background:${color};opacity:.16;`;
+  return `<div class="cell s-${s}${ovr}" style="${style}" data-id="${t.id}" tabindex="0"></div>`;
+}
+
+/* ---------- interaction: tooltip + override ---------- */
+const tip = $("#tip");
+function showTip(el) {
+  const t = MODEL.tasks.find((x) => x.id === el.dataset.id); if (!t) return;
+  const s = effStatus(t), color = phaseColor(t.phase);
+  const bg = s === "todo" ? "#cdd5e3" : (s === "done" ? "var(--good)" : "var(--blocked)");
+  tip.innerHTML = `<div class="id" style="color:${color}">${esc(t.id)}</div>
+    <div style="margin:2px 0 6px">${esc(t.title)}</div>
+    <div class="row">${esc(PHASES.find((p)=>p.id===t.phase).name)} · epic ${esc(t.epic)} — ${esc(MODEL.epicNames[t.epic]||"")}</div>
+    <div class="row"><span class="tag" style="background:${bg};color:#0a0d13">${STATUS_LABEL[s]}</span>
+      ${OVERRIDES[t.id] ? '<span style="color:var(--muted)"> (manual override)</span>' : ''}</div>
+    <div class="row" style="color:var(--faint);margin-top:6px">click to override · esc-cleared via “reset overrides”</div>`;
+  tip.style.display = "block"; tip.style.opacity = "1";
+}
+function moveTip(e) {
+  const pad = 14, w = tip.offsetWidth, h = tip.offsetHeight;
+  let x = e.clientX + pad, y = e.clientY + pad;
+  if (x + w > innerWidth - 8) x = e.clientX - w - pad;
+  if (y + h > innerHeight - 8) y = e.clientY - h - pad;
+  tip.style.left = x + "px"; tip.style.top = y + "px";
+}
+function hideTip() { tip.style.opacity = "0"; tip.style.display = "none"; }
+
+document.addEventListener("mouseover", (e) => { const c = e.target.closest(".cell"); if (c) showTip(c); });
+document.addEventListener("mousemove", (e) => { if (tip.style.display === "block") moveTip(e); });
+document.addEventListener("mouseout", (e) => { if (e.target.closest(".cell")) hideTip(); });
+
+const CYCLE = { done: "blocked", blocked: "todo", todo: "done" };
+document.addEventListener("click", (e) => {
+  const c = e.target.closest(".cell"); if (!c || !MODEL) return;
+  const t = MODEL.tasks.find((x) => x.id === c.dataset.id); if (!t) return;
+  const cur = effStatus(t);
+  const next = CYCLE[cur];
+  if (next === autoStatus(t, MODEL.status)) delete OVERRIDES[t.id];   // back to auto when it matches
+  else OVERRIDES[t.id] = next;
+  saveOvr(); render(); showTip(document.querySelector(`.cell[data-id="${cssEscape(t.id)}"]`) || c);
+});
+const cssEscape = (s) => (window.CSS && CSS.escape) ? CSS.escape(s) : s.replace(/[^a-zA-Z0-9_-]/g, "\\$&");
+
+$("#resetOvr").addEventListener("click", (e) => { e.preventDefault(); OVERRIDES = {}; saveOvr(); render(); });
+$("#reload").addEventListener("click", load);
+$("#branch").addEventListener("keydown", (e) => { if (e.key === "Enter") load(); });
+let timer = null;
+$("#auto").addEventListener("change", (e) => {
+  clearInterval(timer);
+  if (e.target.checked) timer = setInterval(load, 120000);
+});
+
+load();
+</script>
+</body>
+</html>
