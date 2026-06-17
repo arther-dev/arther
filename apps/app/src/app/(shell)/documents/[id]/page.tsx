@@ -7,9 +7,15 @@ import {
   loadDocumentTree,
   resolveSpecFields,
 } from '@arther/db';
-import { summarizeBriefStaleness, summarizeStaleness, type DocumentId } from '@arther/types';
+import {
+  canManageDocumentLifecycle,
+  summarizeBriefStaleness,
+  summarizeStaleness,
+  type DocumentId,
+} from '@arther/types';
 import { AppShell, EmptyState } from '@arther/ui';
 import { getSupabaseServer } from '../../../../lib/supabase/server';
+import { DocumentLifecycle } from './DocumentLifecycle';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -67,6 +73,19 @@ export default async function DocumentPage({ params }: { params: Promise<{ id: s
     );
   }
 
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  // C0 — the document owner (or a workspace admin) drives the lifecycle.
+  const canManage =
+    user != null &&
+    canManageDocumentLifecycle({
+      documentOwnerId: tree.document.owner_id,
+      userId: user.id,
+      role: workspace.role,
+    });
+  const isDraft = tree.revision.state === 'draft';
+
   const stale = summarizeStaleness(await listStaleReferencesForDocument(supabase, tree.document.id));
   const briefStale = summarizeBriefStaleness(
     await listStaleBriefReferencesForDocument(supabase, tree.document.id),
@@ -88,10 +107,19 @@ export default async function DocumentPage({ params }: { params: Promise<{ id: s
             {tree.revision.state}
           </span>
           <span style={{ flex: 1 }} />
-          <Link className="ui-btn ui-btn--primary" href={`/documents/${tree.document.id}/edit`}>
-            Edit
-          </Link>
+          {isDraft ? (
+            <Link className="ui-btn ui-btn--primary" href={`/documents/${tree.document.id}/edit`}>
+              Edit
+            </Link>
+          ) : (
+            <span className="specs-grid__meta" title="Editing is locked outside Draft.">
+              Locked while in {tree.revision.state}
+            </span>
+          )}
         </header>
+        {canManage ? (
+          <DocumentLifecycle documentId={tree.document.id} state={tree.revision.state} />
+        ) : null}
         {stale.fieldCount > 0 ? (
           <p className="ui-field__error" role="status">
             {stale.fieldCount} spec value{stale.fieldCount === 1 ? '' : 's'} changed since this draft

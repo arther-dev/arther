@@ -84,6 +84,7 @@ export {
   createDocument,
   deleteBlock,
   getDocument,
+  getRevision,
   insertBlocks,
   listDocumentsForProduct,
   listSpecReferences,
@@ -102,6 +103,11 @@ export {
   type DocumentTree,
   type StaleSpecReference,
 } from './documents';
+export {
+  createDocumentRevision,
+  transitionDocumentRevision,
+  type TransitionOutcome,
+} from './document-lifecycle';
 export {
   createGenerationRun,
   getGenerationRun,

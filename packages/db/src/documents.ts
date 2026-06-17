@@ -53,7 +53,8 @@ import {
 
 const DOCUMENT_COLUMNS =
   'id, workspace_id, product_id, document_type_id, brand_profile_id, title, slug, owner_id, current_revision_id, archived_at, created_at';
-const REVISION_COLUMNS = 'id, document_id, revision_number, state, created_at';
+export const REVISION_COLUMNS =
+  'id, document_id, revision_number, state, review_brief, review_due_date, published_at, published_by, created_by, created_at';
 const BLOCK_COLUMNS =
   'id, document_id, revision_id, type, parent_block_id, display_order, source, content, degradation, text_content, last_edited_at, last_edited_by';
 const SPEC_REFERENCE_COLUMNS =
@@ -78,6 +79,13 @@ export interface DocumentRevisionRow {
   document_id: DocumentId;
   revision_number: number;
   state: DocumentState;
+  /** Submission metadata (C0.4) — set when sent for review. */
+  review_brief: string | null;
+  review_due_date: string | null;
+  /** Stamped when the revision transitions to `published` (C0.1). */
+  published_at: string | null;
+  published_by: UserId | null;
+  created_by: UserId | null;
   created_at: string;
 }
 
@@ -192,6 +200,20 @@ export async function getDocument(
     .maybeSingle();
   if (error) throw new Error(`getDocument: ${error.message}`);
   return (data as DocumentRow) ?? null;
+}
+
+/** A single revision (its lifecycle state + submission/publish metadata). */
+export async function getRevision(
+  client: SupabaseClient,
+  revisionId: DocumentRevisionId,
+): Promise<DocumentRevisionRow | null> {
+  const { data, error } = await client
+    .from('document_revisions')
+    .select(REVISION_COLUMNS)
+    .eq('id', revisionId)
+    .maybeSingle();
+  if (error) throw new Error(`getRevision: ${error.message}`);
+  return (data as DocumentRevisionRow) ?? null;
 }
 
 /** Live (non-archived) documents for a product, newest first. */
