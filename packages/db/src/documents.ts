@@ -31,6 +31,7 @@ import {
   type UserId,
   type WorkspaceId,
 } from '@arther/types';
+import { orphanBlockThreads } from './comments';
 
 /**
  * Documents & blocks repository (G3, migration 0005) over the user-JWT client —
@@ -396,6 +397,9 @@ export async function saveBlockContent(
 }
 
 export async function deleteBlock(client: SupabaseClient, blockId: BlockId): Promise<void> {
+  // C2.3 — orphan the block's open comment threads before it goes (collab spec
+  // §7.5). The FK then nulls their `block_id`; the threads are preserved, flagged.
+  await orphanBlockThreads(client, blockId, null);
   const { error } = await client.from('blocks').delete().eq('id', blockId);
   if (error) throw new Error(`deleteBlock: ${error.message}`);
 }

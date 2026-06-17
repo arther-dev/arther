@@ -148,33 +148,69 @@ describe('resolve / reopen (C2.2)', () => {
   });
 });
 
-describe('threading + orphaning schema', () => {
+describe('threading cascade', () => {
   it('deleting a thread cascades to its comments', async () => {
     const threadId = await newThread(member, memberId);
     await member`delete from public.comment_threads where id = ${threadId}`;
     expect(await admin`select id from public.comments where thread_id = ${threadId}`).toHaveLength(0);
   });
+});
 
-  it('C2.3 — deleting the anchored block nulls block_id (orphan-by-delete)', async () => {
-    // A dedicated block so the shared fixture block stays intact for other tests.
-    const tmpBlock = (
+describe('orphaning (C2.3)', () => {
+  // orphanBlockThreads is TS (called from applyBlockRegeneration / deleteBlock);
+  // these validate the schema contract + semantics it relies on.
+  async function blockWithThreads(): Promise<{ block: string; open: string; resolved: string }> {
+    const block = (
       await owner`
         insert into public.blocks (workspace_id, document_id, revision_id, type, display_order, source, content, created_by)
-        values (${ws}, (select document_id from public.document_revisions where id = ${revisionId}), ${revisionId}, 'paragraph', 9, 'manual', ${owner.json(paragraph)}, ${ownerId})
+        values (${ws}, ${documentId}, ${revisionId}, 'paragraph', 9, 'manual', ${owner.json(paragraph)}, ${ownerId})
         returning id
       `
     )[0]!.id as string;
-    const threadId = (
+    const open = (
       await owner`
         insert into public.comment_threads (workspace_id, revision_id, block_id, anchor_type, created_by)
-        values (${ws}, ${revisionId}, ${tmpBlock}, 'block', ${ownerId}) returning id
+        values (${ws}, ${revisionId}, ${block}, 'block', ${ownerId}) returning id
       `
     )[0]!.id as string;
+    const resolved = (
+      await owner`
+        insert into public.comment_threads (workspace_id, revision_id, block_id, anchor_type, status, created_by, resolved_by, resolved_at)
+        values (${ws}, ${revisionId}, ${block}, 'block', 'resolved', ${ownerId}, ${ownerId}, now()) returning id
+      `
+    )[0]!.id as string;
+    return { block, open, resolved };
+  }
 
-    await owner`delete from public.blocks where id = ${tmpBlock}`;
-    const row = (
-      await admin`select block_id from public.comment_threads where id = ${threadId}`
-    )[0]!;
+  it('regeneration orphans a block’s OPEN threads (reason block_regenerated); resolved untouched', async () => {
+    const { block, open, resolved } = await blockWithThreads();
+    // What orphanBlockThreads(block, 'block_regenerated') does:
+    await owner`
+      update public.comment_threads set status = 'orphaned', orphaned_reason = 'block_regenerated'
+      where block_id = ${block} and status = 'open'
+    `;
+    const openRow = (await admin`select status, orphaned_reason from public.comment_threads where id = ${open}`)[0]!;
+    expect(openRow.status).toBe('orphaned');
+    expect(openRow.orphaned_reason).toBe('block_regenerated');
+    expect(
+      (await admin`select status from public.comment_threads where id = ${resolved}`)[0]!.status,
+    ).toBe('resolved');
+  });
+
+  it('orphaned_reason rejects an unknown value (CHECK)', async () => {
+    const { open } = await blockWithThreads();
+    await expectDenied(
+      () => owner`update public.comment_threads set status = 'orphaned', orphaned_reason = 'bogus' where id = ${open}`,
+    );
+  });
+
+  it('deleting the anchored block orphans its open threads and nulls block_id', async () => {
+    const { block, open } = await blockWithThreads();
+    // deleteBlock orphans first, then deletes (the FK then nulls block_id).
+    await owner`update public.comment_threads set status = 'orphaned' where block_id = ${block} and status = 'open'`;
+    await owner`delete from public.blocks where id = ${block}`;
+    const row = (await admin`select status, block_id from public.comment_threads where id = ${open}`)[0]!;
+    expect(row.status).toBe('orphaned');
     expect(row.block_id).toBeNull();
   });
 });
