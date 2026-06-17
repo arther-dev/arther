@@ -2,6 +2,7 @@ import Link from 'next/link';
 import type { OverrideRow, SpecFieldRow, UnitRow } from '@arther/db';
 import { formatFieldValue, isOverridableFieldType } from '@arther/types';
 import { BoxIcon, GridIcon, LocalRail, TagIcon } from '@arther/ui';
+import { FieldOrderControls } from './DetailForms';
 import { FieldValueEditor, OverrideEditor, type ComponentOption } from './FieldValueEditor';
 
 /** Workspace categories are seeded by 0003; custom categories arrive with Settings. */
@@ -66,7 +67,12 @@ export function FieldGrid({
   /** When set, field names link to the detail panel: `${detailBase}field=<id>`. */
   detailBase?: string;
 }) {
+  // F6 — fields render in (category, display_order); track each field's position
+  // within its category so reorder controls can disable at the boundaries.
+  const categoryTotal = new Map<string, number>();
+  for (const f of fields) categoryTotal.set(f.category, (categoryTotal.get(f.category) ?? 0) + 1);
   let lastCategory = '';
+  let categoryIndex = 0;
   return (
     <table className="specs-grid">
       <thead>
@@ -79,15 +85,18 @@ export function FieldGrid({
       </thead>
       <tbody>
         {fields.map((field) => {
-          const header =
-            field.category !== lastCategory ? (
-              <tr className="specs-grid__category">
-                <th scope="colgroup" colSpan={4}>
-                  {field.category}
-                </th>
-              </tr>
-            ) : null;
+          const isNewCategory = field.category !== lastCategory;
+          const header = isNewCategory ? (
+            <tr className="specs-grid__category">
+              <th scope="colgroup" colSpan={4}>
+                {field.category}
+              </th>
+            </tr>
+          ) : null;
+          categoryIndex = isNewCategory ? 0 : categoryIndex + 1;
           lastCategory = field.category;
+          const isFirst = categoryIndex === 0;
+          const isLast = categoryIndex === (categoryTotal.get(field.category) ?? 1) - 1;
           const override =
             overrideContext?.overrides.get(`${overrideContext.edgeId}:${field.id}`) ?? null;
           // Effective value in a product context = override, else global (§3.5).
@@ -108,6 +117,8 @@ export function FieldGrid({
               edgeId={overrideContext?.edgeId}
               override={override}
               detailBase={detailBase}
+              isFirst={isFirst}
+              isLast={isLast}
             />
           );
         })}
@@ -125,6 +136,8 @@ function FieldRowWithHeader({
   edgeId,
   override,
   detailBase,
+  isFirst,
+  isLast,
 }: {
   header: React.ReactNode;
   field: SpecFieldRow;
@@ -134,6 +147,8 @@ function FieldRowWithHeader({
   edgeId?: string;
   override: OverrideRow | null;
   detailBase?: string;
+  isFirst: boolean;
+  isLast: boolean;
 }) {
   const effective = override?.value ?? field.value;
   const globalSymbol = (() => {
@@ -184,7 +199,10 @@ function FieldRowWithHeader({
         </td>
         <td className="specs-grid__meta">{field.source}</td>
         <td>
-          <FieldValueEditor field={field} units={units} components={components} />
+          <div className="specs-form--row" style={{ gap: 6, alignItems: 'center' }}>
+            <FieldValueEditor field={field} units={units} components={components} />
+            <FieldOrderControls fieldId={field.id} isFirst={isFirst} isLast={isLast} />
+          </div>
           {edgeId && isOverridableFieldType(field.type) ? (
             <OverrideEditor field={field} units={units} edgeId={edgeId} override={override} />
           ) : null}

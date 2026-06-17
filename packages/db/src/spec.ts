@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { rpcError } from './errors';
 import {
   isOverridableFieldType,
+  moveInList,
   parseFieldValue,
   type ComponentId,
   type FieldType,
@@ -599,6 +600,54 @@ export async function getSpecField(
     .maybeSingle();
   if (error) throw new Error(`getSpecField: ${error.message}`);
   return (data as SpecFieldRow | null) ?? null;
+}
+
+/**
+ * F6 — move a spec field one step within its (owner + category) group. Reorder
+ * is within a category because the grid orders by `category` then
+ * `display_order`. Loads the field's non-archived same-category siblings in
+ * order, swaps the field one step (a boundary move is a no-op), then reindexes
+ * the whole group so `display_order` stays total + gap-free. RLS-gated (editor
+ * write on `spec_fields`).
+ */
+export async function moveSpecFieldOrder(
+  client: SupabaseClient,
+  input: { fieldId: SpecFieldId; direction: -1 | 1; userId: UserId },
+): Promise<void> {
+  const { data: field, error } = await client
+    .from('spec_fields')
+    .select('id, category, product_id, component_id')
+    .eq('id', input.fieldId)
+    .maybeSingle();
+  if (error) throw new Error(`moveSpecFieldOrder: ${error.message}`);
+  if (!field) throw new Error('moveSpecFieldOrder: field not found');
+
+  let query = client
+    .from('spec_fields')
+    .select('id')
+    .eq('category', field.category as string)
+    .is('archived_at', null)
+    .order('display_order', { ascending: true })
+    .order('id', { ascending: true });
+  query = field.product_id
+    ? query.eq('product_id', field.product_id as string)
+    : query.eq('component_id', field.component_id as string);
+  const { data: siblings, error: sibErr } = await query;
+  if (sibErr) throw new Error(`moveSpecFieldOrder(siblings): ${sibErr.message}`);
+
+  const ids = (siblings ?? []).map((s) => s.id as string);
+  const idx = ids.indexOf(input.fieldId);
+  if (idx < 0) return;
+  const reordered = moveInList(ids, idx, input.direction);
+  if (reordered[idx] === ids[idx]) return; // boundary — nothing moved
+
+  for (let i = 0; i < reordered.length; i += 1) {
+    const { error: upErr } = await client
+      .from('spec_fields')
+      .update({ display_order: i, updated_by: input.userId })
+      .eq('id', reordered[i]!);
+    if (upErr) throw new Error(`moveSpecFieldOrder(update): ${upErr.message}`);
+  }
 }
 
 /** Display names for feed attribution (id → name/email). */
