@@ -120,3 +120,24 @@ export async function membershipUserIds(
   if (error) throw new Error(`membershipUserIds: ${error.message}`);
   return [...new Set((data ?? []).map((r) => r.user_id as UserId))];
 }
+
+/**
+ * C2.5 — the subset of `userIds` who are members of `workspaceId`. @mentions
+ * resolve to workspace members only (collab spec §8), so a token naming a
+ * non-member (or a member of another workspace) never produces a notification.
+ */
+export async function workspaceMemberUserIds(
+  client: SupabaseClient,
+  workspaceId: WorkspaceId,
+  userIds: string[],
+): Promise<UserId[]> {
+  const ids = [...new Set(userIds)].filter((id) => id.length > 0);
+  if (ids.length === 0) return [];
+  const { data, error } = await client
+    .from('workspace_members')
+    .select('user_id')
+    .eq('workspace_id', workspaceId)
+    .in('user_id', ids);
+  if (error) throw new Error(`workspaceMemberUserIds: ${error.message}`);
+  return [...new Set((data ?? []).map((r) => r.user_id as UserId))];
+}

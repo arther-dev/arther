@@ -83,3 +83,43 @@ export function blockAnchorLabel(order: number, type: string): string {
   const pretty = type.replace(/_/g, ' ');
   return `Block ${order} · ${pretty}`;
 }
+
+// --- C2.5 @mentions ----------------------------------------------------------
+
+/**
+ * The mention token embedded in a comment body: `@[Display Name](userId)`. The
+ * user id is carried in the token so resolution is exact (mentions resolve to
+ * workspace members only — collab spec §8) rather than a fuzzy name match.
+ */
+const MENTION_RE =
+  /@\[([^\]]+)\]\(([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\)/gi;
+
+/** Build a mention token for insertion into a comment body. */
+export function formatMentionToken(name: string, userId: string): string {
+  return `@[${name}](${userId})`;
+}
+
+/** The distinct mentioned user ids in a comment body (lowercased). */
+export function extractMentionUserIds(body: string): string[] {
+  const ids = new Set<string>();
+  for (const match of body.matchAll(MENTION_RE)) ids.add(match[2]!.toLowerCase());
+  return [...ids];
+}
+
+export type MentionSegment =
+  | { type: 'text'; value: string }
+  | { type: 'mention'; value: string; userId: string };
+
+/** Split a comment body into plain-text + mention segments, for display. */
+export function renderMentionSegments(body: string): MentionSegment[] {
+  const segments: MentionSegment[] = [];
+  let last = 0;
+  for (const match of body.matchAll(MENTION_RE)) {
+    const index = match.index ?? 0;
+    if (index > last) segments.push({ type: 'text', value: body.slice(last, index) });
+    segments.push({ type: 'mention', value: `@${match[1]}`, userId: match[2]!.toLowerCase() });
+    last = index + match[0].length;
+  }
+  if (last < body.length) segments.push({ type: 'text', value: body.slice(last) });
+  return segments;
+}

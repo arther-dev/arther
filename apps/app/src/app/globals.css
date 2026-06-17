@@ -690,6 +690,10 @@ body {
   color: var(--text-secondary);
   border-bottom: 1px dashed var(--border-subtle);
 }
+.comments__mention {
+  color: var(--text-link);
+  font-weight: 600;
+}
 .comments__comments {
   list-style: none;
   padding: 0;

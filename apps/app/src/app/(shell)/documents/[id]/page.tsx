@@ -180,6 +180,13 @@ export default async function DocumentPage({ params }: { params: Promise<{ id: s
     label: blockAnchorLabel(b.display_order, b.content.type),
     prose: b.content.type === 'paragraph' || b.content.type === 'heading',
   }));
+  // C2.5 — workspace members for the @mention picker (resolve to members only).
+  const mentionMembers = user
+    ? (await listMembers(supabase, workspace.id)).map((m) => ({
+        userId: m.user_id,
+        name: m.name ?? m.email,
+      }))
+    : [];
 
   const stale = summarizeStaleness(await listStaleReferencesForDocument(supabase, tree.document.id));
   const briefStale = summarizeBriefStaleness(
@@ -293,6 +300,7 @@ export default async function DocumentPage({ params }: { params: Promise<{ id: s
             documentId={tree.document.id}
             threads={commentThreads}
             blocks={blockOptions}
+            members={mentionMembers}
             currentUserId={user.id}
             canResolveAny={canManage}
           />

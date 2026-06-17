@@ -90,6 +90,28 @@ describe('notifications are recipient-private (C3.1/C3.4)', () => {
   });
 });
 
+describe('@mention dispatch (C2.5)', () => {
+  it('mentions resolve to workspace members only, and dispatch to a member is readable', async () => {
+    // The resolver filter: a member resolves; an outsider id resolves to nothing.
+    const outsider = crypto.randomUUID();
+    expect(
+      await admin`select 1 from public.workspace_members where workspace_id = ${ws} and user_id = ${memberId}`,
+    ).toHaveLength(1);
+    expect(
+      await admin`select 1 from public.workspace_members where workspace_id = ${ws} and user_id = ${outsider}`,
+    ).toHaveLength(0);
+
+    const id = (
+      await admin`
+        insert into public.notifications (workspace_id, recipient_id, event_type, payload)
+        values (${ws}, ${memberId}, 'comment_mention', ${admin.json({ actorName: 'Owner', threadId: crypto.randomUUID() })})
+        returning id
+      `
+    )[0]!.id as string;
+    expect(await member`select id from public.notifications where id = ${id}`).toHaveLength(1);
+  });
+});
+
 describe('preferences are self-managed (C3.2)', () => {
   it('a member manages their own preference', async () => {
     await member`

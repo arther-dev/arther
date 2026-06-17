@@ -6,6 +6,7 @@ export {
   markAllNotificationsRead,
   markNotificationRead,
   membershipUserIds,
+  workspaceMemberUserIds,
   type NotificationFeed,
 } from './notifications';
 export {

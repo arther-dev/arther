@@ -3,8 +3,11 @@ import {
   blockAnchorLabel,
   canResolveThread,
   commentBodySchema,
+  extractMentionUserIds,
   findTextAnchor,
+  formatMentionToken,
   isTextAnchorValid,
+  renderMentionSegments,
 } from './comment';
 
 describe('canResolveThread (C2.2, collab spec §7.4)', () => {
@@ -58,6 +61,34 @@ describe('text-range anchoring (C2.1)', () => {
     expect(findTextAnchor(text, '  36 V  ')).not.toBeNull();
     expect(findTextAnchor(text, 'rated at 48 V')).toBeNull();
     expect(findTextAnchor(text, '   ')).toBeNull();
+  });
+});
+
+describe('@mentions (C2.5)', () => {
+  const alice = '11111111-1111-1111-1111-111111111111';
+  const bob = '22222222-2222-2222-2222-222222222222';
+  const body = `Hi ${formatMentionToken('Alice', alice)} and ${formatMentionToken('Bob', bob)}, thoughts?`;
+
+  it('extracts distinct mentioned user ids', () => {
+    expect(extractMentionUserIds(body)).toEqual([alice, bob]);
+    expect(extractMentionUserIds(`${formatMentionToken('Alice', alice)} ${formatMentionToken('Alice', alice)}`)).toEqual([
+      alice,
+    ]);
+    expect(extractMentionUserIds('no mentions here')).toEqual([]);
+  });
+
+  it('renders body into text + mention segments', () => {
+    const segments = renderMentionSegments(body);
+    expect(segments[0]).toEqual({ type: 'text', value: 'Hi ' });
+    expect(segments[1]).toEqual({ type: 'mention', value: '@Alice', userId: alice });
+    expect(segments.filter((s) => s.type === 'mention')).toHaveLength(2);
+    // round-trips the surrounding text
+    expect(segments.map((s) => (s.type === 'mention' ? s.value : s.value)).join('')).toContain('thoughts?');
+  });
+
+  it('ignores a malformed token (no valid uuid)', () => {
+    expect(extractMentionUserIds('@[Alice](not-a-uuid)')).toEqual([]);
+    expect(renderMentionSegments('@[Alice](nope)')).toEqual([{ type: 'text', value: '@[Alice](nope)' }]);
   });
 });
 
