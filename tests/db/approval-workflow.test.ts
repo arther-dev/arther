@@ -205,13 +205,17 @@ describe('reset on rejection scopes by cycle (C1.3)', () => {
 });
 
 describe('append-only audit trail + RLS', () => {
-  it('approval records cannot be updated or deleted (even by the owner)', async () => {
-    await expectDenied(
-      () => editor`update public.approval_records set reason = 'x' where revision_id = ${revisionId}`,
+  it('approval records are immutable — even a service-role write is blocked', async () => {
+    // Run as admin (RLS-bypassing) so the prevent_mutation trigger — not RLS — is
+    // the thing that blocks: the trail can't be rewritten even by the service role.
+    const updateMsg = await expectDenied(
+      () => admin`update public.approval_records set reason = 'x' where revision_id = ${revisionId}`,
     );
-    await expectDenied(
-      () => editor`delete from public.approval_records where revision_id = ${revisionId}`,
+    expect(updateMsg).toMatch(/immutable/i);
+    const deleteMsg = await expectDenied(
+      () => admin`delete from public.approval_records where revision_id = ${revisionId}`,
     );
+    expect(deleteMsg).toMatch(/immutable/i);
   });
 
   it('members read the trail; strangers see nothing', async () => {
