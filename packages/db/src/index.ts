@@ -6,6 +6,7 @@ export {
   createCommentThread,
   getCommentThreadMeta,
   listCommentThreads,
+  orphanBlockThreads,
   reopenCommentThread,
   resolveCommentThread,
   type CommentThreadMeta,

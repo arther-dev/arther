@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { attributeSections, blockContentSchema } from '@arther/types';
+import { orphanBlockThreads } from './comments';
 import type {
   BlockContent,
   BlockId,
@@ -128,4 +129,8 @@ export async function applyBlockRegeneration(
     );
     if (inserted.error) throw new Error(`applyBlockRegeneration(insert refs): ${inserted.error.message}`);
   }
+
+  // C2.3 — the regenerated prose may differ substantially, so no anchor on the
+  // old block is safe to keep: orphan its open comment threads (collab spec §7.5).
+  await orphanBlockThreads(client, input.blockId, 'block_regenerated');
 }

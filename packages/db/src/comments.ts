@@ -185,6 +185,28 @@ export async function reopenCommentThread(
   return (data ?? []).length > 0;
 }
 
+/**
+ * C2.3 — orphan a block's OPEN threads when its anchor is no longer valid
+ * (collab spec §7.5): a regenerate replaces the block's prose (`block_regenerated`),
+ * a delete removes the block entirely (reason `null` — the FK nulls `block_id`).
+ * Only open threads orphan; resolved feedback was already addressed and keeps its
+ * resolution. Orphaned threads are preserved, not deleted. Returns the count.
+ */
+export async function orphanBlockThreads(
+  client: SupabaseClient,
+  blockId: string,
+  reason: 'block_regenerated' | null,
+): Promise<number> {
+  const { data, error } = await client
+    .from('comment_threads')
+    .update({ status: 'orphaned', orphaned_reason: reason })
+    .eq('block_id', blockId)
+    .eq('status', 'open')
+    .select('id');
+  if (error) throw new Error(`orphanBlockThreads: ${error.message}`);
+  return (data ?? []).length;
+}
+
 /** C2.1 — every thread for a revision (oldest first), each with its comments. */
 export async function listCommentThreads(
   client: SupabaseClient,

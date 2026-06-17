@@ -38,14 +38,17 @@ export function CommentsPanel({
   const [showResolved, setShowResolved] = useState(false);
   const blockLabels = useMemo(() => new Map(blocks.map((b) => [b.id, b.label])), [blocks]);
 
-  const open = threads.filter((t) => t.status === 'open');
-  const visible = showResolved ? threads : open;
-  const resolvedCount = threads.length - open.length;
+  // Open + orphaned threads need attention and show by default; resolved threads
+  // (addressed) hide behind the toggle. Orphaned = anchor lost but preserved (§7.5).
+  const active = threads.filter((t) => t.status !== 'resolved');
+  const openCount = threads.filter((t) => t.status === 'open').length;
+  const resolvedCount = threads.filter((t) => t.status === 'resolved').length;
+  const visible = showResolved ? threads : active;
 
   return (
     <section className="comments" aria-label="Comments">
       <div className="comments__head">
-        <h2 className="comments__title">Comments {open.length > 0 ? `(${open.length})` : ''}</h2>
+        <h2 className="comments__title">Comments {openCount > 0 ? `(${openCount})` : ''}</h2>
         {resolvedCount > 0 && (
           <label className="comments__toggle">
             <input
