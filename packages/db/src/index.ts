@@ -121,6 +121,11 @@ export {
 } from './edit-authz';
 export { recordAuditEvent, type AuditEvent } from './audit';
 export {
+  listSnapshotsForDocument,
+  publishDocument,
+  type PublishedSnapshotRow,
+} from './snapshots';
+export {
   createGenerationRun,
   getGenerationRun,
   listGenerationRunsForProduct,

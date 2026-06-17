@@ -27,6 +27,7 @@ export type DocumentTypeSectionId = Branded<string, 'DocumentTypeSectionId'>;
 export type ApprovalRoleId = Branded<string, 'ApprovalRoleId'>;
 export type ApprovalRoleAssignmentId = Branded<string, 'ApprovalRoleAssignmentId'>;
 export type DocumentRevisionId = Branded<string, 'DocumentRevisionId'>;
+export type PublishedSnapshotId = Branded<string, 'PublishedSnapshotId'>;
 export type BlockId = Branded<string, 'BlockId'>;
 export type BlockSpecReferenceId = Branded<string, 'BlockSpecReferenceId'>;
 export type BlockBriefReferenceId = Branded<string, 'BlockBriefReferenceId'>;
@@ -57,6 +58,7 @@ export const approvalRoleAssignmentIdSchema = uuid.transform(
   (v) => v as ApprovalRoleAssignmentId,
 );
 export const documentRevisionIdSchema = uuid.transform((v) => v as DocumentRevisionId);
+export const publishedSnapshotIdSchema = uuid.transform((v) => v as PublishedSnapshotId);
 export const blockIdSchema = uuid.transform((v) => v as BlockId);
 export const blockSpecReferenceIdSchema = uuid.transform((v) => v as BlockSpecReferenceId);
 export const blockBriefReferenceIdSchema = uuid.transform((v) => v as BlockBriefReferenceId);

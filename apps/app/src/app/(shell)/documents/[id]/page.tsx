@@ -5,6 +5,7 @@ import {
   listApprovalRecords,
   listApprovalRoles,
   listMembers,
+  listSnapshotsForDocument,
   listStaleBriefReferencesForDocument,
   listStaleReferencesForDocument,
   loadDocumentTree,
@@ -142,6 +143,13 @@ export default async function DocumentPage({ params }: { params: Promise<{ id: s
     }
   }
 
+  // C4 — the live published snapshot (if any) for the version indicator.
+  const snapshot =
+    state === 'published'
+      ? ((await listSnapshotsForDocument(supabase, tree.document.id)).find((s) => !s.archived_at) ??
+        null)
+      : null;
+
   const stale = summarizeStaleness(await listStaleReferencesForDocument(supabase, tree.document.id));
   const briefStale = summarizeBriefStaleness(
     await listStaleBriefReferencesForDocument(supabase, tree.document.id),
@@ -177,6 +185,12 @@ export default async function DocumentPage({ params }: { params: Promise<{ id: s
             </span>
           )}
         </header>
+        {snapshot ? (
+          <p className="specs-grid__meta" role="status">
+            Published <strong>v{snapshot.version}</strong> ·{' '}
+            {snapshot.pdf_ready ? 'PDF ready' : 'PDF pending (C5)'}
+          </p>
+        ) : null}
         {rejection ? (
           <p className="ui-field__error" role="status">
             Returned to Draft by <strong>{rejection.by}</strong>
