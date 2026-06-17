@@ -10,8 +10,12 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@arther/block-renderer": "workspace:*",
     "@arther/config": "workspace:*",
+    "@arther/db": "workspace:*",
     "@arther/types": "workspace:*",
+    "@arther/ui": "workspace:*",
+    "@supabase/supabase-js": "^2.108.1",
     "next": "^15.3.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
