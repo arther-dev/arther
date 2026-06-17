@@ -3,7 +3,11 @@
 import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 import type { ReviewRoleStatus } from '@arther/types';
-import { recordApprovalAction, type ApprovalResult } from './approval-actions';
+import {
+  overrideApprovalAction,
+  recordApprovalAction,
+  type ApprovalResult,
+} from './approval-actions';
 
 export interface PanelRole {
   roleId: string;
@@ -33,18 +37,23 @@ export function ApprovalPanel({
   roles,
   approvedCount,
   requiredCount,
+  canOverride,
 }: {
   documentId: string;
   revisionId: string;
   roles: PanelRole[];
   approvedCount: number;
   requiredCount: number;
+  /** The signed-in member is the document owner or a workspace admin (C1.5). */
+  canOverride: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [rejecting, setRejecting] = useState<string | null>(null);
   const [reason, setReason] = useState('');
+  const [overriding, setOverriding] = useState<string | null>(null);
+  const [overrideReason, setOverrideReason] = useState('');
 
   function run(fn: () => Promise<ApprovalResult>) {
     setError(null);
@@ -53,6 +62,8 @@ export function ApprovalPanel({
       if (res.ok) {
         setRejecting(null);
         setReason('');
+        setOverriding(null);
+        setOverrideReason('');
         router.refresh();
       } else {
         setError(res.error ?? 'Something went wrong.');
@@ -155,6 +166,67 @@ export function ApprovalPanel({
                     }}
                   >
                     Send back
+                  </button>
+                </div>
+              )
+            ) : null}
+
+            {canOverride && role.status === 'pending' ? (
+              overriding === role.roleId ? (
+                <form
+                  className="approval-panel__reject"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    run(() =>
+                      overrideApprovalAction(documentId, revisionId, {
+                        roleId: role.roleId,
+                        reason: overrideReason,
+                      }),
+                    );
+                  }}
+                >
+                  <textarea
+                    className="ui-field__input"
+                    rows={2}
+                    value={overrideReason}
+                    onChange={(e) => setOverrideReason(e.target.value)}
+                    placeholder={`Override reason — approving on behalf of ${role.label} (required)`}
+                    aria-label="Override reason"
+                  />
+                  <div className="approval-panel__actions">
+                    <button
+                      type="submit"
+                      className="ui-btn ui-btn--danger"
+                      disabled={pending || overrideReason.trim() === ''}
+                    >
+                      Override approval
+                    </button>
+                    <button
+                      type="button"
+                      className="ui-btn ui-btn--ghost"
+                      disabled={pending}
+                      onClick={() => {
+                        setOverriding(null);
+                        setOverrideReason('');
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <div className="approval-panel__actions">
+                  <button
+                    type="button"
+                    className="ui-btn ui-btn--ghost"
+                    disabled={pending}
+                    onClick={() => {
+                      setOverriding(role.roleId);
+                      setOverrideReason('');
+                      setError(null);
+                    }}
+                  >
+                    Override…
                   </button>
                 </div>
               )

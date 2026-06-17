@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { recordApprovalSchema, summarizeReview, type ApprovalRecordLike } from './approval';
+import {
+  overrideApprovalSchema,
+  recordApprovalSchema,
+  summarizeReview,
+  type ApprovalRecordLike,
+} from './approval';
 
 const role = (id: string, required = true) => ({ id, label: id.toUpperCase(), required });
 const rec = (roleId: string, action: ApprovalRecordLike['action'], reviewCycle: number) => ({
@@ -20,6 +25,14 @@ describe('recordApprovalSchema (C1.2)', () => {
     );
     expect(
       recordApprovalSchema.safeParse({ roleId: id, action: 'rejected', reason: 'see comments' }).success,
+    ).toBe(true);
+  });
+
+  it('owner override always requires a reason (spec §3.3)', () => {
+    expect(overrideApprovalSchema.safeParse({ roleId: id }).success).toBe(false);
+    expect(overrideApprovalSchema.safeParse({ roleId: id, reason: '   ' }).success).toBe(false);
+    expect(
+      overrideApprovalSchema.safeParse({ roleId: id, reason: 'Regulatory lead is on leave' }).success,
     ).toBe(true);
   });
 });

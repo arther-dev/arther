@@ -6,9 +6,11 @@ import {
   DbRuleError,
   getActiveWorkspace,
   membershipLookupFor,
+  overrideApproval,
   recordApproval,
 } from '@arther/db';
 import {
+  overrideApprovalSchema,
   recordApprovalSchema,
   type ApprovalRoleId,
   type DocumentRevisionId,
@@ -72,5 +74,50 @@ export async function recordApprovalAction(
     // author-written and safe to show; anything else is generic.
     if (err instanceof DbRuleError) return { ok: false, error: err.message };
     return { ok: false, error: 'Could not record your review.' };
+  }
+}
+
+/**
+ * C1.5 — the document owner (or a workspace admin) overrides a role's approval
+ * with a mandatory reason. Seat-gated here (`doc.submit`); the `override_approval`
+ * RPC enforces owner/admin and writes the flagged audit_log entry.
+ */
+export async function overrideApprovalAction(
+  documentId: string,
+  revisionId: string,
+  input: unknown,
+): Promise<ApprovalResult> {
+  if (!UUID_RE.test(documentId) || !UUID_RE.test(revisionId)) {
+    return { ok: false, error: 'Invalid document.' };
+  }
+  const parsed = overrideApprovalSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]!.message };
+
+  const supabase = await getSupabaseServer();
+  if (!supabase) return { ok: false, error: 'Not configured in this environment yet.' };
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: 'Not signed in.' };
+  const workspace = await getActiveWorkspace(supabase);
+  if (!workspace) return { ok: false, error: 'No workspace yet.' };
+
+  const canDo = createCanDo(membershipLookupFor(supabase));
+  if (!(await canDo({ id: user.id as UserId }, 'doc.submit', { workspaceId: workspace.id }))) {
+    return { ok: false, error: 'You can’t override approvals.' };
+  }
+
+  try {
+    const state = await overrideApproval(supabase, {
+      revisionId: revisionId as DocumentRevisionId,
+      roleId: parsed.data.roleId as ApprovalRoleId,
+      reason: parsed.data.reason,
+    });
+    revalidatePath(`/documents/${documentId}`);
+    revalidatePath(`/documents/${documentId}/edit`);
+    return { ok: true, state };
+  } catch (err) {
+    if (err instanceof DbRuleError) return { ok: false, error: err.message };
+    return { ok: false, error: 'Could not override the approval.' };
   }
 }

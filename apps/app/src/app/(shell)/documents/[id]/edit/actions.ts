@@ -19,14 +19,19 @@ import {
   getActiveWorkspace,
   getEntityBrief,
   insertBlocks,
+  listApprovalRoles,
   listUnits,
   loadBlockRegenContext,
+  loadEditContextForBlock,
+  loadEditContextForRevision,
   loadGenerationFields,
   loadRevisionBlocks,
   membershipLookupFor,
   recordAnalyticsEvent,
+  recordAuditEvent,
   reorderBlocks,
   saveBlockContent,
+  type ActiveWorkspace,
 } from '@arther/db';
 import {
   blockContentSchema,
@@ -63,16 +68,15 @@ export interface InsertResult extends SaveResult {
   orderedIds?: string[];
 }
 
-type Authorized = { supabase: SupabaseClient; userId: UserId; workspaceId: WorkspaceId };
+type Authorized = {
+  supabase: SupabaseClient;
+  userId: UserId;
+  workspaceId: WorkspaceId;
+  workspace: ActiveWorkspace;
+};
 
-/**
- * Every document mutation is editor-gated with RLS behind it. Defaults to
- * `doc.write`; regeneration (a model call) gates on `doc.generate`, matching the
- * generation flow.
- */
-async function authorizeDocWrite(
-  action: 'doc.write' | 'doc.generate' = 'doc.write',
-): Promise<Authorized | { error: string }> {
+/** Signed in + a workspace; permission is decided per-action against the state. */
+async function authorizeBase(): Promise<Authorized | { error: string }> {
   const supabase = await getSupabaseServer();
   if (!supabase) return { error: 'Not configured in this environment yet.' };
   const {
@@ -81,11 +85,69 @@ async function authorizeDocWrite(
   if (!user) return { error: 'Not signed in.' };
   const workspace = await getActiveWorkspace(supabase);
   if (!workspace) return { error: 'No workspace.' };
-  const canDo = createCanDo(membershipLookupFor(supabase));
-  if (!(await canDo({ id: user.id as UserId }, action, { workspaceId: workspace.id }))) {
+  return { supabase, userId: user.id as UserId, workspaceId: workspace.id, workspace };
+}
+
+/**
+ * C0.3 / C1.4 — structural edits (insert / delete / reorder / paste / regenerate)
+ * are **Draft-only**: a document in Review/Approved/Published is locked. Gated by
+ * the seat right (`doc.write`, or `doc.generate` for regeneration) AND the
+ * working revision being in Draft. Pass the block being changed, or the revision.
+ */
+async function authorizeStructuralEdit(opts: {
+  blockId?: string;
+  revisionId?: string;
+  action?: 'doc.write' | 'doc.generate';
+}): Promise<Authorized | { error: string }> {
+  const base = await authorizeBase();
+  if ('error' in base) return base;
+  const action = opts.action ?? 'doc.write';
+  const canDo = createCanDo(membershipLookupFor(base.supabase));
+  if (!(await canDo({ id: base.userId }, action, { workspaceId: base.workspaceId }))) {
     return { error: 'Viewers can’t edit documents.' };
   }
-  return { supabase, userId: user.id as UserId, workspaceId: workspace.id };
+  const ctx = opts.blockId
+    ? await loadEditContextForBlock(base.supabase, opts.blockId as BlockId)
+    : await loadEditContextForRevision(base.supabase, opts.revisionId as DocumentRevisionId);
+  if (!ctx) return { error: 'Document not found.' };
+  if (ctx.state !== 'draft') {
+    return { error: `This document is in ${ctx.state} — structural changes need it back in Draft.` };
+  }
+  return base;
+}
+
+/**
+ * C1.4 — content edits are allowed for editors in Draft, and for an **assigned
+ * approver** in Review (minor corrections — typos/formatting — without a reject
+ * cycle, spec §4.3); locked in Approved/Published. Returns whether the save is a
+ * logged minor correction.
+ */
+async function authorizeContentEdit(
+  blockId: string,
+): Promise<(Authorized & { minorCorrection: boolean; documentId: DocumentId }) | { error: string }> {
+  const base = await authorizeBase();
+  if ('error' in base) return base;
+  const ctx = await loadEditContextForBlock(base.supabase, blockId as BlockId);
+  if (!ctx) return { error: 'Block not found.' };
+  const canDo = createCanDo(membershipLookupFor(base.supabase));
+
+  if (ctx.state === 'draft') {
+    if (!(await canDo({ id: base.userId }, 'doc.write', { workspaceId: base.workspaceId }))) {
+      return { error: 'Viewers can’t edit documents.' };
+    }
+    return { ...base, minorCorrection: false, documentId: ctx.documentId };
+  }
+  if (ctx.state === 'review') {
+    const roles = await listApprovalRoles(base.supabase, ctx.documentTypeId);
+    const isApprover = roles.some((r) =>
+      r.assignments.some((a) => a.workspace_member_id === base.workspace.membershipId),
+    );
+    if (!isApprover) {
+      return { error: 'This document is in review — only assigned approvers can make corrections.' };
+    }
+    return { ...base, minorCorrection: true, documentId: ctx.documentId };
+  }
+  return { error: 'This document is locked and can no longer be edited.' };
 }
 
 /**
@@ -102,7 +164,7 @@ export async function updateBlockContentAction(
   const parsed = blockContentSchema.safeParse(content);
   if (!parsed.success) return { ok: false, error: 'Invalid block content.' };
 
-  const auth = await authorizeDocWrite();
+  const auth = await authorizeContentEdit(blockId);
   if ('error' in auth) return { ok: false, error: auth.error };
 
   try {
@@ -115,6 +177,25 @@ export async function updateBlockContentAction(
     if (outcome.status === 'conflict') {
       // G5.4 — the editor offers block-level keep-mine / use-theirs.
       return { ok: false, conflict: outcome.server, lastEditedAt: outcome.lastEditedAt };
+    }
+    // C1.4 — an approver's minor correction during Review is logged to the audit
+    // trail (best-effort; never fails the save).
+    if (auth.minorCorrection) {
+      try {
+        await recordAuditEvent(
+          createServiceClient(),
+          { workspaceId: auth.workspaceId },
+          {
+            action: 'document.minor_correction',
+            resourceType: 'block',
+            resourceId: blockId,
+            actorUserId: auth.userId,
+            metadata: { documentId: auth.documentId },
+          },
+        );
+      } catch (e) {
+        console.error('[audit] minor_correction failed', e);
+      }
     }
     return { ok: true, lastEditedAt: outcome.lastEditedAt };
   } catch {
@@ -140,7 +221,7 @@ export async function addBlockAfterAction(input: {
 }): Promise<InsertResult> {
   const parsed = addSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Invalid request.' };
-  const auth = await authorizeDocWrite();
+  const auth = await authorizeStructuralEdit({ revisionId: parsed.data.revisionId });
   if ('error' in auth) return { ok: false, error: auth.error };
 
   try {
@@ -213,7 +294,7 @@ export async function pasteBlocksAction(input: {
   if (!env.success) return { ok: false, error: 'Invalid request.' };
   const parsedBlocks = pasteBlocksSchema.safeParse(input.blocks);
   if (!parsedBlocks.success) return { ok: false, error: 'Invalid request.' };
-  const auth = await authorizeDocWrite();
+  const auth = await authorizeStructuralEdit({ revisionId: env.data.revisionId });
   if ('error' in auth) return { ok: false, error: auth.error };
 
   try {
@@ -257,7 +338,7 @@ export async function pasteBlocksAction(input: {
 
 export async function deleteBlockAction(blockId: string): Promise<SaveResult> {
   if (!z.string().uuid().safeParse(blockId).success) return { ok: false, error: 'Invalid block.' };
-  const auth = await authorizeDocWrite();
+  const auth = await authorizeStructuralEdit({ blockId });
   if ('error' in auth) return { ok: false, error: auth.error };
   try {
     await deleteBlock(auth.supabase, blockId as BlockId);
@@ -268,9 +349,10 @@ export async function deleteBlockAction(blockId: string): Promise<SaveResult> {
 }
 
 export async function reorderBlocksAction(orderedBlockIds: string[]): Promise<SaveResult> {
-  const parsed = z.array(z.string().uuid()).max(1000).safeParse(orderedBlockIds);
+  const parsed = z.array(z.string().uuid()).min(1).max(1000).safeParse(orderedBlockIds);
   if (!parsed.success) return { ok: false, error: 'Invalid order.' };
-  const auth = await authorizeDocWrite();
+  // The blocks share a revision; authorize the lock against the first one.
+  const auth = await authorizeStructuralEdit({ blockId: parsed.data[0] });
   if ('error' in auth) return { ok: false, error: auth.error };
   try {
     await reorderBlocks(auth.supabase, parsed.data as BlockId[], auth.userId);
@@ -297,7 +379,7 @@ export interface RegenerateResult extends SaveResult {
 export async function regenerateBlockAction(blockId: string): Promise<RegenerateResult> {
   if (!z.string().uuid().safeParse(blockId).success) return { ok: false, error: 'Invalid block.' };
 
-  const auth = await authorizeDocWrite('doc.generate');
+  const auth = await authorizeStructuralEdit({ blockId, action: 'doc.generate' });
   if ('error' in auth) return { ok: false, error: auth.error };
 
   const ctx = await loadBlockRegenContext(auth.supabase, blockId as BlockId);

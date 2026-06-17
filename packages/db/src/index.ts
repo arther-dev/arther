@@ -110,9 +110,16 @@ export {
 } from './document-lifecycle';
 export {
   listApprovalRecords,
+  overrideApproval,
   recordApproval,
   type ApprovalRecordRow,
 } from './approvals';
+export {
+  loadEditContextForBlock,
+  loadEditContextForRevision,
+  type EditContext,
+} from './edit-authz';
+export { recordAuditEvent, type AuditEvent } from './audit';
 export {
   createGenerationRun,
   getGenerationRun,

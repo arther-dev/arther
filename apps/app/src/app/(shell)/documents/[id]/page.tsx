@@ -96,6 +96,7 @@ export default async function DocumentPage({ params }: { params: Promise<{ id: s
   let panelRoles: PanelRole[] = [];
   let reviewCounts = { approvedCount: 0, requiredCount: 0 };
   let rejection: { reason: string; by: string } | null = null;
+  let isApprover = false;
   if (state === 'review' || state === 'draft') {
     const [roles, records, members] = await Promise.all([
       listApprovalRoles(supabase, tree.document.document_type_id),
@@ -114,6 +115,10 @@ export default async function DocumentPage({ params }: { params: Promise<{ id: s
       cycle: tree.revision.review_cycle,
     });
     reviewCounts = { approvedCount: summary.approvedCount, requiredCount: summary.requiredCount };
+    // C1.4 — an assigned approver may make minor corrections during Review.
+    isApprover = roles.some((r) =>
+      r.assignments.some((a) => a.workspace_member_id === workspace.membershipId),
+    );
     panelRoles = summary.roles.map((sr) => {
       const role = roles.find((r) => r.id === sr.roleId);
       const assignments = role?.assignments ?? [];
@@ -162,6 +167,10 @@ export default async function DocumentPage({ params }: { params: Promise<{ id: s
             <Link className="ui-btn ui-btn--primary" href={`/documents/${tree.document.id}/edit`}>
               Edit
             </Link>
+          ) : state === 'review' && isApprover ? (
+            <Link className="ui-btn ui-btn--ghost" href={`/documents/${tree.document.id}/edit`}>
+              Make corrections
+            </Link>
           ) : (
             <span className="specs-grid__meta" title="Editing is locked outside Draft.">
               Locked while in {tree.revision.state}
@@ -185,6 +194,7 @@ export default async function DocumentPage({ params }: { params: Promise<{ id: s
               roles={panelRoles}
               approvedCount={reviewCounts.approvedCount}
               requiredCount={reviewCounts.requiredCount}
+              canOverride={canManage}
             />
           ) : (
             <p className="specs-grid__meta">

@@ -56,6 +56,25 @@ export async function recordApproval(
   return data as DocumentState;
 }
 
+/**
+ * C1.5 — the document owner (or a workspace admin) approves on behalf of a
+ * missing reviewer with a mandatory reason. Calls the `override_approval` RPC
+ * (records an `owner_override` + a flagged audit_log entry, then re-evaluates the
+ * gate). Rule violations surface as `DbRuleError`. Returns the resulting state.
+ */
+export async function overrideApproval(
+  client: SupabaseClient,
+  input: { revisionId: DocumentRevisionId; roleId: ApprovalRoleId; reason: string },
+): Promise<DocumentState> {
+  const { data, error } = await client.rpc('override_approval', {
+    p_revision_id: input.revisionId,
+    p_role_id: input.roleId,
+    p_reason: input.reason,
+  });
+  if (error) throw rpcError('overrideApproval', error);
+  return data as DocumentState;
+}
+
 /** Every approval decision on a revision (append-only; newest first), member-read. */
 export async function listApprovalRecords(
   client: SupabaseClient,
