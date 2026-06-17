@@ -7,6 +7,7 @@ import {
   getActiveWorkspace,
   getDocument,
   getRevision,
+  listApprovalRoles,
   membershipLookupFor,
   transitionDocumentRevision,
 } from '@arther/db';
@@ -99,8 +100,24 @@ async function runOwnerTransition(
     auth.document.current_revision_id as DocumentRevisionId,
   );
   if (!revision) return { ok: false, error: 'Document not found.' };
-  if (!resolveTransition(action, revision.state)) {
+  const transition = resolveTransition(action, revision.state);
+  if (!transition) {
     return { ok: false, error: `Can’t do that from “${revision.state}”.` };
+  }
+
+  // C1 (spec §4.2) — a document can't enter Review while a required approval
+  // role is vacant: there would be no one able to approve it.
+  if (action === 'submit_for_review') {
+    const roles = await listApprovalRoles(auth.supabase, auth.document.document_type_id);
+    const vacant = roles.filter((r) => r.required && r.assignments.length === 0);
+    if (vacant.length > 0) {
+      return {
+        ok: false,
+        error: `Assign an approver to ${vacant
+          .map((r) => r.role_label)
+          .join(', ')} before sending for review.`,
+      };
+    }
   }
 
   try {
@@ -111,6 +128,8 @@ async function runOwnerTransition(
       userId: auth.userId,
       reviewBrief: meta?.reviewBrief ?? null,
       reviewDueDate: meta?.reviewDueDate ?? null,
+      // Entering Review starts a fresh approval cycle (resets prior approvals).
+      reviewCycle: transition.to === 'review' ? revision.review_cycle + 1 : undefined,
     });
     if (outcome.status === 'conflict') {
       return { ok: false, error: 'The document’s status changed elsewhere — reload and try again.' };

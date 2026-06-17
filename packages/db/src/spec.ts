@@ -7,6 +7,7 @@ import {
   type ComponentId,
   type FieldType,
   type FieldValue,
+  type MembershipId,
   type ProductId,
   type ReferenceEdge,
   type ReleaseId,
@@ -27,6 +28,8 @@ import {
 
 export interface ActiveWorkspace {
   id: WorkspaceId;
+  /** The caller's membership row id — the approval-role assignment key (C1). */
+  membershipId: MembershipId;
   name: string;
   slug: string;
   role: WorkspaceRole;
@@ -37,7 +40,7 @@ export interface ActiveWorkspace {
 export async function getActiveWorkspace(client: SupabaseClient): Promise<ActiveWorkspace | null> {
   const { data, error } = await client
     .from('workspace_members')
-    .select('role, workspaces!inner(id, name, slug, logo_url)')
+    .select('id, role, workspaces!inner(id, name, slug, logo_url)')
     .order('joined_at', { ascending: true })
     .limit(1)
     .maybeSingle();
@@ -50,6 +53,7 @@ export async function getActiveWorkspace(client: SupabaseClient): Promise<Active
   };
   return {
     id: ws.id as WorkspaceId,
+    membershipId: data.id as MembershipId,
     name: ws.name,
     slug: ws.slug,
     role: data.role as WorkspaceRole,

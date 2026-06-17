@@ -2,6 +2,9 @@ import Link from 'next/link';
 import { BlockRenderer } from '@arther/block-renderer';
 import {
   getActiveWorkspace,
+  listApprovalRecords,
+  listApprovalRoles,
+  listMembers,
   listStaleBriefReferencesForDocument,
   listStaleReferencesForDocument,
   loadDocumentTree,
@@ -10,12 +13,14 @@ import {
 import {
   canManageDocumentLifecycle,
   summarizeBriefStaleness,
+  summarizeReview,
   summarizeStaleness,
   type DocumentId,
 } from '@arther/types';
 import { AppShell, EmptyState } from '@arther/ui';
 import { getSupabaseServer } from '../../../../lib/supabase/server';
 import { DocumentLifecycle } from './DocumentLifecycle';
+import { ApprovalPanel, type PanelRole } from './ApprovalPanel';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -84,7 +89,53 @@ export default async function DocumentPage({ params }: { params: Promise<{ id: s
       userId: user.id,
       role: workspace.role,
     });
-  const isDraft = tree.revision.state === 'draft';
+  const state = tree.revision.state;
+  const isDraft = state === 'draft';
+
+  // C1 — reviewer status (in Review) and the rejection banner (back in Draft).
+  let panelRoles: PanelRole[] = [];
+  let reviewCounts = { approvedCount: 0, requiredCount: 0 };
+  let rejection: { reason: string; by: string } | null = null;
+  if (state === 'review' || state === 'draft') {
+    const [roles, records, members] = await Promise.all([
+      listApprovalRoles(supabase, tree.document.document_type_id),
+      listApprovalRecords(supabase, tree.revision.id),
+      listMembers(supabase, workspace.id),
+    ]);
+    const memberName = new Map(members.map((m) => [m.id, m.name ?? m.email]));
+    const userName = new Map(members.map((m) => [m.user_id, m.name ?? m.email]));
+    const summary = summarizeReview({
+      roles: roles.map((r) => ({ id: r.id, label: r.role_label, required: r.required })),
+      records: records.map((r) => ({
+        roleId: r.role_id ?? '',
+        action: r.action,
+        reviewCycle: r.review_cycle,
+      })),
+      cycle: tree.revision.review_cycle,
+    });
+    reviewCounts = { approvedCount: summary.approvedCount, requiredCount: summary.requiredCount };
+    panelRoles = summary.roles.map((sr) => {
+      const role = roles.find((r) => r.id === sr.roleId);
+      const assignments = role?.assignments ?? [];
+      return {
+        roleId: sr.roleId,
+        label: sr.label,
+        required: sr.required,
+        status: sr.status,
+        assignees: assignments.map((a) => memberName.get(a.workspace_member_id) ?? 'Unknown'),
+        canActAs:
+          sr.status === 'pending' &&
+          assignments.some((a) => a.workspace_member_id === workspace.membershipId),
+      };
+    });
+    // Show the rejection banner only when the latest decision sent it back.
+    if (state === 'draft' && records[0]?.action === 'rejected') {
+      rejection = {
+        reason: records[0].reason ?? '',
+        by: records[0].approver_id ? (userName.get(records[0].approver_id) ?? 'a reviewer') : 'a reviewer',
+      };
+    }
+  }
 
   const stale = summarizeStaleness(await listStaleReferencesForDocument(supabase, tree.document.id));
   const briefStale = summarizeBriefStaleness(
@@ -117,8 +168,30 @@ export default async function DocumentPage({ params }: { params: Promise<{ id: s
             </span>
           )}
         </header>
+        {rejection ? (
+          <p className="ui-field__error" role="status">
+            Returned to Draft by <strong>{rejection.by}</strong>
+            {rejection.reason ? `: “${rejection.reason}”` : '.'}
+          </p>
+        ) : null}
         {canManage ? (
           <DocumentLifecycle documentId={tree.document.id} state={tree.revision.state} />
+        ) : null}
+        {state === 'review' ? (
+          panelRoles.length > 0 ? (
+            <ApprovalPanel
+              documentId={tree.document.id}
+              revisionId={tree.revision.id}
+              roles={panelRoles}
+              approvedCount={reviewCounts.approvedCount}
+              requiredCount={reviewCounts.requiredCount}
+            />
+          ) : (
+            <p className="specs-grid__meta">
+              This document type has no approval roles, so it can’t be approved automatically. The
+              owner can pull it back to Draft.
+            </p>
+          )
         ) : null}
         {stale.fieldCount > 0 ? (
           <p className="ui-field__error" role="status">

@@ -45,6 +45,8 @@ export async function transitionDocumentRevision(
     userId: UserId;
     reviewBrief?: string | null;
     reviewDueDate?: string | null;
+    /** The new approval cycle to stamp when entering Review (C1; caller passes from+1). */
+    reviewCycle?: number;
   },
 ): Promise<TransitionOutcome> {
   const transition = resolveTransition(input.action, input.from);
@@ -59,6 +61,11 @@ export async function transitionDocumentRevision(
   if (input.action === 'submit_for_review') {
     update.review_brief = input.reviewBrief ?? null;
     update.review_due_date = input.reviewDueDate ?? null;
+  }
+  // Entering Review (submit or pull-back-to-review) starts a fresh approval
+  // cycle, so any approvals collected before are reset by scoping (C1).
+  if (transition.to === 'review' && input.reviewCycle !== undefined) {
+    update.review_cycle = input.reviewCycle;
   }
   if (transition.to === 'published') {
     update.published_at = new Date().toISOString();
