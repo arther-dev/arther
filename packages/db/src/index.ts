@@ -1,6 +1,17 @@
 export { createServiceClient, createUserClient } from './client';
 export { DbRuleError, rpcError } from './errors';
 export {
+  addCommentReply,
+  createCommentThread,
+  getCommentThreadMeta,
+  listCommentThreads,
+  reopenCommentThread,
+  resolveCommentThread,
+  type CommentThreadMeta,
+  type CommentThreadView,
+  type CommentView,
+} from './comments';
+export {
   createDocumentType,
   createSection,
   deleteSection,
