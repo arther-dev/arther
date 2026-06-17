@@ -25,3 +25,4 @@ export * from './text-search';
 export * from './block-selection';
 export * from './spec-coverage';
 export * from './search';
+export * from './thread';
