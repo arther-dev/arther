@@ -1,7 +1,13 @@
 import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
-  transpilePackages: ['@arther/config', '@arther/types'],
+  transpilePackages: [
+    '@arther/block-renderer',
+    '@arther/config',
+    '@arther/db',
+    '@arther/types',
+    '@arther/ui',
+  ],
 };
 
 export default nextConfig;

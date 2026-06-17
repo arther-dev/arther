@@ -126,6 +126,14 @@ export {
   type PublishedSnapshotRow,
 } from './snapshots';
 export {
+  getPortalDocument,
+  getPortalWorkspace,
+  listPortalPublishedDocuments,
+  type PortalDocument,
+  type PortalDocumentListing,
+  type PortalWorkspace,
+} from './portal';
+export {
   createGenerationRun,
   getGenerationRun,
   listGenerationRunsForProduct,
