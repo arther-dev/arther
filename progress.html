@@ -258,16 +258,27 @@ function expandRange(a, b) {
 function deriveStatus(logText, milestones) {
   const negBefore = (i) => NEG.test(logText.slice(Math.max(0, i - 50), i));
   const strongNear = (i, len) => STRONG.test(logText.slice(Math.max(0, i - 45), i + len + 45));
+  // deferred-after: within the same table cell, before the next task ID, a
+  // "next slice / deferred / remains" phrase that precedes any shipped word.
+  const DEFER = /(next slice|is the next|the next slice|deferred|\bremains\b|follow-up slice|future slice|is a follow-up)/i;
+  const DONEW = /(complete|completed|closed|shipped|wired|\blive\b|verified|proven|\bdone\b|✓)/i;
+  const deferredAfter = (i, len) => {
+    const cell = logText.slice(i + len, i + len + 240).split("|")[0];
+    const nx = cell.search(/\b[A-Z]\d*\.\d+\b/);
+    const span = nx >= 0 ? cell.slice(0, nx) : cell;
+    const d = span.search(DEFER); if (d < 0) return false;
+    const w = span.search(DONEW); return w < 0 || d < w;
+  };
   const positive = new Set(), blocked = new Set();
   let m;
   RNG.lastIndex = 0;
   while ((m = RNG.exec(logText))) for (const id of expandRange(m[1], m[2]))
-    if (!negBefore(m.index) && !strongNear(m.index, m[0].length)) positive.add(id);
+    if (!negBefore(m.index) && !strongNear(m.index, m[0].length) && !deferredAfter(m.index, m[0].length)) positive.add(id);
   IDT.lastIndex = 0;
   while ((m = IDT.exec(logText))) {
     const id = m[1];
     if (strongNear(m.index, id.length)) blocked.add(id);
-    else if (!negBefore(m.index)) positive.add(id);
+    else if (!negBefore(m.index) && !deferredAfter(m.index, id.length)) positive.add(id);
   }
   for (const id of [...blocked]) if (positive.has(id)) blocked.delete(id);
 
