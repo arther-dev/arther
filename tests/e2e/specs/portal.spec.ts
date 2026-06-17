@@ -34,4 +34,15 @@ test.describe('public portal (C6)', () => {
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
     await context.close();
   });
+
+  test('portal search is a server-rendered GET form (C6.4)', async ({ browser }) => {
+    // Shareable + works without JS: the form GETs ?q and the page renders results.
+    const context = await browser.newContext({ javaScriptEnabled: false });
+    const page = await context.newPage();
+    const res = await page.goto(`${PORTAL}/acme/search?q=voltage`);
+    expect(res?.status()).toBeLessThan(400);
+    await expect(page.getByRole('heading', { level: 1, name: 'Search' })).toBeVisible();
+    await expect(page.getByRole('searchbox')).toBeVisible();
+    await context.close();
+  });
 });

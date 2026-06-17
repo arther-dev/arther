@@ -129,8 +129,10 @@ export {
   getPortalDocument,
   getPortalWorkspace,
   listPortalPublishedDocuments,
+  searchPortalDocuments,
   type PortalDocument,
   type PortalDocumentListing,
+  type PortalSearchHit,
   type PortalWorkspace,
 } from './portal';
 export {
