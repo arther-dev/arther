@@ -23,6 +23,8 @@ describe('canDo', () => {
     ['member.invite', { owner: true, admin: true, member: false, viewer: false }],
     ['spec.write', { owner: true, admin: true, member: true, viewer: false }],
     ['doc.generate', { owner: true, admin: true, member: true, viewer: false }],
+    ['doc.submit', { owner: true, admin: true, member: true, viewer: false }],
+    ['doc.revise', { owner: true, admin: true, member: true, viewer: false }],
     ['doc.publish', { owner: true, admin: true, member: true, viewer: false }],
     ['spec.read', { owner: true, admin: true, member: true, viewer: true }],
     ['doc.read', { owner: true, admin: true, member: true, viewer: true }],

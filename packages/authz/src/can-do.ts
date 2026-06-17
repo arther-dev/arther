@@ -15,6 +15,8 @@ export type Action =
   | 'doc.read'
   | 'doc.write'
   | 'doc.generate'
+  | 'doc.submit'
+  | 'doc.revise'
   | 'doc.publish'
   | 'comment.write'
   | 'workspace.manage'
@@ -55,6 +57,8 @@ export function createCanDo(membership: MembershipLookup) {
       case 'spec.write':
       case 'doc.write':
       case 'doc.generate':
+      case 'doc.submit': // drive document lifecycle (send for review / pull back)
+      case 'doc.revise': // fork a new working copy from a published snapshot
       case 'doc.publish':
         return m.role !== 'viewer'; // Editor seats only
       case 'spec.read':
