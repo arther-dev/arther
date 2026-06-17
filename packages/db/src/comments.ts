@@ -35,6 +35,8 @@ export interface CommentThreadView {
   createdBy: string | null;
   createdAt: string;
   resolvedAt: string | null;
+  /** C2.4 — the source thread when this was carried forward; null = native. */
+  inheritedFromThreadId: string | null;
   comments: CommentView[];
 }
 
@@ -190,7 +192,9 @@ export async function listCommentThreads(
 ): Promise<CommentThreadView[]> {
   const { data: threads, error } = await client
     .from('comment_threads')
-    .select('id, block_id, anchor_type, status, created_by, created_at, resolved_at')
+    .select(
+      'id, block_id, anchor_type, status, created_by, created_at, resolved_at, inherited_from_thread_id',
+    )
     .eq('revision_id', revisionId)
     .order('created_at', { ascending: true });
   if (error) throw new Error(`listCommentThreads: ${error.message}`);
@@ -230,6 +234,107 @@ export async function listCommentThreads(
     createdBy: (t.created_by as string | null) ?? null,
     createdAt: t.created_at as string,
     resolvedAt: (t.resolved_at as string | null) ?? null,
+    inheritedFromThreadId: (t.inherited_from_thread_id as string | null) ?? null,
     comments: byThread.get(t.id as string) ?? [],
   }));
+}
+
+/**
+ * C2.4 — carry a revision's UNRESOLVED threads onto a freshly forked revision,
+ * re-anchored to the corresponding (remapped) block and flagged inherited
+ * (collab spec §7.3). Each thread's comments are copied too (root + one level
+ * of replies), preserving authorship and timestamps so the discussion context
+ * carries. Resolved and orphaned threads are left behind. Returns how many
+ * threads were carried forward. Runs inside `createDocumentRevision` under the
+ * forking owner's JWT (member-RLS).
+ */
+export async function carryForwardComments(
+  client: SupabaseClient,
+  input: {
+    workspaceId: WorkspaceId;
+    fromRevisionId: DocumentRevisionId;
+    toRevisionId: DocumentRevisionId;
+    blockIdMap: Map<string, string>;
+  },
+): Promise<number> {
+  const { data: threads, error } = await client
+    .from('comment_threads')
+    .select('id, block_id, anchor_type, text_anchor, created_by')
+    .eq('revision_id', input.fromRevisionId)
+    .eq('status', 'open');
+  if (error) throw new Error(`carryForwardComments.threads: ${error.message}`);
+  const sourceThreads = (threads ?? []) as Array<Record<string, unknown>>;
+  if (sourceThreads.length === 0) return 0;
+
+  const { data: comments, error: cErr } = await client
+    .from('comments')
+    .select('thread_id, parent_comment_id, author_id, body, created_at')
+    .in('thread_id', sourceThreads.map((t) => t.id as string))
+    .order('created_at', { ascending: true });
+  if (cErr) throw new Error(`carryForwardComments.comments: ${cErr.message}`);
+  const byThread = new Map<string, Array<Record<string, unknown>>>();
+  for (const row of (comments ?? []) as Array<Record<string, unknown>>) {
+    const list = byThread.get(row.thread_id as string) ?? [];
+    list.push(row);
+    byThread.set(row.thread_id as string, list);
+  }
+
+  let carried = 0;
+  for (const t of sourceThreads) {
+    const newBlockId = input.blockIdMap.get(t.block_id as string);
+    if (!newBlockId) continue; // block absent in the fork (shouldn't happen) — skip
+
+    const { data: nt, error: te } = await client
+      .from('comment_threads')
+      .insert({
+        workspace_id: input.workspaceId,
+        revision_id: input.toRevisionId,
+        block_id: newBlockId,
+        anchor_type: t.anchor_type,
+        text_anchor: t.text_anchor ?? null,
+        created_by: t.created_by,
+        inherited_from_thread_id: t.id,
+      })
+      .select('id')
+      .single();
+    if (te) throw new Error(`carryForwardComments.thread: ${te.message}`);
+    const newThreadId = nt.id as string;
+
+    const threadComments = byThread.get(t.id as string) ?? [];
+    const root = threadComments.find((c) => c.parent_comment_id == null);
+    if (!root) {
+      carried += 1;
+      continue; // a thread with no root comment — copy the (empty) thread only
+    }
+    const { data: nr, error: re } = await client
+      .from('comments')
+      .insert({
+        workspace_id: input.workspaceId,
+        thread_id: newThreadId,
+        parent_comment_id: null,
+        author_id: root.author_id,
+        body: root.body,
+        created_at: root.created_at,
+      })
+      .select('id')
+      .single();
+    if (re) throw new Error(`carryForwardComments.root: ${re.message}`);
+
+    const replies = threadComments.filter((c) => c.parent_comment_id != null);
+    if (replies.length > 0) {
+      const { error: rpe } = await client.from('comments').insert(
+        replies.map((reply) => ({
+          workspace_id: input.workspaceId,
+          thread_id: newThreadId,
+          parent_comment_id: nr.id as string,
+          author_id: reply.author_id,
+          body: reply.body,
+          created_at: reply.created_at,
+        })),
+      );
+      if (rpe) throw new Error(`carryForwardComments.replies: ${rpe.message}`);
+    }
+    carried += 1;
+  }
+  return carried;
 }
