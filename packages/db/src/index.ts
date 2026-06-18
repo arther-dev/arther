@@ -239,6 +239,9 @@ export {
 } from './snippet-embeds';
 export {
   getDocumentConsumption,
+  getTopSearches,
+  getWorkspaceDocumentConsumption,
+  getZeroResultSearches,
   recordAnalyticsEvent,
   recordPortalEvent,
   type AnalyticsEvent,
@@ -246,6 +249,8 @@ export {
   type DocumentConsumption,
   type PortalAnalyticsEvent,
   type PortalAnalyticsEventType,
+  type SearchQueryCount,
+  type WorkspaceDocumentConsumption,
 } from './analytics';
 export {
   resolveDomainOwnersForDocument,

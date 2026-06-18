@@ -209,6 +209,17 @@ export default async function SettingsPage() {
           </section>
         ) : null}
 
+        {canManage ? (
+          <section className="specs-section">
+            <h2 className="specs-section__title">Analytics</h2>
+            <p className="specs-grid__meta">
+              <Link href="/settings/analytics">Consumption analytics</Link> — how the published
+              portal is read: per-document views and downloads, top searches, and the searches that
+              found nothing.
+            </p>
+          </section>
+        ) : null}
+
         {workspace.role === 'owner' ? (
           <section className="specs-section">
             <h2 className="specs-section__title">Danger zone</h2>
