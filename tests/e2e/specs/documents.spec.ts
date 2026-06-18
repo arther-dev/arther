@@ -25,4 +25,10 @@ test.describe('document view', () => {
     expect(response?.status()).toBeLessThan(500);
     await expect(page.getByRole('heading', { name: 'Variant scope' })).toBeVisible();
   });
+
+  test('the compare-variants surface renders its baseline (V.8), never a 500', async ({ page }) => {
+    const response = await page.goto(`${APP}/documents/${FAKE_ID}/compare`);
+    expect(response?.status()).toBeLessThan(500);
+    await expect(page.getByRole('heading', { name: 'Compare variants' })).toBeVisible();
+  });
 });

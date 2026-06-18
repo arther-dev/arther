@@ -13,6 +13,8 @@ export interface StaleReference {
   fieldId: SpecFieldId;
   fieldName: string;
   category: string;
+  /** The field's owning component (null for product-owned) — for V.7 variant staleness. */
+  componentId: string | null;
 }
 
 export async function listStaleReferencesForDocument(
@@ -21,7 +23,9 @@ export async function listStaleReferencesForDocument(
 ): Promise<StaleReference[]> {
   const { data, error } = await client
     .from('block_spec_references')
-    .select('block_id, field_id, field_version_id, spec_fields!inner(name, category, current_version_id)')
+    .select(
+      'block_id, field_id, field_version_id, spec_fields!inner(name, category, component_id, current_version_id)',
+    )
     .eq('document_id', documentId);
   if (error) throw new Error(`listStaleReferencesForDocument: ${error.message}`);
 
@@ -31,8 +35,8 @@ export async function listStaleReferencesForDocument(
     field_id: string;
     field_version_id: string;
     spec_fields:
-      | { name: string; category: string; current_version_id: string | null }
-      | Array<{ name: string; category: string; current_version_id: string | null }>;
+      | { name: string; category: string; component_id: string | null; current_version_id: string | null }
+      | Array<{ name: string; category: string; component_id: string | null; current_version_id: string | null }>;
   }>) {
     const field = Array.isArray(row.spec_fields) ? row.spec_fields[0] : row.spec_fields;
     if (field?.current_version_id && field.current_version_id !== row.field_version_id) {
@@ -41,6 +45,7 @@ export async function listStaleReferencesForDocument(
         fieldId: row.field_id as SpecFieldId,
         fieldName: field.name,
         category: field.category,
+        componentId: field.component_id ?? null,
       });
     }
   }
