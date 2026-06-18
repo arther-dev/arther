@@ -371,6 +371,8 @@ export interface VariantSpecResolution {
   resolution: SpecFieldResolution;
   /** Keyed by field id — token rewrites so inline spec tokens show variant values. */
   replacements: Record<string, SpecTokenReplacement>;
+  /** The components present in this variant's resolved spec (for V.4 DERIVED scope). */
+  componentIds: string[];
   warnings: VariantResolutionWarning[];
 }
 
@@ -409,5 +411,8 @@ export async function resolveSpecFieldsForVariant(
       displayValue: formatFieldValue(e.type, e.value, symbol ?? undefined),
     };
   }
-  return { variant: resolved.variant, resolution, replacements, warnings: resolved.warnings };
+  const componentIds = [
+    ...new Set(resolved.entries.map((e) => e.componentId).filter((c): c is string => Boolean(c))),
+  ];
+  return { variant: resolved.variant, resolution, replacements, componentIds, warnings: resolved.warnings };
 }

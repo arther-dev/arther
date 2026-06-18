@@ -3,6 +3,7 @@ import {
   DELTA_TYPES,
   deltaTypeLabel,
   describeVariantDelta,
+  isBlockVisibleForVariant,
   slugifyVariantName,
   variantDeltaInputSchema,
 } from './variant';
@@ -92,5 +93,38 @@ describe('variant helpers (V.1)', () => {
     expect(slugifyVariantName('  Câblage 24V  ')).toBe('cablage-24v');
     expect(slugifyVariantName('!!!')).toBe('variant');
     expect(slugifyVariantName('')).toBe('variant');
+  });
+});
+
+describe('isBlockVisibleForVariant (V.4)', () => {
+  const ctx = { variantId: 'v1', componentIds: new Set(['psu', 'fan']) };
+
+  it('unscoped or ALL → always visible', () => {
+    expect(isBlockVisibleForVariant(undefined, ctx)).toBe(true);
+    expect(
+      isBlockVisibleForVariant({ mode: 'ALL', variantIds: [], derivedComponentId: null }, ctx),
+    ).toBe(true);
+  });
+
+  it('MANUAL → visible only when the variant is listed', () => {
+    expect(
+      isBlockVisibleForVariant({ mode: 'MANUAL', variantIds: ['v1', 'v2'], derivedComponentId: null }, ctx),
+    ).toBe(true);
+    expect(
+      isBlockVisibleForVariant({ mode: 'MANUAL', variantIds: ['v2'], derivedComponentId: null }, ctx),
+    ).toBe(false);
+  });
+
+  it('DERIVED → visible only when the gating component exists in the variant', () => {
+    expect(
+      isBlockVisibleForVariant({ mode: 'DERIVED', variantIds: [], derivedComponentId: 'psu' }, ctx),
+    ).toBe(true);
+    expect(
+      isBlockVisibleForVariant({ mode: 'DERIVED', variantIds: [], derivedComponentId: 'gone' }, ctx),
+    ).toBe(false);
+    // DERIVED with no gating component can't be decided → stays visible.
+    expect(
+      isBlockVisibleForVariant({ mode: 'DERIVED', variantIds: [], derivedComponentId: null }, ctx),
+    ).toBe(true);
   });
 });
