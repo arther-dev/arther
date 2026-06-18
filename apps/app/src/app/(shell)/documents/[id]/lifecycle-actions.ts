@@ -350,7 +350,11 @@ export async function publishDocumentAction(documentId: string): Promise<Lifecyc
     // R.2 — materialize live snippet embeds into the frozen snapshot so it stays
     // self-contained (the portal needs no snippet awareness). Non-snippet docs
     // are unaffected. Search text is recomputed over the expanded content.
-    const blockTree = await expandSnippetsForPublish(auth.supabase, tree.blocks);
+    const blockTree = await expandSnippetsForPublish(
+      auth.supabase,
+      documentId as DocumentId,
+      tree.blocks.map((b) => ({ id: b.id as string, content: b.content })),
+    );
     const searchText = blockTree
       .map((c) => blockPlainText(c))
       .filter((t) => t.trim().length > 0)

@@ -12,26 +12,40 @@ import {
 } from '@arther/types';
 import { Button } from '@arther/ui';
 import { RichTextEditor } from '../../../documents/[id]/edit/RichTextEditor';
-import { saveLibraryItemBlocksAction } from './actions';
 
 interface Row {
   key: string;
   block: BlockContent;
 }
 
+export interface BlocksSaveResult {
+  ok: boolean;
+  error?: string;
+}
+
 /**
- * R.2c — the in-place editor for a library item's content, reusing the document
- * editor's rich-text + block primitives but persisting the whole block array (a
- * new version per save). Prose blocks edit inline via TipTap; section headers via
- * a title field; other block types (spec tables, media inserted via the document
- * editor's dedicated flows) render read-only and can be reordered or removed.
+ * R.2c — the in-place editor for a block sequence (a library item's content, or a
+ * snippet embed's override in R.3), reusing the document editor's rich-text +
+ * block primitives. Prose blocks edit inline via TipTap; section headers via a
+ * title field; other block types render read-only and can be reordered or
+ * removed. Persists the whole array via the injected `onSave(id, blocks)`.
  */
 export function LibraryItemEditor({
   id,
   initialBlocks,
+  onSave,
+  heading,
+  intro,
+  backHref,
+  backLabel,
 }: {
   id: string;
   initialBlocks: BlockContent[];
+  onSave: (id: string, blocks: BlockContent[]) => Promise<BlocksSaveResult>;
+  heading: string;
+  intro: string;
+  backHref: string;
+  backLabel: string;
 }) {
   const [rows, setRows] = useState<Row[]>(() =>
     initialBlocks.map((block) => ({ key: crypto.randomUUID(), block })),
@@ -68,7 +82,7 @@ export function LibraryItemEditor({
   async function save() {
     setPending(true);
     setError(null);
-    const res = await saveLibraryItemBlocksAction(
+    const res = await onSave(
       id,
       rows.map((r) => r.block),
     );
@@ -111,12 +125,10 @@ export function LibraryItemEditor({
   return (
     <div className="specs-content">
       <p className="specs-grid__meta">
-        <Link href={`/snippets/${id}`}>← Back to the item</Link>
+        <Link href={backHref}>← {backLabel}</Link>
       </p>
-      <h1 className="specs-title">Edit content</h1>
-      <p className="specs-grid__meta">
-        Editing the source updates every live embed at the next publish. Saving records a version.
-      </p>
+      <h1 className="specs-title">{heading}</h1>
+      <p className="specs-grid__meta">{intro}</p>
 
       <div className="specs-form--row" style={{ gap: 6, margin: '12px 0' }}>
         <select

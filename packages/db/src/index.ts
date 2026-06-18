@@ -233,10 +233,16 @@ export {
   type LibraryItemVersionRow,
 } from './library';
 export {
+  acceptSourceForEmbed,
   expandSnippetsForPublish,
+  getSnippetEmbedContent,
   insertSnippetEmbed,
+  listDocumentSnippetEmbeds,
+  overrideSnippetEmbed,
+  type DocumentSnippetEmbed,
   type InsertedSnippetEmbed,
   type InsertSnippetEmbedError,
+  type SnippetEmbedState,
 } from './snippet-embeds';
 export { duplicateDocument, type DuplicationResult } from './duplication';
 export {
