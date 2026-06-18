@@ -8,6 +8,7 @@ import {
   createServiceClient,
   DbRuleError,
   dispatchNotification,
+  expandSnippetsForPublish,
   getActiveWorkspace,
   getDocument,
   getRevision,
@@ -345,10 +346,13 @@ export async function publishDocumentAction(documentId: string): Promise<Lifecyc
       tree.document.product_id,
       auth.workspaceId,
     );
-    const blockTree = tree.blocks.map((b) => b.content);
-    const searchText = tree.blocks
-      .map((b) => b.text_content ?? blockPlainText(b.content))
-      .filter((t): t is string => Boolean(t && t.trim().length > 0))
+    // R.2 — materialize live snippet embeds into the frozen snapshot so it stays
+    // self-contained (the portal needs no snippet awareness). Non-snippet docs
+    // are unaffected. Search text is recomputed over the expanded content.
+    const blockTree = await expandSnippetsForPublish(auth.supabase, tree.blocks);
+    const searchText = blockTree
+      .map((c) => blockPlainText(c))
+      .filter((t) => t.trim().length > 0)
       .join('\n');
 
     await publishDocument(

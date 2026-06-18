@@ -232,6 +232,12 @@ export {
   type LibraryItemVersionRow,
 } from './library';
 export {
+  expandSnippetsForPublish,
+  insertSnippetEmbed,
+  type InsertedSnippetEmbed,
+  type InsertSnippetEmbedError,
+} from './snippet-embeds';
+export {
   recordAnalyticsEvent,
   recordPortalEvent,
   type AnalyticsEvent,
