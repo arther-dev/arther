@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { BlockRenderer } from '@arther/block-renderer';
 import {
   getActiveWorkspace,
+  getDocumentConsumption,
   listApprovalRecords,
   listApprovalRoles,
   listCommentThreads,
@@ -27,6 +28,7 @@ import { AppShell, EmptyState } from '@arther/ui';
 import { getSupabaseServer } from '../../../../lib/supabase/server';
 import { AccessControl } from './AccessControl';
 import { CommentsPanel } from './CommentsPanel';
+import { DocumentAnalytics } from './DocumentAnalytics';
 import { DocumentLifecycle } from './DocumentLifecycle';
 import { ApprovalPanel, type PanelRole } from './ApprovalPanel';
 
@@ -168,6 +170,10 @@ export default async function DocumentPage({ params }: { params: Promise<{ id: s
   // issued magic links (for the owner's revocation UI, C7.4).
   const accessMode = snapshot ? parseDocumentAccess(snapshot.access_config) : 'public';
   const accessAllowlist = parseDocumentAllowlist(snapshot?.access_config);
+  // A.5 — portal consumption for a published document (views/visitors/downloads),
+  // a SQL aggregate over the C9.6 events; RLS scopes it to this workspace.
+  const consumption =
+    state === 'published' ? await getDocumentConsumption(supabase, tree.document.id) : null;
   const magicLinks =
     canManage && portalVisibility === 'live'
       ? await listDocumentMagicLinks(supabase, tree.document.id)
@@ -260,6 +266,9 @@ export default async function DocumentPage({ params }: { params: Promise<{ id: s
             allowlist={accessAllowlist}
             links={magicLinks}
           />
+        ) : null}
+        {consumption ? (
+          <DocumentAnalytics consumption={consumption} gated={accessMode !== 'public'} />
         ) : null}
         {state === 'review' ? (
           panelRoles.length > 0 ? (
