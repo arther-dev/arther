@@ -3,19 +3,27 @@
 import { revalidatePath } from 'next/cache';
 import { createCanDo } from '@arther/authz';
 import {
+  addVariantDelta,
   createVariant,
   deleteVariant,
+  getSpecField,
   getVariant,
   membershipLookupFor,
   getActiveWorkspace,
+  removeVariantDelta,
   renameVariant,
   setVariantDefault,
 } from '@arther/db';
 import {
   createVariantSchema,
+  isOverridableFieldType,
   productIdSchema,
+  safeParseFieldValue,
+  variantDeltaIdSchema,
+  variantDeltaInputSchema,
   variantIdSchema,
   type ProductId,
+  type SpecFieldId,
   type UserId,
   type VariantId,
 } from '@arther/types';
@@ -111,6 +119,77 @@ export async function deleteVariantAction(variantId: string): Promise<VariantAct
     return { ok: false, error: 'Could not delete the variant.' };
   }
   revalidatePath(`/specs/variants?product=${variant.productId}`);
+  return { ok: true };
+}
+
+/**
+ * V.3 — append a delta to a variant. The input shape is validated by
+ * `variantDeltaInputSchema`; a SCALAR_OVERRIDE additionally re-checks that the
+ * targeted field exists, is an overridable type, lives on the named component, and
+ * that the override value parses against the field's declared type (the field type
+ * isn't known to the pure schema). Editor-gated.
+ */
+export async function addVariantDeltaAction(
+  variantId: string,
+  delta: unknown,
+): Promise<VariantActionResult> {
+  const vid = variantIdSchema.safeParse(variantId);
+  if (!vid.success) return { ok: false, error: 'Invalid variant.' };
+  const parsed = variantDeltaInputSchema.safeParse(delta);
+  if (!parsed.success) return { ok: false, error: 'That delta is incomplete or malformed.' };
+
+  const auth = await authorizeEdit();
+  if ('error' in auth) return { ok: false, error: auth.error };
+
+  const variant = await getVariant(auth.supabase, vid.data);
+  if (!variant) return { ok: false, error: 'Variant not found.' };
+
+  if (parsed.data.type === 'SCALAR_OVERRIDE') {
+    const field = await getSpecField(auth.supabase, parsed.data.fieldId as SpecFieldId);
+    if (!field) return { ok: false, error: 'That field no longer exists.' };
+    if (field.component_id !== parsed.data.componentId) {
+      return { ok: false, error: 'That field is not on the named component.' };
+    }
+    if (!isOverridableFieldType(field.type)) {
+      return { ok: false, error: `${field.type} fields can’t be overridden in a variant.` };
+    }
+    if (!safeParseFieldValue(field.type, parsed.data.overrideValue).success) {
+      return { ok: false, error: 'The override value isn’t valid for this field’s type.' };
+    }
+  }
+
+  try {
+    await addVariantDelta(auth.supabase, {
+      workspaceId: auth.workspace.id,
+      variantId: vid.data,
+      delta: parsed.data,
+      userId: auth.userId,
+    });
+  } catch {
+    return { ok: false, error: 'Could not add the delta.' };
+  }
+  revalidatePath(`/specs/variants/${vid.data}`);
+  return { ok: true };
+}
+
+/** V.3 — remove a delta from a variant. Editor-gated. */
+export async function removeVariantDeltaAction(
+  variantId: string,
+  deltaId: string,
+): Promise<VariantActionResult> {
+  const vid = variantIdSchema.safeParse(variantId);
+  const did = variantDeltaIdSchema.safeParse(deltaId);
+  if (!vid.success || !did.success) return { ok: false, error: 'Invalid reference.' };
+
+  const auth = await authorizeEdit();
+  if ('error' in auth) return { ok: false, error: auth.error };
+
+  try {
+    await removeVariantDelta(auth.supabase, did.data);
+  } catch {
+    return { ok: false, error: 'Could not remove the delta.' };
+  }
+  revalidatePath(`/specs/variants/${vid.data}`);
   return { ok: true };
 }
 

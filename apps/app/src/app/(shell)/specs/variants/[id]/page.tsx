@@ -2,19 +2,29 @@ import Link from 'next/link';
 import {
   getActiveWorkspace,
   listComponents,
+  listFieldsForComponents,
+  listProductComponents,
+  listUnits,
   listVariantDeltas,
   loadResolvedVariantSpec,
+  type SpecFieldRow,
 } from '@arther/db';
-import { describeVariantDelta, variantIdSchema, type ResolvedSpecEntry } from '@arther/types';
+import {
+  describeVariantDelta,
+  isOverridableFieldType,
+  variantIdSchema,
+  type ComponentId,
+  type ResolvedSpecEntry,
+} from '@arther/types';
 import { AppShell, EmptyState } from '@arther/ui';
 import { getSupabaseServer } from '../../../../../lib/supabase/server';
+import { DeltaEditor, type EditorComponent } from './DeltaEditor';
 
 /**
- * V.2 — a variant's resolved spec (Product Variants §3.3), computed at query time
- * from the base product + the variant's deltas. Read-only here; the delta editor
- * with live editing is V.3. Overridden values and swapped/added components are
- * flagged, and any resolution warnings (e.g. an override targeting a removed
- * field) are surfaced.
+ * V.2/V.3 — a variant's delta editor + resolved-spec preview (Product Variants
+ * §4.2/§3.3). The editor (left) expresses departures from the base product as
+ * deltas; the resolved spec (below) is recomputed at query time and re-renders on
+ * each change. Editor-gated writes; read-only for viewers.
  */
 export default async function VariantDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -47,13 +57,49 @@ export default async function VariantDetailPage({ params }: { params: Promise<{ 
   }
 
   const { variant, entries, warnings } = resolved;
-  const deltas = await listVariantDeltas(supabase, variant.id);
-  const componentName = new Map(
-    (await listComponents(supabase, workspace.id)).map((c) => [c.id as string, c.name]),
-  );
-  const fieldName = new Map(entries.map((e) => [e.fieldId, e.name]));
+  const canEdit = workspace.role !== 'viewer';
 
-  // Group the resolved entries by their owning component (product-owned first).
+  // Base reference: the product's components + their fields (with options/units).
+  const edges = await listProductComponents(supabase, variant.productId);
+  const componentIds = [...new Set(edges.map((e) => e.component_id))] as ComponentId[];
+  const fieldsByComponent: Map<ComponentId, SpecFieldRow[]> =
+    componentIds.length > 0
+      ? await listFieldsForComponents(supabase, componentIds)
+      : new Map<ComponentId, SpecFieldRow[]>();
+  const library = (await listComponents(supabase, workspace.id))
+    .filter((c) => !c.archived_at)
+    .map((c) => ({ id: c.id as string, name: c.name }));
+  const units = (await listUnits(supabase, workspace.id)).map((u) => ({ id: u.id as string, symbol: u.symbol }));
+  const deltaRows = await listVariantDeltas(supabase, variant.id);
+
+  const editorComponents: EditorComponent[] = edges.map((e) => ({
+    componentId: e.component_id,
+    componentName: e.component_name,
+    fields: (fieldsByComponent.get(e.component_id as ComponentId) ?? []).map((f) => ({
+      fieldId: f.id as string,
+      name: f.name,
+      type: f.type,
+      unitId: (f.unit_id as string | null) ?? null,
+      options: f.options,
+      overridable: isOverridableFieldType(f.type),
+    })),
+  }));
+
+  const componentName = new Map(library.map((c) => [c.id, c.name]));
+  const fieldName = new Map(entries.map((e) => [e.fieldId, e.name]));
+  const deltas = deltaRows.map((d) => ({
+    id: d.id as string,
+    type: d.deltaType as string,
+    label: describeVariantDelta({
+      type: d.deltaType,
+      componentName: d.componentId ? componentName.get(d.componentId) : null,
+      fieldName: d.fieldId ? fieldName.get(d.fieldId) : null,
+      replacementComponentName: d.replacementComponentId ? componentName.get(d.replacementComponentId) : null,
+      newComponentName: d.newComponentId ? componentName.get(d.newComponentId) : null,
+    }),
+  }));
+
+  // Group the resolved entries by owning component (product-owned first).
   const groups = new Map<string, { label: string; entries: ResolvedSpecEntry[] }>();
   for (const e of entries) {
     const key = e.componentId ?? '__product__';
@@ -70,7 +116,8 @@ export default async function VariantDetailPage({ params }: { params: Promise<{ 
         </p>
         <h1 className="specs-title">{variant.name}</h1>
         <p className="specs-grid__meta">
-          Resolved spec, computed from the base product plus this variant’s deltas. /{variant.slug}
+          Express departures from the base product below; the resolved spec recomputes from base +
+          deltas. /{variant.slug}
           {variant.isDefault ? ' · default' : ''}
         </p>
 
@@ -87,34 +134,17 @@ export default async function VariantDetailPage({ params }: { params: Promise<{ 
           </section>
         ) : null}
 
-        <section className="specs-section">
-          <h2 className="specs-section__title">Deltas</h2>
-          {deltas.length === 0 ? (
-            <p className="specs-grid__meta">
-              No deltas yet — this variant currently resolves identically to the base product. Add
-              deltas in the editor (V.3).
-            </p>
-          ) : (
-            <ul className="specs-form" aria-label="Deltas">
-              {deltas.map((d) => (
-                <li key={d.id} className="specs-release">
-                  <span className="specs-release__tag">{d.deltaType}</span>
-                  <span>
-                    {describeVariantDelta({
-                      type: d.deltaType,
-                      componentName: d.componentId ? componentName.get(d.componentId) : null,
-                      fieldName: d.fieldId ? fieldName.get(d.fieldId) : null,
-                      replacementComponentName: d.replacementComponentId
-                        ? componentName.get(d.replacementComponentId)
-                        : null,
-                      newComponentName: d.newComponentId ? componentName.get(d.newComponentId) : null,
-                    })}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
+        {canEdit ? (
+          <DeltaEditor
+            variantId={variant.id}
+            components={editorComponents}
+            library={library}
+            units={units}
+            deltas={deltas}
+          />
+        ) : (
+          <p className="ui-field__hint">Viewers can read the resolved spec but can’t edit deltas.</p>
+        )}
 
         <section className="specs-section">
           <h2 className="specs-section__title">Resolved spec</h2>
