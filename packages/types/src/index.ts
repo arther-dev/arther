@@ -36,3 +36,4 @@ export * from './thread';
 export * from './combobox';
 export * from './list-move';
 export * from './library';
+export * from './onboarding';
