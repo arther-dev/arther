@@ -1,5 +1,6 @@
 export { createServiceClient, createUserClient } from './client';
 export { DbRuleError, rpcError } from './errors';
+export { runReviewReminders } from './review-reminders';
 export {
   dispatchNotification,
   getNotificationFeed,
