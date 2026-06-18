@@ -168,6 +168,39 @@ export async function renameLibraryItem(
 }
 
 /**
+ * R.2c/R.4 — replace a library item's block content and record a new version. The
+ * version snapshot is the rollback target (R.4) and the change history. Editing
+ * the source propagates to every **live** embed automatically (they expand from
+ * the current source at publish); overridden embeds become `source_changed` in
+ * the override slice (R.3).
+ */
+export async function updateLibraryItemBlocks(
+  client: SupabaseClient,
+  input: {
+    workspaceId: WorkspaceId;
+    id: LibraryItemId;
+    blocks: BlockContent[];
+    changeNote?: string;
+    userId: UserId;
+  },
+): Promise<void> {
+  const { error } = await client
+    .from('library_items')
+    .update({ blocks: input.blocks, updated_by: input.userId })
+    .eq('id', input.id);
+  if (error) throw new Error(`updateLibraryItemBlocks: ${error.message}`);
+
+  const { error: vErr } = await client.from('library_item_versions').insert({
+    workspace_id: input.workspaceId,
+    library_item_id: input.id,
+    blocks_snapshot: input.blocks,
+    change_note: input.changeNote ?? 'Edited',
+    created_by: input.userId,
+  });
+  if (vErr) throw new Error(`updateLibraryItemBlocks.version: ${vErr.message}`);
+}
+
+/**
  * Archive (or restore) a library item. Archiving is the safe alternative to
  * deletion for a snippet with embeds (R.5 converts those embeds to static copies;
  * this slice flips the flag — the deletion guard already prevents a hard delete).

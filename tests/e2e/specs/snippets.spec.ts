@@ -22,4 +22,10 @@ test.describe('block library', () => {
     expect(response?.status()).toBeLessThan(500);
     await expect(page.getByRole('heading', { name: 'Library item' })).toBeVisible();
   });
+
+  test('the content editor renders its unprovisioned baseline (R.2c)', async ({ page }) => {
+    const response = await page.goto(`${APP}/snippets/not-a-uuid/edit`);
+    expect(response?.status()).toBeLessThan(500);
+    await expect(page.getByRole('heading', { name: 'Edit content' })).toBeVisible();
+  });
 });
