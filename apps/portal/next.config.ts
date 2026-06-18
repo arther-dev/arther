@@ -5,6 +5,7 @@ const nextConfig: NextConfig = {
     '@arther/block-renderer',
     '@arther/config',
     '@arther/db',
+    '@arther/rate-limit',
     '@arther/types',
     '@arther/ui',
   ],
