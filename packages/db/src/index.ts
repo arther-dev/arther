@@ -257,10 +257,12 @@ export {
   getVariant,
   listVariantDeltas,
   listVariants,
+  loadResolvedVariantSpec,
   removeVariantDelta,
   renameVariant,
   setVariantDefault,
   type ProductVariantRow,
+  type ResolvedVariantSpec,
   type VariantDeltaRow,
 } from './variants';
 export {

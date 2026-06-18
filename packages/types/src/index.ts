@@ -38,3 +38,4 @@ export * from './list-move';
 export * from './library';
 export * from './onboarding';
 export * from './variant';
+export * from './variant-resolution';

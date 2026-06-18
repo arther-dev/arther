@@ -1,14 +1,21 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
+  resolveVariantSpec,
   slugifyVariantName,
   type DeltaType,
+  type FieldType,
+  type FieldValue,
   type ProductId,
+  type ResolvedSpecEntry,
   type UserId,
+  type VariantDeltaForResolution,
   type VariantDeltaId,
   type VariantDeltaInput,
   type VariantId,
+  type VariantResolutionWarning,
   type WorkspaceId,
 } from '@arther/types';
+import { loadGenerationFields } from './generation-context';
 
 /**
  * V.1 — the variant delta repository (Product Variants §3.2). Variants and their
@@ -251,4 +258,105 @@ export async function removeVariantDelta(
 ): Promise<void> {
   const { error } = await client.from('variant_deltas').delete().eq('id', deltaId);
   if (error) throw new Error(`removeVariantDelta: ${error.message}`);
+}
+
+export interface ResolvedVariantSpec {
+  variant: ProductVariantRow;
+  entries: ResolvedSpecEntry[];
+  warnings: VariantResolutionWarning[];
+}
+
+/**
+ * V.2 — compute a variant's resolved spec at query time (§3.3): the base product's
+ * assembled spec with the variant's deltas applied in order. Pulls the field sets
+ * for any component a SWAP/ADD introduces, then runs the pure engine. Returns null
+ * if the variant doesn't exist. (Redis caching is a later optimisation — at query
+ * time the result is always current by definition, so there is nothing to drift.)
+ */
+export async function loadResolvedVariantSpec(
+  client: SupabaseClient,
+  variantId: VariantId,
+): Promise<ResolvedVariantSpec | null> {
+  const variant = await getVariant(client, variantId);
+  if (!variant) return null;
+
+  const baseFields = await loadGenerationFields(client, variant.productId);
+  const base: ResolvedSpecEntry[] = baseFields.map((f) => ({
+    fieldId: f.id,
+    name: f.name,
+    category: f.category,
+    type: f.type,
+    value: f.value,
+    unitId: f.unit_id,
+    currentVersionId: f.current_version_id,
+    owner: f.owner,
+    componentId: f.component_id,
+    componentName: f.component_name,
+    origin: 'base',
+    overridden: false,
+  }));
+
+  const deltas = await listVariantDeltas(client, variantId);
+
+  // The components a SWAP/ADD introduces (their fields aren't in the base spec).
+  const introduced = [
+    ...new Set(
+      deltas
+        .flatMap((d) => [d.replacementComponentId, d.newComponentId])
+        .filter((id): id is string => Boolean(id)),
+    ),
+  ];
+
+  const componentFieldsById: Record<string, ResolvedSpecEntry[]> = {};
+  const componentNamesById: Record<string, string> = {};
+  if (introduced.length > 0) {
+    const { data: comps, error: cErr } = await client
+      .from('components')
+      .select('id, name')
+      .in('id', introduced);
+    if (cErr) throw new Error(`loadResolvedVariantSpec.components: ${cErr.message}`);
+    for (const c of comps ?? []) componentNamesById[(c as { id: string }).id] = (c as { name: string }).name;
+
+    const { data: cf, error: cfErr } = await client
+      .from('spec_fields')
+      .select('id, name, category, type, value, unit_id, current_version_id, component_id')
+      .in('component_id', introduced)
+      .is('archived_at', null);
+    if (cfErr) throw new Error(`loadResolvedVariantSpec.componentFields: ${cfErr.message}`);
+    for (const row of cf ?? []) {
+      const r = row as Record<string, unknown>;
+      const cid = r.component_id as string;
+      (componentFieldsById[cid] ??= []).push({
+        fieldId: r.id as string,
+        name: r.name as string,
+        category: r.category as string,
+        type: r.type as FieldType,
+        value: (r.value as FieldValue | null) ?? null,
+        unitId: (r.unit_id as string | null) ?? null,
+        currentVersionId: (r.current_version_id as string | null) ?? null,
+        owner: 'component',
+        componentId: cid,
+        componentName: componentNamesById[cid] ?? null,
+        origin: 'base',
+        overridden: false,
+      });
+    }
+  }
+
+  const forResolution: VariantDeltaForResolution[] = deltas.map((d) => ({
+    type: d.deltaType,
+    componentId: d.componentId,
+    fieldId: d.fieldId,
+    overrideValue: (d.overrideValue as FieldValue | null) ?? null,
+    replacementComponentId: d.replacementComponentId,
+    newComponentId: d.newComponentId,
+  }));
+
+  const { entries, warnings } = resolveVariantSpec({
+    base,
+    componentFieldsById,
+    componentNamesById,
+    deltas: forResolution,
+  });
+  return { variant, entries, warnings };
 }
