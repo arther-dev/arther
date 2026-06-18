@@ -15,6 +15,7 @@ import {
   getRevision,
   issueMagicLink,
   listApprovalRoles,
+  listProducts,
   listRevisionCommenterIds,
   membershipUserIds,
   listSnapshotsForDocument,
@@ -46,6 +47,7 @@ import {
   type DocumentAllowlist,
   type DocumentId,
   type DocumentRevisionId,
+  type ProductId,
   type UserId,
   type WorkspaceId,
 } from '@arther/types';
@@ -394,17 +396,42 @@ export interface DuplicateResult {
   error?: string;
   /** The new Draft document's id, for the client to navigate to. */
   newDocumentId?: string;
+  /** Cross-product only: spec fields / brief fragments that became placeholders. */
+  placeholderNotes?: string[];
+}
+
+export interface DuplicateTarget {
+  id: string;
+  name: string;
+}
+
+/** R.8 — the workspace's products, for the cross-product duplication picker. */
+export async function listDuplicateTargetsAction(): Promise<DuplicateTarget[]> {
+  const supabase = await getSupabaseServer();
+  if (!supabase) return [];
+  const workspace = await getActiveWorkspace(supabase);
+  if (!workspace) return [];
+  const products = await listProducts(supabase, workspace.id);
+  return products.map((p) => ({ id: p.id, name: p.name }));
 }
 
 /**
- * R.8 — duplicate a document into a new Draft (same product). Any editor can
- * duplicate (it creates a *new* document they own — not an owner-of-source
- * operation), so it's `doc.write`-gated rather than lifecycle-owner-gated. The
- * copy carries blocks, references, and snippet embeds (live); the author lands in
+ * R.8 — duplicate a document into a new Draft, in the same product or a different
+ * one (`targetProductId`). Any editor can duplicate (it creates a *new* document
+ * they own — not an owner-of-source operation), so it's `doc.write`-gated. The
+ * copy carries blocks and snippet embeds (live); references are copied verbatim
+ * for the same product, or re-resolved against the target product (re-linking
+ * matched spec fields, placeholdering the rest) cross-product. The author lands in
  * the new draft's editor.
  */
-export async function duplicateDocumentAction(documentId: string): Promise<DuplicateResult> {
+export async function duplicateDocumentAction(
+  documentId: string,
+  targetProductId?: string,
+): Promise<DuplicateResult> {
   if (!UUID_RE.test(documentId)) return { ok: false, error: 'Invalid document.' };
+  if (targetProductId && !UUID_RE.test(targetProductId)) {
+    return { ok: false, error: 'Invalid target product.' };
+  }
   const supabase = await getSupabaseServer();
   if (!supabase) return { ok: false, error: 'Not configured in this environment yet.' };
   const {
@@ -428,9 +455,10 @@ export async function duplicateDocumentAction(documentId: string): Promise<Dupli
       sourceDocumentId: documentId as DocumentId,
       title: `Copy of ${source.title}`,
       userId: user.id as UserId,
+      targetProductId: targetProductId ? (targetProductId as ProductId) : undefined,
     });
     revalidatePath('/specs');
-    return { ok: true, newDocumentId: result.newDocumentId };
+    return { ok: true, newDocumentId: result.newDocumentId, placeholderNotes: result.placeholderNotes };
   } catch {
     return { ok: false, error: 'Could not duplicate the document.' };
   }

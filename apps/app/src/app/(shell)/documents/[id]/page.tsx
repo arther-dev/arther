@@ -227,7 +227,10 @@ export default async function DocumentPage({ params }: { params: Promise<{ id: s
           </span>
           <span style={{ flex: 1 }} />
           {workspace.role !== 'viewer' ? (
-            <DuplicateDocumentButton documentId={tree.document.id} />
+            <DuplicateDocumentButton
+              documentId={tree.document.id}
+              sourceProductId={tree.document.product_id}
+            />
           ) : null}
           {isDraft ? (
             <Link className="ui-btn ui-btn--primary" href={`/documents/${tree.document.id}/edit`}>
