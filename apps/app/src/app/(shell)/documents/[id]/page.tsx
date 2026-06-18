@@ -362,9 +362,14 @@ export default async function DocumentPage({
               : ''}
           </p>
         ) : null}
-        {workspace.role !== 'viewer' && variants.length > 0 ? (
-          <p className="specs-grid__meta">
-            <Link href={`/documents/${tree.document.id}/variant-scope`}>Manage variant scope →</Link>
+        {variants.length > 0 ? (
+          <p className="specs-grid__meta" style={{ display: 'flex', gap: 12 }}>
+            {workspace.role !== 'viewer' ? (
+              <Link href={`/documents/${tree.document.id}/variant-scope`}>Manage variant scope →</Link>
+            ) : null}
+            {variants.length >= 2 ? (
+              <Link href={`/documents/${tree.document.id}/compare`}>Compare variants →</Link>
+            ) : null}
           </p>
         ) : null}
         {canManage ? (
