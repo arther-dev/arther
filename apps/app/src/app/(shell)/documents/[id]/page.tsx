@@ -6,6 +6,7 @@ import {
   listApprovalRecords,
   listApprovalRoles,
   loadBlockVariantScopes,
+  loadDocumentVariantStaleness,
   listCommentThreads,
   listDocumentMagicLinks,
   listDocumentSnippetEmbeds,
@@ -214,6 +215,12 @@ export default async function DocumentPage({
   const briefStale = summarizeBriefStaleness(
     await listStaleBriefReferencesForDocument(supabase, tree.document.id),
   );
+  // V.7 — which variants are stale (a base change skips variants that pin the field
+  // or dropped its component). Drives the "Stale in: …" detail + preview suppression.
+  const variantStaleness =
+    stale.fieldCount > 0
+      ? await loadDocumentVariantStaleness(supabase, tree.document.id, tree.document.product_id)
+      : null;
 
   // R.3 — snippet embeds in this document, for the owner's override panel. Only
   // the document owner (or a workspace admin) can override embeds, so skip the
@@ -395,10 +402,14 @@ export default async function DocumentPage({
             </p>
           )
         ) : null}
-        {stale.fieldCount > 0 ? (
+        {stale.fieldCount > 0 &&
+        (!variantPreview || variantStaleness?.affectedVariantIds.has(variantPreview.variant.id)) ? (
           <p className="ui-field__error" role="status">
             {stale.fieldCount} spec value{stale.fieldCount === 1 ? '' : 's'} changed since this draft
             was generated ({stale.fields.join(', ')}) — review in the editor.
+            {!variantPreview && variantStaleness && variantStaleness.affectedVariants.length > 0
+              ? ` Stale in: Base, ${variantStaleness.affectedVariants.map((v) => v.name).join(', ')}.`
+              : ''}
           </p>
         ) : null}
         {briefStale.keyCount > 0 ? (

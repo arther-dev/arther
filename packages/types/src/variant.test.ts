@@ -4,6 +4,7 @@ import {
   deltaTypeLabel,
   describeVariantDelta,
   isBlockVisibleForVariant,
+  isVariantAffectedByFieldChange,
   slugifyVariantName,
   variantDeltaInputSchema,
 } from './variant';
@@ -125,6 +126,44 @@ describe('isBlockVisibleForVariant (V.4)', () => {
     // DERIVED with no gating component can't be decided → stays visible.
     expect(
       isBlockVisibleForVariant({ mode: 'DERIVED', variantIds: [], derivedComponentId: null }, ctx),
+    ).toBe(true);
+  });
+});
+
+describe('isVariantAffectedByFieldChange (V.7)', () => {
+  const field = { fieldId: 'f1', componentId: 'psu' };
+
+  it('a variant with no relevant delta inherits the change (affected)', () => {
+    expect(isVariantAffectedByFieldChange(field, [])).toBe(true);
+    expect(
+      isVariantAffectedByFieldChange(field, [{ type: 'SCALAR_OVERRIDE', fieldId: 'other', componentId: 'psu' }]),
+    ).toBe(true);
+  });
+
+  it('an override on the field pins an independent value (not affected)', () => {
+    expect(
+      isVariantAffectedByFieldChange(field, [{ type: 'SCALAR_OVERRIDE', fieldId: 'f1', componentId: 'psu' }]),
+    ).toBe(false);
+  });
+
+  it('removing or swapping the field’s component drops the field (not affected)', () => {
+    expect(isVariantAffectedByFieldChange(field, [{ type: 'COMPONENT_REMOVE', componentId: 'psu' }])).toBe(
+      false,
+    );
+    expect(isVariantAffectedByFieldChange(field, [{ type: 'COMPONENT_SWAP', componentId: 'psu' }])).toBe(
+      false,
+    );
+    // …but removing a different component doesn't matter.
+    expect(isVariantAffectedByFieldChange(field, [{ type: 'COMPONENT_REMOVE', componentId: 'fan' }])).toBe(
+      true,
+    );
+  });
+
+  it('product-owned fields (no component) are always inherited', () => {
+    expect(
+      isVariantAffectedByFieldChange({ fieldId: 'p1', componentId: null }, [
+        { type: 'COMPONENT_REMOVE', componentId: 'psu' },
+      ]),
     ).toBe(true);
   });
 });

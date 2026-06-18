@@ -1,9 +1,11 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   formatFieldValue,
+  isVariantAffectedByFieldChange,
   resolveVariantSpec,
   slugifyVariantName,
   type DeltaType,
+  type DocumentId,
   type FieldType,
   type FieldValue,
   type ProductId,
@@ -20,6 +22,7 @@ import {
 } from '@arther/types';
 import { loadGenerationFields } from './generation-context';
 import { listUnits } from './spec';
+import { listStaleReferencesForDocument } from './staleness';
 
 /**
  * V.1 — the variant delta repository (Product Variants §3.2). Variants and their
@@ -415,4 +418,51 @@ export async function resolveSpecFieldsForVariant(
     ...new Set(resolved.entries.map((e) => e.componentId).filter((c): c is string => Boolean(c))),
   ];
   return { variant: resolved.variant, resolution, replacements, componentIds, warnings: resolved.warnings };
+}
+
+export interface DocumentVariantStaleness {
+  /** Distinct stale field names in the document. */
+  staleFields: string[];
+  /** Variants that inherit at least one stale field (so are themselves stale). */
+  affectedVariants: { id: VariantId; name: string }[];
+  /** Variant ids affected, for quick membership tests (e.g. preview suppression). */
+  affectedVariantIds: Set<string>;
+}
+
+/**
+ * V.7 — which of a document's variants are stale (§4.7). A base spec change makes
+ * a variant stale unless the variant pins that field (SCALAR_OVERRIDE) or dropped
+ * its component (REMOVE/SWAP). The base is always affected when any field is
+ * stale; this returns the variant set. Null when nothing is stale or there are no
+ * variants.
+ */
+export async function loadDocumentVariantStaleness(
+  client: SupabaseClient,
+  documentId: DocumentId,
+  productId: ProductId,
+): Promise<DocumentVariantStaleness | null> {
+  const stale = await listStaleReferencesForDocument(client, documentId);
+  if (stale.length === 0) return null;
+  const variants = await listVariants(client, productId);
+  if (variants.length === 0) return null;
+
+  const affectedVariants: { id: VariantId; name: string }[] = [];
+  for (const v of variants) {
+    const deltas = await listVariantDeltas(client, v.id);
+    const forCheck = deltas.map((d) => ({
+      type: d.deltaType,
+      componentId: d.componentId,
+      fieldId: d.fieldId,
+    }));
+    const affected = stale.some((s) =>
+      isVariantAffectedByFieldChange({ fieldId: s.fieldId, componentId: s.componentId }, forCheck),
+    );
+    if (affected) affectedVariants.push({ id: v.id, name: v.name });
+  }
+
+  return {
+    staleFields: [...new Set(stale.map((s) => s.fieldName))],
+    affectedVariants,
+    affectedVariantIds: new Set(affectedVariants.map((v) => v.id as string)),
+  };
 }

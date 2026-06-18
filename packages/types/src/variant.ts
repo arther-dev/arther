@@ -132,6 +132,32 @@ export function isBlockVisibleForVariant(
   return scope.derivedComponentId == null ? true : ctx.componentIds.has(scope.derivedComponentId);
 }
 
+/**
+ * V.7 — variant-aware staleness (Product Variants §4.7). When a base spec field
+ * changes, a variant is **affected** (its resolved value moved too) unless it has
+ * made that field its own: a SCALAR_OVERRIDE on the field pins an independent
+ * value, and a COMPONENT_REMOVE / COMPONENT_SWAP of the field's component drops
+ * the base field from the variant entirely. Pure; the caller supplies the
+ * variant's deltas. Product-owned fields (no component) can't be overridden, so
+ * every variant inherits — and is affected by — their changes.
+ */
+export function isVariantAffectedByFieldChange(
+  field: { fieldId: string; componentId: string | null },
+  deltas: ReadonlyArray<{ type: DeltaType; componentId?: string | null; fieldId?: string | null }>,
+): boolean {
+  for (const d of deltas) {
+    if (d.type === 'SCALAR_OVERRIDE' && d.fieldId === field.fieldId) return false;
+    if (
+      field.componentId != null &&
+      d.componentId === field.componentId &&
+      (d.type === 'COMPONENT_REMOVE' || d.type === 'COMPONENT_SWAP')
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 export function describeVariantDelta(
   delta: {
     type: DeltaType;
