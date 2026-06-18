@@ -183,17 +183,20 @@ export interface DocumentSnippetEmbed {
   state: SnippetEmbedState;
   /** R.5 — the source snippet is archived; the embed is a frozen static copy. */
   sourceArchived: boolean;
+  /** R.9 — a spec change may have made the source snippet's prose stale. */
+  staleProse: boolean;
 }
 
-/** R.3/R.5 — the snippet embeds in a document, with their override state + whether
- * the source is archived (a frozen static copy), for the panel. */
+/** R.3/R.5/R.9 — the snippet embeds in a document, with their override state,
+ * whether the source is archived (a frozen static copy), and the stale-prose
+ * indicator (R.9), for the panel. */
 export async function listDocumentSnippetEmbeds(
   client: SupabaseClient,
   documentId: DocumentId,
 ): Promise<DocumentSnippetEmbed[]> {
   const { data, error } = await client
     .from('snippet_embeds')
-    .select('block_id, state, library_item_id, library_items!inner(name, archived_at)')
+    .select('block_id, state, stale_prose_flag, library_item_id, library_items!inner(name, archived_at)')
     .eq('document_id', documentId);
   if (error) throw new Error(`listDocumentSnippetEmbeds: ${error.message}`);
   return (data ?? []).map((r) => {
@@ -208,6 +211,7 @@ export async function listDocumentSnippetEmbeds(
       libraryItemName: source?.name ?? 'Snippet',
       state: row.state as SnippetEmbedState,
       sourceArchived: source?.archived_at != null,
+      staleProse: row.stale_prose_flag === true,
     };
   });
 }

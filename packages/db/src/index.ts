@@ -251,6 +251,13 @@ export {
 } from './snippet-embeds';
 export { duplicateDocument, type DuplicationResult } from './duplication';
 export {
+  clearSnippetStaleness,
+  flagSnippetsForFieldChange,
+  listSnippetReviewItems,
+  type FlaggedSnippet,
+  type SnippetReviewItemRow,
+} from './snippet-staleness';
+export {
   getDocumentConsumption,
   getTopSearches,
   getWorkspaceDocumentConsumption,

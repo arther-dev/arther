@@ -426,3 +426,52 @@ describe('archive → static embed conversion (R.5)', () => {
     await owner`delete from public.library_items where id = ${item}`;
   });
 });
+
+/**
+ * R.9 — snippet staleness wiring. A spec change flags the embedding snippet's prose
+ * (a `snippet_review_items` row for the owner + `stale_prose_flag` on every embed);
+ * editing the snippet at the source clears both. The flag and the review item are
+ * editor-write / member-read; a viewer can neither raise nor clear them.
+ */
+describe('snippet staleness flag + review item (R.9)', () => {
+  it('flags embeds + opens a review item, then clears on resolution', async () => {
+    const blockId = await placeEmbed(owner);
+
+    // Flag: a spec change raises the indicator on the embed and opens a review item.
+    await owner`update public.snippet_embeds set stale_prose_flag = true where block_id = ${blockId}`;
+    const reviewId = (
+      await owner`
+        insert into public.snippet_review_items (workspace_id, snippet_id, snippet_name, assigned_to, embedding_document_ids, status)
+        values (${ws}, ${itemId}, 'Warranty', ${ownerId}, ${owner.json([documentId])}, 'pending') returning id
+      `
+    )[0]!.id as string;
+    // Member-read: a viewer sees both the flag and the owner's review item.
+    expect(
+      await viewer`select stale_prose_flag from public.snippet_embeds where block_id = ${blockId} and stale_prose_flag = true`,
+    ).toHaveLength(1);
+    expect(await viewer`select id from public.snippet_review_items where id = ${reviewId}`).toHaveLength(1);
+
+    // A viewer can neither clear the flag (0 rows) nor open a review item.
+    const touched = await viewer`
+      update public.snippet_embeds set stale_prose_flag = false where block_id = ${blockId} returning block_id
+    `;
+    expect(touched).toHaveLength(0);
+    await expectDenied(
+      () =>
+        viewer`insert into public.snippet_review_items (workspace_id, snippet_id, status) values (${ws}, ${itemId}, 'pending')`,
+    );
+
+    // Resolution at the source (the owner edits the snippet): flag clears + item resolves.
+    await owner`update public.snippet_embeds set stale_prose_flag = false where library_item_id = ${itemId} and stale_prose_flag = true`;
+    await owner`update public.snippet_review_items set status = 'approved', resolved_at = now(), resolved_by = ${ownerId} where snippet_id = ${itemId} and status = 'pending'`;
+    expect(
+      await owner`select stale_prose_flag from public.snippet_embeds where block_id = ${blockId} and stale_prose_flag = true`,
+    ).toHaveLength(0);
+    expect(
+      await owner`select id from public.snippet_review_items where id = ${reviewId} and status = 'approved'`,
+    ).toHaveLength(1);
+
+    await owner`delete from public.blocks where id = ${blockId}`;
+    await owner`delete from public.snippet_review_items where id = ${reviewId}`;
+  });
+});

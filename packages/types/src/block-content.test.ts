@@ -3,6 +3,7 @@ import { BLOCK_TYPES } from './document-types';
 import {
   aiSpecTokenNodeSchema,
   blockContentSchema,
+  blockSpecFieldIds,
   canContain,
   CONTAINER_BLOCK_TYPES,
   generatedSectionSchema,
@@ -250,5 +251,70 @@ describe('manual block insertion (G4.6)', () => {
     for (const type of INSERTABLE_BLOCK_TYPES) {
       expect(insertableBlockLabel(type).length).toBeGreaterThan(0);
     }
+  });
+})
+
+describe('blockSpecFieldIds (R.9 snippet staleness)', () => {
+  const token = (fieldId: string) => ({
+    type: 'spec_token' as const,
+    field_id: fieldId,
+    field_version_id: 'v1',
+    display_value: '5 V',
+    unit_id: null,
+    product_id: 'p1',
+    component_id: null,
+  });
+
+  it('collects spec_token field ids from prose, including inside a link', () => {
+    const block = {
+      type: 'paragraph',
+      content: {
+        alignment: 'left',
+        nodes: [
+          { type: 'text', text: 'Rated at ', marks: [] },
+          token('field-a'),
+          { type: 'link', href: 'https://x', nodes: [token('field-b')] },
+        ],
+      },
+    } as unknown as Parameters<typeof blockSpecFieldIds>[0];
+    expect(blockSpecFieldIds(block).sort()).toEqual(['field-a', 'field-b']);
+  });
+
+  it('collects field ids from a spec_table and a chart', () => {
+    const table = {
+      type: 'spec_table',
+      product_id: 'p1',
+      column_config: {
+        show_min: false,
+        show_typical: true,
+        show_max: false,
+        show_conditions: false,
+        show_source: false,
+        unit_preference: 'metric',
+      },
+      rows: [
+        { field_id: 'f1', component_id: 'c1', display_order: 0, visible: true },
+        { field_id: 'f2', component_id: 'c1', display_order: 1, visible: true },
+      ],
+    } as unknown as Parameters<typeof blockSpecFieldIds>[0];
+    expect(blockSpecFieldIds(table).sort()).toEqual(['f1', 'f2']);
+
+    const chart = {
+      type: 'chart',
+      table_field_id: 'f3',
+      product_id: 'p1',
+      chart_type: 'line',
+      show_legend: true,
+      show_grid: true,
+    } as unknown as Parameters<typeof blockSpecFieldIds>[0];
+    expect(blockSpecFieldIds(chart)).toEqual(['f3']);
+  });
+
+  it('returns nothing for prose with no spec tokens', () => {
+    const block = {
+      type: 'paragraph',
+      content: { alignment: 'left', nodes: [{ type: 'text', text: 'plain', marks: [] }] },
+    } as unknown as Parameters<typeof blockSpecFieldIds>[0];
+    expect(blockSpecFieldIds(block)).toEqual([]);
   });
 })

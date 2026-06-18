@@ -43,6 +43,12 @@ export function SnippetEmbedsPanel({
               {/* R.5 — a frozen copy of an archived source is static, not an override. */}
               {embed.sourceArchived ? 'Static copy (source archived)' : STATE_LABEL[embed.state]}
             </span>
+            {/* R.9 — a spec change may have made the source snippet's prose stale. */}
+            {embed.staleProse ? (
+              <span className="ui-field__error" title="A spec change may have made this snippet's prose stale.">
+                ⚠ Spec changed — review the snippet
+              </span>
+            ) : null}
             <span style={{ flex: 1 }} />
             <Link
               className="ui-btn ui-btn--ghost ui-btn--sm"

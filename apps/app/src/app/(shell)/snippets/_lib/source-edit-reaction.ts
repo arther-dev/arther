@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
+  clearSnippetStaleness,
   createServiceClient,
   dispatchNotification,
   getLibraryItem,
@@ -21,6 +22,13 @@ export async function reactToSnippetSourceChange(
   input: { workspaceId: WorkspaceId; libraryItemId: LibraryItemId; actorId: UserId },
 ): Promise<void> {
   try {
+    // R.9 — editing the snippet at the source resolves any stale-prose flag,
+    // clearing the indicator on every embedding document (§3.6). Best-effort.
+    await clearSnippetStaleness(supabase, {
+      libraryItemId: input.libraryItemId,
+      userId: input.actorId,
+    }).catch(() => {});
+
     const affected = await markOverriddenEmbedsSourceChanged(
       supabase,
       input.libraryItemId,

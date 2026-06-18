@@ -16,6 +16,8 @@ import {
   createSpecField,
   deleteBriefFragment,
   deleteRelease,
+  dispatchNotification,
+  flagSnippetsForFieldChange,
   getActiveWorkspace,
   getFieldChangeImpact,
   clearPlaceholder,
@@ -293,6 +295,29 @@ export async function updateFieldValueAction(
     );
   } catch (e) {
     console.error('[propagate] field change propagation failed', head.data.fieldId, e);
+  }
+
+  // R.9 — snippet staleness: a snippet whose prose was written around this field
+  // is flagged for its owner (and the indicator surfaces on every embedding doc).
+  // Best-effort, like propagation; the value is already committed.
+  try {
+    const service = createServiceClient();
+    const flagged = await flagSnippetsForFieldChange(service, {
+      workspaceId: auth.workspace.id,
+      fieldId: head.data.fieldId as SpecFieldId,
+      changedBy: auth.userId,
+    });
+    for (const snip of flagged) {
+      if (!snip.ownerId || snip.ownerId === auth.userId) continue;
+      await dispatchNotification(service, {
+        workspaceId: auth.workspace.id,
+        recipientIds: [snip.ownerId],
+        eventType: 'snippet_stale_prose',
+        payload: { libraryItemId: snip.snippetId, snippetName: snip.snippetName },
+      });
+    }
+  } catch (e) {
+    console.error('[snippet-staleness] flagging failed', head.data.fieldId, e);
   }
 
   // G8.2 — metering hook (best-effort; never fails the save).

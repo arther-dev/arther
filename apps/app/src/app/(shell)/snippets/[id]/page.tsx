@@ -1,5 +1,10 @@
 import Link from 'next/link';
-import { getActiveWorkspace, getLibraryItem, listUsersByIds } from '@arther/db';
+import {
+  getActiveWorkspace,
+  getLibraryItem,
+  listSnippetReviewItems,
+  listUsersByIds,
+} from '@arther/db';
 import { blockPlainText, libraryItemIdSchema, libraryItemTypeLabel } from '@arther/types';
 import { AppShell, EmptyState } from '@arther/ui';
 import { getSupabaseServer } from '../../../../lib/supabase/server';
@@ -61,6 +66,13 @@ export default async function SnippetDetailPage({
     : 'Unassigned';
   const canEdit = workspace.role !== 'viewer';
 
+  // R.9 — a spec change may have flagged this snippet's prose as stale; editing it
+  // resolves the flag everywhere. Surface the prompt to the owner/editors.
+  const staleReview =
+    item.type === 'snippet'
+      ? (await listSnippetReviewItems(supabase, workspace.id)).find((r) => r.snippetId === item.id)
+      : undefined;
+
   return (
     <AppShell>
       <div className="specs-content">
@@ -77,6 +89,17 @@ export default async function SnippetDetailPage({
         {item.archivedAt ? (
           <p className="ui-field__hint">
             Archived. It can’t be embedded into new documents until it’s restored.
+          </p>
+        ) : null}
+        {staleReview ? (
+          <p className="ui-field__error" role="status">
+            A spec change may have made this snippet’s prose stale
+            {staleReview.embeddingDocumentCount > 0
+              ? ` (used in ${staleReview.embeddingDocumentCount} document${
+                  staleReview.embeddingDocumentCount === 1 ? '' : 's'
+                })`
+              : ''}
+            . {canEdit ? 'Edit the content to review it — that clears the flag everywhere.' : ''}
           </p>
         ) : null}
 
