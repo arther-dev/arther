@@ -26,6 +26,7 @@ import {
   transitionDocumentRevision,
 } from '@arther/db';
 import { generateMagicToken, hashMagicToken } from '@arther/config/magic-link';
+import { rateLimit } from '@arther/rate-limit';
 import {
   blockPlainText,
   canManageDocumentLifecycle,
@@ -509,6 +510,12 @@ export async function issueMagicLinkAction(
 
   const auth = await authorize(documentId, 'publish');
   if ('error' in auth) return { ok: false, error: auth.error };
+
+  // C9.4 — cap link issuance per member so the access surface can't be a relay.
+  const throttle = await rateLimit('magic_link_issue', auth.userId);
+  if (!throttle.success) {
+    return { ok: false, error: `Too many links just now — wait ${throttle.retryAfterSeconds}s and try again.` };
+  }
 
   const base = process.env.PORTAL_BASE_URL;
   if (!base) return { ok: false, error: 'Portal URL isn’t configured in this environment yet.' };

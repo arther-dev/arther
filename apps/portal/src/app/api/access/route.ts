@@ -7,6 +7,7 @@ import {
   signPortalSession,
 } from '@arther/config/magic-link';
 import type { DocumentId } from '@arther/types';
+import { rateLimit } from '@arther/rate-limit';
 import { getPortalDb } from '../../../lib/portal-db';
 
 /**
@@ -41,6 +42,12 @@ export async function GET(request: Request): Promise<Response> {
   const db = getPortalDb();
   if (!db) return gate('disabled');
 
+  // C9.4 — rate-limit the anonymous exchange by IP before touching the token
+  // (blunts brute-force probing); env-gated Upstash with an in-memory fallback.
+  const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null;
+  const throttle = await rateLimit('magic_link_access', ip ?? 'unknown');
+  if (!throttle.success) return gate('throttled');
+
   const link = await validateMagicLink(db, {
     documentId: d as DocumentId,
     tokenHash: hashMagicToken(t),
@@ -48,7 +55,6 @@ export async function GET(request: Request): Promise<Response> {
   if (!link) return gate('invalid');
 
   // C7.5 — record the access (best-effort; logging never blocks entry).
-  const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null;
   try {
     await logMagicLinkAccess(db, {
       workspaceId: link.workspaceId,

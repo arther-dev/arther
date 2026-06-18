@@ -49,9 +49,11 @@ export default async function GatedAccessPage({
     const body =
       denied === 'invalid'
         ? 'This access link is invalid, expired, or has been revoked. Ask the owner for a new link.'
-        : denied === 'disabled'
-          ? 'Gated access isn’t available on this portal yet.'
-          : 'Open your access link to view this document. Sessions last 24 hours.';
+        : denied === 'throttled'
+          ? 'Too many attempts — wait a minute and open your access link again.'
+          : denied === 'disabled'
+            ? 'Gated access isn’t available on this portal yet.'
+            : 'Open your access link to view this document. Sessions last 24 hours.';
     return <Gate title="Access required" body={body} />;
   }
 

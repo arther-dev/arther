@@ -15,7 +15,13 @@ import { Redis } from '@upstash/redis';
  * (process.env presence); both Upstash REST keys must be set to use Redis.
  */
 
-export type RateLimitName = 'auth' | 'invitation' | 'import' | 'generation';
+export type RateLimitName =
+  | 'auth'
+  | 'invitation'
+  | 'import'
+  | 'generation'
+  | 'magic_link_issue'
+  | 'magic_link_access';
 
 export interface RateLimitResult {
   /** True when the request is within budget and may proceed. */
@@ -49,6 +55,11 @@ export const RATE_LIMITS: Record<RateLimitName, LimitConfig> = {
   import: { limit: 5, windowSeconds: 60 },
   // Document generation + block regeneration (paid AI calls), keyed by member.
   generation: { limit: 10, windowSeconds: 60 },
+  // C9.4 — issuing portal magic links, keyed by the issuing member (anti-spam).
+  magic_link_issue: { limit: 30, windowSeconds: 60 },
+  // C9.4 — anonymous magic-link exchange at the portal, keyed by client IP
+  // (blunts token probing; a legitimate visitor exchanges a link once).
+  magic_link_access: { limit: 15, windowSeconds: 60 },
 };
 
 /** Both REST keys present ⇒ Upstash is the shared store; otherwise in-memory. */

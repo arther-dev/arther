@@ -138,6 +138,9 @@ importers:
       '@arther/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@arther/rate-limit':
+        specifier: workspace:*
+        version: link:../../packages/rate-limit
       '@arther/types':
         specifier: workspace:*
         version: link:../../packages/types
