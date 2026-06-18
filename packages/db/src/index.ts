@@ -161,11 +161,13 @@ export {
   getPortalDocument,
   getPortalWorkspace,
   listPortalPublishedDocuments,
+  listSitemapEntries,
   searchPortalDocuments,
   type PortalDocument,
   type PortalDocumentListing,
   type PortalSearchHit,
   type PortalWorkspace,
+  type SitemapEntry,
 } from './portal';
 export {
   issueMagicLink,

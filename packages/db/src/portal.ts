@@ -43,6 +43,14 @@ export interface PortalDocument {
   resolutionManifest: SpecFieldResolution;
 }
 
+/** C9.3 — one public document for the portal sitemap (latest publication per doc). */
+export interface SitemapEntry {
+  workspaceSlug: string;
+  productId: ProductId;
+  documentSlug: string;
+  publishedAt: string;
+}
+
 export interface PortalSearchHit {
   documentId: DocumentId;
   documentSlug: string;
@@ -260,4 +268,39 @@ export async function searchPortalDocuments(
     });
   }
   return hits;
+}
+
+/**
+ * C9.3 — every public, non-archived document across the portal (latest
+ * publication per document), for `sitemap.xml`. Service-role + the same public
+ * filter the serve path uses, joined to the workspace slug + document slug that
+ * form the public URL `/{workspaceSlug}/{productId}/{documentSlug}`.
+ */
+export async function listSitemapEntries(service: SupabaseClient): Promise<SitemapEntry[]> {
+  const { data, error } = await service
+    .from('published_snapshots')
+    .select(
+      'document_id, product_id, published_at, access_config, workspaces!inner(slug), documents!inner(slug, archived_at)',
+    )
+    .is('archived_at', null)
+    .order('published_at', { ascending: false });
+  if (error) throw new Error(`listSitemapEntries: ${error.message}`);
+
+  const seen = new Set<string>();
+  const out: SitemapEntry[] = [];
+  for (const row of (data ?? []) as Array<Record<string, unknown>>) {
+    if (!isPublic(row.access_config)) continue;
+    const doc = one(row.documents as { slug: string; archived_at: string | null });
+    if (doc.archived_at) continue;
+    const documentId = row.document_id as string;
+    if (seen.has(documentId)) continue; // ordered desc → first seen is latest
+    seen.add(documentId);
+    out.push({
+      workspaceSlug: one(row.workspaces as { slug: string }).slug,
+      productId: row.product_id as ProductId,
+      documentSlug: doc.slug,
+      publishedAt: row.published_at as string,
+    });
+  }
+  return out;
 }

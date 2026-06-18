@@ -7,7 +7,7 @@ import { getPortalDb } from '../../../../lib/portal-db';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-type Loaded =
+export type Loaded =
   | { state: 'unprovisioned' }
   | { state: 'notfound' }
   | { state: 'ok'; doc: PortalDocument; workspaceName: string };
@@ -18,7 +18,7 @@ type Loaded =
  * uncached fetch. Publishing busts `portalTag(workspace)` (the revalidate
  * endpoint), and the per-route `revalidate` is the slow time fallback.
  */
-function loadDocument(
+export function loadDocument(
   workspaceSlug: string,
   productId: string,
   documentSlug: string,

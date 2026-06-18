@@ -2,6 +2,9 @@ import Link from 'next/link';
 import { getPortalWorkspace, searchPortalDocuments } from '@arther/db';
 import { getPortalDb } from '../../../lib/portal-db';
 
+// C9.3 — search results are query-dependent; keep them out of the index.
+export const metadata = { robots: { index: false, follow: false } };
+
 /**
  * C6.4 — portal full-text search over published documentation. A server-rendered
  * GET form (shareable/bookmarkable, works without JavaScript); matches the latest
