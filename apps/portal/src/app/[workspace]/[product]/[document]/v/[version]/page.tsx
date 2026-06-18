@@ -1,4 +1,29 @@
-import { PortalDocumentView } from '../../PortalDocumentView';
+import type { Metadata } from 'next';
+import { PortalDocumentView, loadDocument } from '../../PortalDocumentView';
+
+/** C9.3 — a versioned URL is canonical to itself; index only a real publication. */
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ workspace: string; product: string; document: string; version: string }>;
+}): Promise<Metadata> {
+  const { workspace, product, document, version } = await params;
+  const canonical = `/${workspace}/${product}/${document}/v/${version}`;
+  const result = await loadDocument(workspace, product, document, version);
+  if (result.state !== 'ok') {
+    return {
+      title: 'Document',
+      alternates: { canonical },
+      robots: result.state === 'notfound' ? { index: false, follow: false } : undefined,
+    };
+  }
+  const { doc } = result;
+  return {
+    title: `${doc.title} (v${doc.version})`,
+    description: `${doc.productName} — ${doc.title} (version ${doc.version}).`,
+    alternates: { canonical },
+  };
+}
 
 // C6.5 — a versioned snapshot is immutable, so cache it hard and refresh slowly.
 // `generateStaticParams` returning `[]` opts the route into on-demand ISR (the

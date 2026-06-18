@@ -15,6 +15,9 @@ import { getPortalDb } from '../../../lib/portal-db';
  */
 export const dynamic = 'force-dynamic';
 
+// C9.3 — gated, per-visitor content: never index it.
+export const metadata = { robots: { index: false, follow: false } };
+
 const ACCESS_COOKIE = 'arther_portal_access';
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

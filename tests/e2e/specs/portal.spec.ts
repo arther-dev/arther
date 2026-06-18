@@ -55,4 +55,33 @@ test.describe('public portal (C6)', () => {
     await expect(page.getByRole('heading', { level: 1, name: /access required/i })).toBeVisible();
     await expect(page.getByText(/access link/i)).toBeVisible();
   });
+
+  test('robots.txt points at the sitemap and fences /api (C9.3)', async ({ page }) => {
+    const res = await page.goto(`${PORTAL}/robots.txt`);
+    expect(res?.status()).toBe(200);
+    const body = await res!.text();
+    expect(body).toContain('Sitemap:');
+    expect(body).toMatch(/Disallow:\s*\/api\//);
+  });
+
+  test('sitemap.xml is served as a urlset (C9.3)', async ({ page }) => {
+    const res = await page.goto(`${PORTAL}/sitemap.xml`);
+    expect(res?.status()).toBe(200);
+    expect(await res!.text()).toContain('<urlset');
+  });
+
+  test('a document URL carries a canonical link (C9.3)', async ({ page }) => {
+    await page.goto(`${PORTAL}/acme/${UUID}/install-guide`);
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
+      'href',
+      /\/acme\/.+\/install-guide$/,
+    );
+  });
+
+  test('the access gate and search are noindex (C9.3)', async ({ page }) => {
+    await page.goto(`${PORTAL}/acme/access?d=${UUID}`);
+    await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', /noindex/);
+    await page.goto(`${PORTAL}/acme/search?q=x`);
+    await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', /noindex/);
+  });
 });

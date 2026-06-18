@@ -1,8 +1,12 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import { portalBaseUrl } from '../lib/portal-url';
 
 export const metadata: Metadata = {
-  title: 'Arther Portal',
+  // C9.3 — the canonical origin: document pages set relative canonicals/OG URLs
+  // that resolve against this, and the sitemap/robots point at the same host.
+  metadataBase: new URL(portalBaseUrl()),
+  title: { default: 'Arther Portal', template: '%s · Arther' },
   description: 'Published product documentation',
 };
 
