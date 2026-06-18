@@ -19,8 +19,10 @@ import {
   deleteBlock,
   getActiveWorkspace,
   getEntityBrief,
+  getLibraryItem,
   insertBlocks,
   listApprovalRoles,
+  listLibraryItems,
   listUnits,
   loadBlockRegenContext,
   loadEditContextForBlock,
@@ -47,6 +49,8 @@ import {
   type DocumentRevisionId,
   type FieldVersionId,
   type InsertableBlockType,
+  type LibraryItemId,
+  type LibraryItemType,
   type SpecFieldId,
   type UserId,
   type WorkspaceId,
@@ -382,6 +386,106 @@ export async function saveSelectionToLibraryAction(input: {
     return { ok: true, id };
   } catch {
     return { ok: false, error: 'Could not save to the library.' };
+  }
+}
+
+export interface LibraryInsertListing {
+  id: string;
+  name: string;
+  type: LibraryItemType;
+}
+export interface ListLibraryItemsResult extends SaveResult {
+  items?: LibraryInsertListing[];
+}
+
+/**
+ * R.6 — list the workspace's (non-archived) library items for the editor's
+ * "Insert from Library" picker. Read-only; any signed-in member of the workspace
+ * sees the library (the insert itself is editor-gated below).
+ */
+export async function listLibraryItemsForInsertAction(): Promise<ListLibraryItemsResult> {
+  const base = await authorizeBase();
+  if ('error' in base) return { ok: false, error: base.error };
+  try {
+    const items = await listLibraryItems(base.supabase, base.workspaceId);
+    return { ok: true, items: items.map((i) => ({ id: i.id, name: i.name, type: i.type })) };
+  } catch {
+    return { ok: false, error: 'Could not load the block library.' };
+  }
+}
+
+const insertTemplateSchema = z.object({
+  revisionId: z.string().uuid(),
+  documentId: z.string().uuid(),
+  afterBlockId: z.string().uuid().nullable(),
+  libraryItemId: z.string().uuid(),
+});
+
+/**
+ * R.6 — insert a **template** from the library as an independent copy (§5.3:
+ * copy-on-insert, no live link). Its blocks are placed after the selected block
+ * as fresh `manual` blocks — the content travels, like paste. Structural, so it's
+ * Draft-only + editor-gated. Snippets (a live `snippet_embeds` link) are a
+ * follow-up; only templates are insertable here.
+ */
+export async function insertTemplateAction(input: {
+  revisionId: string;
+  documentId: string;
+  afterBlockId: string | null;
+  libraryItemId: string;
+}): Promise<PasteResult> {
+  const env = insertTemplateSchema.safeParse(input);
+  if (!env.success) return { ok: false, error: 'Invalid request.' };
+
+  const auth = await authorizeStructuralEdit({ revisionId: env.data.revisionId });
+  if ('error' in auth) return { ok: false, error: auth.error };
+
+  try {
+    const item = await getLibraryItem(auth.supabase, env.data.libraryItemId as LibraryItemId);
+    if (!item || item.archivedAt) return { ok: false, error: 'That library item isn’t available.' };
+    if (item.type !== 'template') {
+      return {
+        ok: false,
+        error: 'Only templates can be inserted as a copy right now — live snippet embedding is coming soon.',
+      };
+    }
+    if (item.blocks.length === 0) return { ok: false, error: 'That template has no content.' };
+
+    const current = await loadRevisionBlocks(auth.supabase, env.data.revisionId as DocumentRevisionId);
+    const inserted = await insertBlocks(auth.supabase, {
+      workspaceId: auth.workspaceId,
+      documentId: env.data.documentId as DocumentId,
+      revisionId: env.data.revisionId as DocumentRevisionId,
+      userId: auth.userId,
+      blocks: item.blocks.map((content, i) => ({
+        type: content.type,
+        source: 'manual',
+        displayOrder: current.length + i,
+        content,
+        textContent: blockPlainText(content),
+      })),
+    });
+    if (inserted.length === 0) return { ok: false, error: 'Could not insert the template.' };
+
+    const existingIds = current.map((b) => b.id as string);
+    const newIds = inserted.map((b) => b.id as string);
+    const at = env.data.afterBlockId ? existingIds.indexOf(env.data.afterBlockId) : -1;
+    const orderedIds = [...existingIds];
+    orderedIds.splice(at >= 0 ? at + 1 : existingIds.length, 0, ...newIds);
+    await reorderBlocks(auth.supabase, orderedIds as BlockId[], auth.userId);
+
+    return {
+      ok: true,
+      blocks: inserted.map((b) => ({
+        id: b.id as string,
+        content: b.content,
+        type: b.type,
+        source: b.source,
+      })),
+      orderedIds,
+    };
+  } catch {
+    return { ok: false, error: 'Could not insert the template.' };
   }
 }
 
