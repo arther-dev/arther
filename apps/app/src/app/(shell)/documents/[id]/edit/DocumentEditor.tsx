@@ -26,6 +26,7 @@ import {
 import { readBlockClipboard, writeBlockClipboard } from './clipboard';
 import { BlockProperties } from './BlockProperties';
 import { RichTextEditor } from './RichTextEditor';
+import { SaveToLibrary } from './SaveToLibrary';
 import { useSaveQueue } from './useSaveQueue';
 
 /**
@@ -161,6 +162,8 @@ export function DocumentEditor({
   const outline = buildOutline(blocks);
   const selected = selectedIds.size === 1 ? [...selectedIds][0]! : null;
   const selectedBlock = blocks.find((b) => b.id === selected) ?? null;
+  // R.2 — the selected blocks' content in document order, for "Save to Library".
+  const selectedContents = blocks.filter((b) => selectedIds.has(b.id)).map((b) => b.content);
 
   const selectOnly = (id: string) => {
     setSelectedIds(new Set([id]));
@@ -488,6 +491,7 @@ export function DocumentEditor({
                     Clear
                   </Button>
                 </div>
+                <SaveToLibrary blocks={selectedContents} />
                 <p className="specs-grid__meta">⌘/Ctrl-click to toggle · Shift-click to range-select.</p>
               </div>
             ) : selectedBlock ? (
@@ -520,6 +524,9 @@ export function DocumentEditor({
                   <Button size="sm" variant="danger" disabled={structuralBlocked} onClick={removeSelected}>
                     Delete
                   </Button>
+                </div>
+                <div style={{ marginTop: 8 }}>
+                  <SaveToLibrary blocks={selectedContents} />
                 </div>
                 {selectedBlock.type === 'paragraph' || selectedBlock.type === 'callout' ? (
                   <div style={{ marginTop: 8 }}>

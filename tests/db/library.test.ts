@@ -87,6 +87,26 @@ describe('block library RLS (0009)', () => {
     );
   });
 
+  it('stores a promoted block sequence verbatim (content fidelity for R.2 promotion)', async () => {
+    // "Save to Library" copies the selected blocks' content into library_items.blocks;
+    // the jsonb must round-trip exactly so the promoted snippet renders what was selected.
+    const blocks = [
+      { type: 'paragraph', content: { alignment: 'left', nodes: [] } },
+      { type: 'divider' },
+    ];
+    const id = (
+      await member`
+        insert into public.library_items (workspace_id, name, type, blocks, created_by)
+        values (${ws}, 'Promoted', 'snippet', ${member.json(blocks)}, ${memberId})
+        returning id
+      `
+    )[0]!.id as string;
+    const raw = (await owner`select blocks from public.library_items where id = ${id}`)[0]!.blocks;
+    // jsonb comes back parsed or as text depending on the driver path; normalize.
+    const stored = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    expect(stored).toEqual(blocks);
+  });
+
   it('the delete guard allows removing an item with no embeds', async () => {
     const id = (
       await owner`
