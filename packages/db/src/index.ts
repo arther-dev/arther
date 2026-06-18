@@ -260,10 +260,12 @@ export {
   loadResolvedVariantSpec,
   removeVariantDelta,
   renameVariant,
+  resolveSpecFieldsForVariant,
   setVariantDefault,
   type ProductVariantRow,
   type ResolvedVariantSpec,
   type VariantDeltaRow,
+  type VariantSpecResolution,
 } from './variants';
 export {
   clearSnippetStaleness,

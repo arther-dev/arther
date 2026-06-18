@@ -171,6 +171,24 @@ export function rewriteSpecTokens(
   }
 }
 
+/**
+ * R.7 — rewrite every inline spec token in a block against a whole resolution map
+ * (field id → replacement), not just one field. Used to preview a document (and
+ * the snippets embedded in it) **as a variant**: each token shows the variant's
+ * resolved value instead of the base product's. Pure; fields with no token in the
+ * block are no-ops.
+ */
+export function applyTokenReplacements(
+  content: BlockContent,
+  replacements: Record<string, SpecTokenReplacement>,
+): BlockContent {
+  let out = content;
+  for (const [fieldId, replacement] of Object.entries(replacements)) {
+    out = rewriteSpecTokens(out, fieldId, replacement).content;
+  }
+  return out;
+}
+
 /** The default section bucket for blocks before the first `section_header`. */
 export const DEFAULT_SECTION_NAME = 'Document';
 

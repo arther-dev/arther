@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { BlockContent, RichTextContent } from './block-content';
 import {
+  applyTokenReplacements,
   attributeSections,
   classifyBlockSpeed,
   coalesceReviewSections,
@@ -65,6 +66,25 @@ describe('rewriteSpecTokens', () => {
     const { content, count } = rewriteSpecTokens(before, FIELD, REPL);
     expect(count).toBe(0);
     expect(content).toBe(before);
+  });
+
+  it('applyTokenReplacements (R.7) rewrites every field in one pass for a variant preview', () => {
+    const before = paragraph(
+      rt(
+        { type: 'text', text: 'V=', marks: [] },
+        token(FIELD),
+        { type: 'text', text: ' P=', marks: [] },
+        token(OTHER),
+      ),
+    );
+    const out = applyTokenReplacements(before, {
+      [FIELD]: { fieldVersionId: 'vv', displayValue: '48 V' },
+      [OTHER]: { fieldVersionId: 'vw', displayValue: '60 W' },
+    }) as { content: RichTextContent };
+    expect(out.content.nodes[1]).toMatchObject({ display_value: '48 V', field_version_id: 'vv' });
+    expect(out.content.nodes[3]).toMatchObject({ display_value: '60 W', field_version_id: 'vw' });
+    // Pure — the original is untouched.
+    expect((before.content.nodes[1] as { display_value: string }).display_value).toBe('36 V');
   });
 
   it('rewrites tokens nested inside a link', () => {
