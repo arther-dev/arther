@@ -237,12 +237,15 @@ export {
   expandSnippetsForPublish,
   getSnippetEmbedContent,
   insertSnippetEmbed,
+  keepOverrideForEmbed,
   listDocumentSnippetEmbeds,
+  markOverriddenEmbedsSourceChanged,
   overrideSnippetEmbed,
   type DocumentSnippetEmbed,
   type InsertedSnippetEmbed,
   type InsertSnippetEmbedError,
   type SnippetEmbedState,
+  type SourceChangedEmbed,
 } from './snippet-embeds';
 export { duplicateDocument, type DuplicationResult } from './duplication';
 export {

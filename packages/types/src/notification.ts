@@ -17,6 +17,8 @@ export const NOTIFICATION_EVENT_TYPES = [
   'comment_mention', // @mention: the mentioned member
   'spec_stale', // a spec change affects your doc (Feature 4)
   'review_overdue', // due date passed
+  'snippet_override_created', // someone overrode your snippet in a doc: snippet owner (R.3)
+  'snippet_source_changed', // a snippet you overrode changed at the source: the overriding doc owner (R.3)
 ] as const;
 export type NotificationEventType = (typeof NOTIFICATION_EVENT_TYPES)[number];
 
@@ -27,6 +29,9 @@ export interface NotificationPayload {
   actorName?: string;
   revisionId?: string;
   threadId?: string;
+  /** R.3 — the library item (snippet) a notification is about. */
+  libraryItemId?: string;
+  snippetName?: string;
   [key: string]: unknown;
 }
 
@@ -52,6 +57,11 @@ export const EMAIL_DEFAULT_ON: Record<NotificationEventType, boolean> = {
   comment_added: false,
   comment_reply: false,
   spec_stale: false,
+  // R.3 — a changed source under a live override is actionable for the doc owner
+  // (accept vs. keep), so email immediately; the snippet owner's override notice
+  // is informational, in-app by default.
+  snippet_source_changed: true,
+  snippet_override_created: false,
 };
 
 /** True if `value` is a known event type (guards untrusted/legacy rows). */
@@ -72,6 +82,8 @@ export const NOTIFICATION_EVENT_LABELS: Record<NotificationEventType, string> = 
   comment_reply: 'Reply in a thread',
   spec_stale: 'A spec change affects your document',
   review_overdue: 'Review overdue',
+  snippet_override_created: 'Your snippet was overridden in a document',
+  snippet_source_changed: 'A snippet you overrode changed at the source',
 };
 
 export interface NotificationChannelPrefs {
@@ -147,7 +159,9 @@ export function describeNotification(
 ): { title: string; href: string | null } {
   const doc = payload.documentTitle ?? 'a document';
   const who = payload.actorName ?? 'Someone';
+  const snippet = payload.snippetName ?? 'a snippet';
   const href = payload.documentId ? `/documents/${payload.documentId}` : null;
+  const snippetHref = payload.libraryItemId ? `/snippets/${payload.libraryItemId}` : null;
   switch (eventType) {
     case 'review_requested':
       return { title: `Review requested: ${doc}`, href };
@@ -167,6 +181,12 @@ export function describeNotification(
       return { title: `A spec change affects ${doc}`, href };
     case 'review_overdue':
       return { title: `Review overdue: ${doc}`, href };
+    case 'snippet_override_created':
+      // The snippet owner: link to their snippet (they may not own the document).
+      return { title: `${who} overrode “${snippet}” in ${doc}`, href: snippetHref ?? href };
+    case 'snippet_source_changed':
+      // The overriding doc owner: link to the document to accept or keep the override.
+      return { title: `“${snippet}” changed after you overrode it in ${doc}`, href };
     default:
       return { title: 'Notification', href };
   }

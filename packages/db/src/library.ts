@@ -171,8 +171,8 @@ export async function renameLibraryItem(
  * R.2c/R.4 — replace a library item's block content and record a new version. The
  * version snapshot is the rollback target (R.4) and the change history. Editing
  * the source propagates to every **live** embed automatically (they expand from
- * the current source at publish); overridden embeds become `source_changed` in
- * the override slice (R.3).
+ * the current source at publish); the caller reacts for **overridden** embeds by
+ * flagging them `source_changed` (`markOverriddenEmbedsSourceChanged`, R.3b).
  */
 export async function updateLibraryItemBlocks(
   client: SupabaseClient,

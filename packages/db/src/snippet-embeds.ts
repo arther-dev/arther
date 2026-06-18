@@ -270,7 +270,8 @@ export async function overrideSnippetEmbed(
 
 /**
  * R.3 — accept the source (§5.6): discard the override and return the embed to a
- * live link, so it follows the snippet again.
+ * live link, so it follows the snippet again. Works from `overridden` and
+ * `source_changed` alike.
  */
 export async function acceptSourceForEmbed(
   client: SupabaseClient,
@@ -288,4 +289,77 @@ export async function acceptSourceForEmbed(
     })
     .eq('block_id', input.blockId);
   if (error) throw new Error(`acceptSourceForEmbed: ${error.message}`);
+}
+
+export interface SourceChangedEmbed {
+  blockId: string;
+  documentId: string;
+  overrideCreatedBy: string | null;
+}
+
+/**
+ * R.3b — when a snippet source is re-edited, every embed that is currently
+ * **overridden** diverges from a source it no longer tracks, so flag it
+ * `source_changed` (the override content is kept — it still publishes — but the
+ * owner is told the source moved). Returns the affected embeds (with the doc + the
+ * owner who made the override) so the caller can notify them. Already-changed and
+ * live embeds are untouched; editor-write under RLS (the source editor is an editor).
+ */
+export async function markOverriddenEmbedsSourceChanged(
+  client: SupabaseClient,
+  libraryItemId: LibraryItemId,
+  userId: UserId,
+): Promise<SourceChangedEmbed[]> {
+  const { data, error } = await client
+    .from('snippet_embeds')
+    .update({ state: 'source_changed', updated_by: userId })
+    .eq('library_item_id', libraryItemId)
+    .eq('state', 'overridden')
+    .select('block_id, document_id, override_created_by');
+  if (error) throw new Error(`markOverriddenEmbedsSourceChanged: ${error.message}`);
+  return (data ?? []).map((r) => {
+    const row = r as { block_id: string; document_id: string; override_created_by: string | null };
+    return {
+      blockId: row.block_id,
+      documentId: row.document_id,
+      overrideCreatedBy: row.override_created_by ?? null,
+    };
+  });
+}
+
+/**
+ * R.3b — keep the override (§5.6): acknowledge a `source_changed` embed without
+ * adopting the new source. The override content is unchanged; we re-anchor
+ * `source_version_at_override` to the current source version and return to
+ * `overridden`, so the embed only re-flags on the *next* source edit.
+ */
+export async function keepOverrideForEmbed(
+  client: SupabaseClient,
+  input: { blockId: string; userId: UserId },
+): Promise<void> {
+  const { data: embed, error: e1 } = await client
+    .from('snippet_embeds')
+    .select('library_item_id')
+    .eq('block_id', input.blockId)
+    .maybeSingle();
+  if (e1) throw new Error(`keepOverrideForEmbed.lookup: ${e1.message}`);
+  if (!embed) throw new Error('keepOverrideForEmbed: embed not found');
+
+  const { data: version } = await client
+    .from('library_item_versions')
+    .select('version_id')
+    .eq('library_item_id', (embed as { library_item_id: string }).library_item_id)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const { error } = await client
+    .from('snippet_embeds')
+    .update({
+      state: 'overridden',
+      source_version_at_override: (version as { version_id: string } | null)?.version_id ?? null,
+      updated_by: input.userId,
+    })
+    .eq('block_id', input.blockId);
+  if (error) throw new Error(`keepOverrideForEmbed: ${error.message}`);
 }

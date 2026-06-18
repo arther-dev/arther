@@ -226,3 +226,121 @@ describe('snippet embed override / accept-source (R.3)', () => {
     await owner`delete from public.library_items where id = ${tmpItem}`;
   });
 });
+
+/**
+ * R.3b — the reactive `source_changed` transition. Re-editing a snippet source
+ * flags every **overridden** embed `source_changed` (the override content is kept
+ * — it still publishes — but the owner is told the source moved); **live** embeds
+ * are untouched (they just follow the new source). "Keep override" re-anchors to
+ * the current version and returns to `overridden`. The flip is editor-write.
+ */
+describe('snippet embed source_changed / keep-override (R.3b)', () => {
+  const override = [{ type: 'divider' }];
+  let srcItem: string;
+  let overriddenBlock: string;
+  let liveBlock: string;
+
+  async function placeOverridden(item: string, order: number): Promise<string> {
+    const blockId = (
+      await owner`
+        insert into public.blocks (workspace_id, document_id, revision_id, type, display_order, source, snippet_id, content, created_by)
+        values (${ws}, ${documentId}, ${revisionId}, 'snippet', ${order}, 'snippet', ${item},
+                ${owner.json({ type: 'snippet', snippet_id: item, snippet_name: 'Src changed' })}, ${ownerId})
+        returning id
+      `
+    )[0]!.id as string;
+    await owner`
+      insert into public.snippet_embeds (workspace_id, document_id, block_id, library_item_id, state, override_blocks, override_created_at, override_created_by)
+      values (${ws}, ${documentId}, ${blockId}, ${item}, 'overridden', ${owner.json(override)}, now(), ${ownerId})
+    `;
+    return blockId;
+  }
+
+  beforeAll(async () => {
+    srcItem = (
+      await owner`
+        insert into public.library_items (workspace_id, name, type, blocks, created_by)
+        values (${ws}, 'Src changed', 'snippet', ${owner.json([snippetParagraph])}, ${ownerId}) returning id
+      `
+    )[0]!.id as string;
+    overriddenBlock = await placeOverridden(srcItem, 30);
+    // A second, still-live embed on the same snippet — must survive the flip.
+    liveBlock = (
+      await owner`
+        insert into public.blocks (workspace_id, document_id, revision_id, type, display_order, source, snippet_id, content, created_by)
+        values (${ws}, ${documentId}, ${revisionId}, 'snippet', 31, 'snippet', ${srcItem},
+                ${owner.json({ type: 'snippet', snippet_id: srcItem, snippet_name: 'Src changed' })}, ${ownerId})
+        returning id
+      `
+    )[0]!.id as string;
+    await owner`
+      insert into public.snippet_embeds (workspace_id, document_id, block_id, library_item_id, state)
+      values (${ws}, ${documentId}, ${liveBlock}, ${srcItem}, 'live')
+    `;
+  });
+
+  afterAll(async () => {
+    await owner`delete from public.blocks where id in (${overriddenBlock}, ${liveBlock})`;
+    await owner`delete from public.library_items where id = ${srcItem}`;
+  });
+
+  it('a source edit flags only the overridden embed, keeping its override content', async () => {
+    // Editing the source records a new version (the rollback target).
+    await owner`
+      insert into public.library_item_versions (workspace_id, library_item_id, blocks_snapshot, change_note, created_by)
+      values (${ws}, ${srcItem}, ${owner.json([snippetParagraph, { type: 'divider' }])}, 'Edited', ${ownerId})
+    `;
+    // The reactive flip: overridden → source_changed, scoped to this snippet.
+    const flipped = await owner`
+      update public.snippet_embeds set state = 'source_changed', updated_by = ${ownerId}
+      where library_item_id = ${srcItem} and state = 'overridden'
+      returning block_id, document_id, override_created_by
+    `;
+    expect(flipped).toHaveLength(1);
+    expect(flipped[0]!.block_id).toBe(overriddenBlock);
+    expect(flipped[0]!.document_id).toBe(documentId);
+    expect(flipped[0]!.override_created_by).toBe(ownerId);
+
+    // The override content is preserved (it still publishes until accept/keep).
+    const row = (
+      await owner`select state, override_blocks from public.snippet_embeds where block_id = ${overriddenBlock}`
+    )[0]!;
+    expect(row.state).toBe('source_changed');
+    const stored =
+      typeof row.override_blocks === 'string' ? JSON.parse(row.override_blocks) : row.override_blocks;
+    expect(stored).toEqual(override);
+
+    // The live embed on the same snippet is untouched.
+    const live = (await owner`select state from public.snippet_embeds where block_id = ${liveBlock}`)[0]!;
+    expect(live.state).toBe('live');
+  });
+
+  it('keep-override returns a source_changed embed to overridden and re-anchors the version', async () => {
+    const version = (
+      await owner`
+        select version_id from public.library_item_versions
+        where library_item_id = ${srcItem} order by created_at desc limit 1
+      `
+    )[0]!.version_id as string;
+    await owner`
+      update public.snippet_embeds
+      set state = 'overridden', source_version_at_override = ${version}, updated_by = ${ownerId}
+      where block_id = ${overriddenBlock}
+    `;
+    const row = (
+      await owner`select state, source_version_at_override from public.snippet_embeds where block_id = ${overriddenBlock}`
+    )[0]!;
+    expect(row.state).toBe('overridden');
+    expect(row.source_version_at_override).toBe(version);
+  });
+
+  it("a viewer cannot flip an embed to source_changed (RLS — zero rows)", async () => {
+    const touched = await viewer`
+      update public.snippet_embeds set state = 'source_changed'
+      where block_id = ${overriddenBlock} returning block_id
+    `;
+    expect(touched).toHaveLength(0);
+    const after = (await owner`select state from public.snippet_embeds where block_id = ${overriddenBlock}`)[0]!;
+    expect(after.state).toBe('overridden');
+  });
+});

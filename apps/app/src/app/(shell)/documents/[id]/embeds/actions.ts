@@ -3,15 +3,21 @@
 import { revalidatePath } from 'next/cache';
 import {
   acceptSourceForEmbed,
+  createServiceClient,
+  dispatchNotification,
   getActiveWorkspace,
   getDocument,
+  getLibraryItem,
+  keepOverrideForEmbed,
   overrideSnippetEmbed,
 } from '@arther/db';
 import {
   blockContentSchema,
   canManageDocumentLifecycle,
   type DocumentId,
+  type LibraryItemId,
   type UserId,
+  type WorkspaceId,
 } from '@arther/types';
 import { getSupabaseServer } from '../../../../../lib/supabase/server';
 
@@ -42,11 +48,12 @@ async function authorizeEmbedOwner(blockId: string) {
 
   const { data: embed, error } = await supabase
     .from('snippet_embeds')
-    .select('document_id')
+    .select('document_id, library_item_id')
     .eq('block_id', blockId)
     .maybeSingle();
   if (error || !embed) return { error: 'Snippet embed not found.' as const };
-  const document = await getDocument(supabase, (embed as { document_id: string }).document_id as DocumentId);
+  const row = embed as { document_id: string; library_item_id: string };
+  const document = await getDocument(supabase, row.document_id as DocumentId);
   if (!document) return { error: 'Document not found.' as const };
   if (
     !canManageDocumentLifecycle({
@@ -57,7 +64,13 @@ async function authorizeEmbedOwner(blockId: string) {
   ) {
     return { error: 'Only the document owner can override snippets in it.' as const };
   }
-  return { supabase, userId: user.id as UserId, workspaceId: workspace.id, document };
+  return {
+    supabase,
+    userId: user.id as UserId,
+    workspaceId: workspace.id,
+    document,
+    libraryItemId: row.library_item_id as LibraryItemId,
+  };
 }
 
 export async function overrideSnippetEmbedAction(
@@ -77,7 +90,7 @@ export async function overrideSnippetEmbedAction(
       overrideBlocks: parsed.data,
       userId: auth.userId,
     });
-    // R.3b — notify the snippet owner of the override (snippet.override_created).
+    await notifyOverrideCreated(auth);
     revalidatePath(`/documents/${auth.document.id}`);
   } catch {
     return { ok: false, error: 'Could not override the snippet.' };
@@ -96,4 +109,61 @@ export async function acceptSourceForEmbedAction(blockId: string): Promise<Embed
     return { ok: false, error: 'Could not accept the source.' };
   }
   return { ok: true };
+}
+
+/**
+ * R.3b — keep the override on a `source_changed` embed: acknowledge the source
+ * moved without adopting it, re-anchoring to the current source version so the
+ * embed only re-flags on the next edit. Document-owner gated, like the others.
+ */
+export async function keepOverrideForEmbedAction(blockId: string): Promise<EmbedActionResult> {
+  const auth = await authorizeEmbedOwner(blockId);
+  if ('error' in auth) return { ok: false, error: auth.error };
+
+  try {
+    await keepOverrideForEmbed(auth.supabase, { blockId, userId: auth.userId });
+    revalidatePath(`/documents/${auth.document.id}`);
+  } catch {
+    return { ok: false, error: 'Could not keep the override.' };
+  }
+  return { ok: true };
+}
+
+/**
+ * R.3b — tell the snippet's owner that their snippet was overridden in a document
+ * (`snippet_override_created`). Best-effort and service-role (the dispatch needs
+ * the system write path); never fails the override. The actor and a snippet with
+ * no distinct owner are skipped.
+ */
+async function notifyOverrideCreated(auth: {
+  workspaceId: WorkspaceId;
+  userId: string;
+  document: { id: string; title: string };
+  libraryItemId: LibraryItemId;
+}): Promise<void> {
+  try {
+    const service = createServiceClient();
+    const item = await getLibraryItem(service, auth.libraryItemId);
+    if (!item?.ownerId || item.ownerId === auth.userId) return;
+    const { data: actor } = await service
+      .from('users')
+      .select('name, email')
+      .eq('id', auth.userId)
+      .maybeSingle();
+    await dispatchNotification(service, {
+      workspaceId: auth.workspaceId,
+      recipientIds: [item.ownerId],
+      eventType: 'snippet_override_created',
+      payload: {
+        documentId: auth.document.id,
+        documentTitle: auth.document.title,
+        libraryItemId: auth.libraryItemId,
+        snippetName: item.name,
+        actorName:
+          (actor?.name as string | null) ?? (actor?.email as string | undefined) ?? 'Someone',
+      },
+    });
+  } catch {
+    // ignore — the override succeeded; the notice is best-effort.
+  }
 }

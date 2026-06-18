@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import type { DocumentSnippetEmbed } from '@arther/db';
 import { AcceptSourceButton } from './AcceptSourceButton';
+import { KeepOverrideButton } from './KeepOverrideButton';
 
 /**
  * R.3 — the snippet-embed override panel on the document page (§5.4/§5.6). For the
@@ -48,6 +49,7 @@ export function SnippetEmbedsPanel({
             >
               {embed.state === 'live' ? 'Override' : 'Edit override'}
             </Link>
+            {embed.state === 'source_changed' ? <KeepOverrideButton blockId={embed.blockId} /> : null}
             {embed.state !== 'live' ? <AcceptSourceButton blockId={embed.blockId} /> : null}
           </li>
         ))}
