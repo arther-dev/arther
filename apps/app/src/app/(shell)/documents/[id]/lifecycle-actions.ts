@@ -8,6 +8,7 @@ import {
   createServiceClient,
   DbRuleError,
   dispatchNotification,
+  duplicateDocument,
   expandSnippetsForPublish,
   getActiveWorkspace,
   getDocument,
@@ -381,6 +382,53 @@ export async function publishDocumentAction(documentId: string): Promise<Lifecyc
   } catch (err) {
     if (err instanceof DbRuleError) return { ok: false, error: err.message };
     return { ok: false, error: 'Could not publish the document.' };
+  }
+}
+
+export interface DuplicateResult {
+  ok: boolean;
+  error?: string;
+  /** The new Draft document's id, for the client to navigate to. */
+  newDocumentId?: string;
+}
+
+/**
+ * R.8 — duplicate a document into a new Draft (same product). Any editor can
+ * duplicate (it creates a *new* document they own — not an owner-of-source
+ * operation), so it's `doc.write`-gated rather than lifecycle-owner-gated. The
+ * copy carries blocks, references, and snippet embeds (live); the author lands in
+ * the new draft's editor.
+ */
+export async function duplicateDocumentAction(documentId: string): Promise<DuplicateResult> {
+  if (!UUID_RE.test(documentId)) return { ok: false, error: 'Invalid document.' };
+  const supabase = await getSupabaseServer();
+  if (!supabase) return { ok: false, error: 'Not configured in this environment yet.' };
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: 'Not signed in.' };
+  const workspace = await getActiveWorkspace(supabase);
+  if (!workspace) return { ok: false, error: 'No workspace yet.' };
+
+  const canDo = createCanDo(membershipLookupFor(supabase));
+  if (!(await canDo({ id: user.id as UserId }, 'doc.write', { workspaceId: workspace.id }))) {
+    return { ok: false, error: 'Viewers can’t duplicate documents.' };
+  }
+
+  const source = await getDocument(supabase, documentId as DocumentId);
+  if (!source) return { ok: false, error: 'Document not found.' };
+
+  try {
+    const result = await duplicateDocument(supabase, {
+      workspaceId: workspace.id,
+      sourceDocumentId: documentId as DocumentId,
+      title: `Copy of ${source.title}`,
+      userId: user.id as UserId,
+    });
+    revalidatePath('/specs');
+    return { ok: true, newDocumentId: result.newDocumentId };
+  } catch {
+    return { ok: false, error: 'Could not duplicate the document.' };
   }
 }
 

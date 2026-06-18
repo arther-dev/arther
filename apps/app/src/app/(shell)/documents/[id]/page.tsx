@@ -30,6 +30,7 @@ import { AccessControl } from './AccessControl';
 import { CommentsPanel } from './CommentsPanel';
 import { DocumentAnalytics } from './DocumentAnalytics';
 import { DocumentLifecycle } from './DocumentLifecycle';
+import { DuplicateDocumentButton } from './DuplicateDocumentButton';
 import { ApprovalPanel, type PanelRole } from './ApprovalPanel';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -215,6 +216,9 @@ export default async function DocumentPage({ params }: { params: Promise<{ id: s
             {tree.revision.state}
           </span>
           <span style={{ flex: 1 }} />
+          {workspace.role !== 'viewer' ? (
+            <DuplicateDocumentButton documentId={tree.document.id} />
+          ) : null}
           {isDraft ? (
             <Link className="ui-btn ui-btn--primary" href={`/documents/${tree.document.id}/edit`}>
               Edit
