@@ -1,7 +1,15 @@
 'use server';
 
 import { createCanDo } from '@arther/authz';
-import { getActiveWorkspace, membershipLookupFor, updateLibraryItemBlocks } from '@arther/db';
+import {
+  createServiceClient,
+  dispatchNotification,
+  getActiveWorkspace,
+  getLibraryItem,
+  markOverriddenEmbedsSourceChanged,
+  membershipLookupFor,
+  updateLibraryItemBlocks,
+} from '@arther/db';
 import { blockContentSchema, libraryItemIdSchema, type LibraryItemId, type UserId } from '@arther/types';
 import { getSupabaseServer } from '../../../../../lib/supabase/server';
 
@@ -51,6 +59,45 @@ export async function saveLibraryItemBlocksAction(
     });
   } catch {
     return { ok: false, error: 'Could not save the library item.' };
+  }
+
+  // R.3b — re-editing the source diverges any *overridden* embed from a snapshot
+  // it no longer tracks: flag those `source_changed` and tell each overriding doc
+  // owner so they can accept the new source or keep their override. Best-effort —
+  // the save already succeeded; live embeds simply follow the new source.
+  try {
+    const affected = await markOverriddenEmbedsSourceChanged(
+      supabase,
+      idParsed.data as LibraryItemId,
+      user.id as UserId,
+    );
+    if (affected.length > 0) {
+      const service = createServiceClient();
+      const item = await getLibraryItem(service, idParsed.data as LibraryItemId);
+      const docIds = [...new Set(affected.map((a) => a.documentId))];
+      const { data: docs } = await service.from('documents').select('id, title').in('id', docIds);
+      const titleById = new Map((docs ?? []).map((d) => [d.id as string, d.title as string]));
+      const seen = new Set<string>();
+      for (const emb of affected) {
+        if (!emb.overrideCreatedBy || emb.overrideCreatedBy === user.id) continue;
+        const key = `${emb.overrideCreatedBy}:${emb.documentId}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        await dispatchNotification(service, {
+          workspaceId: workspace.id,
+          recipientIds: [emb.overrideCreatedBy],
+          eventType: 'snippet_source_changed',
+          payload: {
+            documentId: emb.documentId,
+            documentTitle: titleById.get(emb.documentId),
+            libraryItemId: idParsed.data,
+            snippetName: item?.name,
+          },
+        });
+      }
+    }
+  } catch {
+    // best-effort — the reactive flag + notice never fail the save.
   }
   return { ok: true };
 }
