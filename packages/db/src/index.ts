@@ -226,6 +226,7 @@ export {
   getLibraryItem,
   listLibraryItems,
   renameLibraryItem,
+  rollbackLibraryItem,
   setLibraryItemArchived,
   updateLibraryItemBlocks,
   type LibraryItemDetail,

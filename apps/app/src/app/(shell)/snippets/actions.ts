@@ -7,6 +7,7 @@ import {
   getActiveWorkspace,
   membershipLookupFor,
   renameLibraryItem,
+  rollbackLibraryItem,
   setLibraryItemArchived,
 } from '@arther/db';
 import {
@@ -18,6 +19,14 @@ import {
   type UserId,
 } from '@arther/types';
 import { getSupabaseServer } from '../../../lib/supabase/server';
+import { reactToSnippetSourceChange } from './_lib/source-edit-reaction';
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export interface SnippetActionResult {
+  ok: boolean;
+  error?: string;
+}
 
 export interface SnippetFormState {
   error?: string;
@@ -99,6 +108,45 @@ export async function renameSnippetAction(
   revalidatePath('/snippets');
   revalidatePath(`/snippets/${idParsed.data}`);
   return { done: true };
+}
+
+/**
+ * R.4 — roll a snippet back to a prior version (§3.7). Editor-gated; records a new
+ * "Rolled back" version (history is append-only) and propagates to live embeds at
+ * the next publish, while overridden embeds are flagged `source_changed` and their
+ * owners notified — identical to a forward edit.
+ */
+export async function rollbackSnippetAction(
+  id: string,
+  versionId: string,
+): Promise<SnippetActionResult> {
+  const idParsed = libraryItemIdSchema.safeParse(id);
+  if (!idParsed.success || !UUID_RE.test(versionId)) {
+    return { ok: false, error: 'Invalid version reference.' };
+  }
+
+  const auth = await authorizeEdit();
+  if ('error' in auth) return { ok: false, error: auth.error };
+
+  try {
+    await rollbackLibraryItem(auth.supabase, {
+      workspaceId: auth.workspace.id,
+      id: idParsed.data,
+      versionId,
+      userId: auth.userId,
+    });
+  } catch {
+    return { ok: false, error: 'Could not roll back to that version.' };
+  }
+
+  await reactToSnippetSourceChange(auth.supabase, {
+    workspaceId: auth.workspace.id,
+    libraryItemId: idParsed.data,
+    actorId: auth.userId,
+  });
+  revalidatePath(`/snippets/${idParsed.data}`);
+  revalidatePath(`/snippets/${idParsed.data}/edit`);
+  return { ok: true };
 }
 
 export async function setSnippetArchivedAction(

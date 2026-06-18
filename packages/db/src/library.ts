@@ -201,6 +201,41 @@ export async function updateLibraryItemBlocks(
 }
 
 /**
+ * R.4 — roll a library item back to a prior version (§3.7). Rollback is just a
+ * forward edit whose content is an older snapshot: it writes the snapshot as the
+ * current blocks and records a **new** version (history is append-only — the
+ * rolled-back-to version is preserved, and a fresh "Rolled back" version tops the
+ * stack). Live embeds follow it at the next publish; the caller reacts for
+ * overridden embeds exactly as for an edit (`reactToSnippetSourceChange`). Returns
+ * the restored blocks. Editor-gated by RLS.
+ */
+export async function rollbackLibraryItem(
+  client: SupabaseClient,
+  input: { workspaceId: WorkspaceId; id: LibraryItemId; versionId: string; userId: UserId },
+): Promise<BlockContent[]> {
+  const { data, error } = await client
+    .from('library_item_versions')
+    .select('blocks_snapshot, created_at')
+    .eq('version_id', input.versionId)
+    .eq('library_item_id', input.id)
+    .maybeSingle();
+  if (error) throw new Error(`rollbackLibraryItem.version: ${error.message}`);
+  if (!data) throw new Error('rollbackLibraryItem: version not found');
+
+  const raw = (data as { blocks_snapshot: BlockContent[] }).blocks_snapshot;
+  const blocks = (typeof raw === 'string' ? JSON.parse(raw) : raw) as BlockContent[];
+  const when = new Date((data as { created_at: string }).created_at).toISOString().slice(0, 10);
+  await updateLibraryItemBlocks(client, {
+    workspaceId: input.workspaceId,
+    id: input.id,
+    blocks,
+    changeNote: `Rolled back to the version from ${when}`,
+    userId: input.userId,
+  });
+  return blocks;
+}
+
+/**
  * Archive (or restore) a library item. Archiving is the safe alternative to
  * deletion for a snippet with embeds (R.5 converts those embeds to static copies;
  * this slice flips the flag — the deletion guard already prevents a hard delete).
