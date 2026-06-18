@@ -344,3 +344,85 @@ describe('snippet embed source_changed / keep-override (R.3b)', () => {
     expect(after.state).toBe('overridden');
   });
 });
+
+/**
+ * R.5 — archiving a snippet converts its **live** embeds to static copies (§3.8):
+ * each is frozen to the source's current blocks (`override_blocks`, state →
+ * overridden) so it keeps its content once the source is archived. Already-
+ * overridden embeds keep their own copy. The published snapshot then expands from
+ * the frozen copy (state ≠ live + override_blocks), never from the archived source.
+ */
+describe('archive → static embed conversion (R.5)', () => {
+  const sourceBlocks = [
+    { type: 'paragraph', content: { alignment: 'left', nodes: [] } },
+    { type: 'divider' },
+  ];
+
+  it('freezes a live embed to the source blocks, leaving an existing override alone', async () => {
+    const item = (
+      await owner`
+        insert into public.library_items (workspace_id, name, type, blocks, created_by)
+        values (${ws}, 'Archive me', 'snippet', ${owner.json(sourceBlocks)}, ${ownerId}) returning id
+      `
+    )[0]!.id as string;
+    const place = async (order: number): Promise<string> =>
+      (
+        await owner`
+          insert into public.blocks (workspace_id, document_id, revision_id, type, display_order, source, snippet_id, content, created_by)
+          values (${ws}, ${documentId}, ${revisionId}, 'snippet', ${order}, 'snippet', ${item},
+                  ${owner.json({ type: 'snippet', snippet_id: item, snippet_name: 'Archive me' })}, ${ownerId})
+          returning id
+        `
+      )[0]!.id as string;
+    const liveBlock = await place(40);
+    await owner`
+      insert into public.snippet_embeds (workspace_id, document_id, block_id, library_item_id, state)
+      values (${ws}, ${documentId}, ${liveBlock}, ${item}, 'live')
+    `;
+    const ovrBlock = await place(41);
+    const userOverride = [{ type: 'divider' }];
+    await owner`
+      insert into public.snippet_embeds (workspace_id, document_id, block_id, library_item_id, state, override_blocks, override_created_by)
+      values (${ws}, ${documentId}, ${ovrBlock}, ${item}, 'overridden', ${owner.json(userOverride)}, ${ownerId})
+    `;
+
+    // The archive conversion: freeze only the live embeds to the source blocks.
+    const frozen = await owner`
+      update public.snippet_embeds set state = 'overridden', override_blocks = ${owner.json(sourceBlocks)}, override_created_by = ${ownerId}
+      where library_item_id = ${item} and state = 'live'
+      returning block_id
+    `;
+    expect(frozen).toHaveLength(1);
+    expect(frozen[0]!.block_id).toBe(liveBlock);
+
+    // The (formerly live) embed now holds a self-contained copy of the source.
+    const frozenRow = (
+      await owner`select state, override_blocks from public.snippet_embeds where block_id = ${liveBlock}`
+    )[0]!;
+    expect(frozenRow.state).toBe('overridden');
+    const frozenBlocks =
+      typeof frozenRow.override_blocks === 'string'
+        ? JSON.parse(frozenRow.override_blocks)
+        : frozenRow.override_blocks;
+    expect(frozenBlocks).toEqual(sourceBlocks);
+
+    // The user's pre-existing override is untouched (its own copy wins).
+    const keptRow = (
+      await owner`select override_blocks from public.snippet_embeds where block_id = ${ovrBlock}`
+    )[0]!;
+    const keptBlocks =
+      typeof keptRow.override_blocks === 'string'
+        ? JSON.parse(keptRow.override_blocks)
+        : keptRow.override_blocks;
+    expect(keptBlocks).toEqual(userOverride);
+
+    // With every embed frozen, the source can be archived without breaking content.
+    await owner`update public.library_items set archived_at = now(), archived_by = ${ownerId} where id = ${item}`;
+    expect(
+      await owner`select archived_at from public.library_items where id = ${item} and archived_at is not null`,
+    ).toHaveLength(1);
+
+    await owner`delete from public.blocks where id in (${liveBlock}, ${ovrBlock})`;
+    await owner`delete from public.library_items where id = ${item}`;
+  });
+});

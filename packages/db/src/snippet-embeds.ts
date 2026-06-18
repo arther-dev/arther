@@ -181,26 +181,33 @@ export interface DocumentSnippetEmbed {
   libraryItemId: string;
   libraryItemName: string;
   state: SnippetEmbedState;
+  /** R.5 — the source snippet is archived; the embed is a frozen static copy. */
+  sourceArchived: boolean;
 }
 
-/** R.3 — the snippet embeds in a document, with their override state, for the panel. */
+/** R.3/R.5 — the snippet embeds in a document, with their override state + whether
+ * the source is archived (a frozen static copy), for the panel. */
 export async function listDocumentSnippetEmbeds(
   client: SupabaseClient,
   documentId: DocumentId,
 ): Promise<DocumentSnippetEmbed[]> {
   const { data, error } = await client
     .from('snippet_embeds')
-    .select('block_id, state, library_item_id, library_items!inner(name)')
+    .select('block_id, state, library_item_id, library_items!inner(name, archived_at)')
     .eq('document_id', documentId);
   if (error) throw new Error(`listDocumentSnippetEmbeds: ${error.message}`);
   return (data ?? []).map((r) => {
     const row = r as Record<string, unknown>;
-    const item = row.library_items as { name: string } | { name: string }[];
+    const item = row.library_items as
+      | { name: string; archived_at: string | null }
+      | { name: string; archived_at: string | null }[];
+    const source = Array.isArray(item) ? item[0] : item;
     return {
       blockId: row.block_id as string,
       libraryItemId: row.library_item_id as string,
-      libraryItemName: (Array.isArray(item) ? item[0]?.name : item.name) ?? 'Snippet',
+      libraryItemName: source?.name ?? 'Snippet',
       state: row.state as SnippetEmbedState,
+      sourceArchived: source?.archived_at != null,
     };
   });
 }
@@ -362,4 +369,45 @@ export async function keepOverrideForEmbed(
     })
     .eq('block_id', input.blockId);
   if (error) throw new Error(`keepOverrideForEmbed: ${error.message}`);
+}
+
+/**
+ * R.5 — archiving a snippet converts its **live** embeds to static copies (§3.8),
+ * so they keep their content instead of breaking when the source is gone. Each
+ * live embed is frozen to the source's current blocks (`override_blocks`, state →
+ * `overridden`); embeds already overridden / source_changed already hold a
+ * self-contained copy and are left untouched. Returns the number frozen. Run this
+ * **before** flipping `archived_at`. Editor-gated by RLS.
+ */
+export async function archiveConvertEmbedsToStatic(
+  client: SupabaseClient,
+  libraryItemId: LibraryItemId,
+  userId: UserId,
+): Promise<number> {
+  const item = await getLibraryItem(client, libraryItemId);
+  const sourceBlocks = item?.blocks ?? [];
+
+  const { data: version } = await client
+    .from('library_item_versions')
+    .select('version_id')
+    .eq('library_item_id', libraryItemId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const { data, error } = await client
+    .from('snippet_embeds')
+    .update({
+      state: 'overridden',
+      override_blocks: sourceBlocks,
+      override_created_at: new Date().toISOString(),
+      override_created_by: userId,
+      source_version_at_override: (version as { version_id: string } | null)?.version_id ?? null,
+      updated_by: userId,
+    })
+    .eq('library_item_id', libraryItemId)
+    .eq('state', 'live')
+    .select('block_id');
+  if (error) throw new Error(`archiveConvertEmbedsToStatic: ${error.message}`);
+  return (data ?? []).length;
 }

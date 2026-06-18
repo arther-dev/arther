@@ -102,6 +102,14 @@ export async function acceptSourceForEmbedAction(blockId: string): Promise<Embed
   const auth = await authorizeEmbedOwner(blockId);
   if ('error' in auth) return { ok: false, error: auth.error };
 
+  // R.5 — accepting the source re-links the embed to the live snippet; that makes
+  // no sense once the source is archived (a frozen static copy has nothing live to
+  // follow). The panel hides the action; this guards the path defensively.
+  const item = await getLibraryItem(auth.supabase, auth.libraryItemId);
+  if (item?.archivedAt) {
+    return { ok: false, error: 'The source snippet is archived — this is now a static copy.' };
+  }
+
   try {
     await acceptSourceForEmbed(auth.supabase, { blockId, userId: auth.userId });
     revalidatePath(`/documents/${auth.document.id}`);

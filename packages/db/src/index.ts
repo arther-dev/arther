@@ -235,6 +235,7 @@ export {
 } from './library';
 export {
   acceptSourceForEmbed,
+  archiveConvertEmbedsToStatic,
   expandSnippetsForPublish,
   getSnippetEmbedContent,
   insertSnippetEmbed,

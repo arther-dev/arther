@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { createCanDo } from '@arther/authz';
 import {
+  archiveConvertEmbedsToStatic,
   createLibraryItem,
   getActiveWorkspace,
   membershipLookupFor,
@@ -161,6 +162,12 @@ export async function setSnippetArchivedAction(
   if ('error' in auth) return { error: auth.error };
 
   try {
+    // R.5 — archiving converts live embeds to static copies first (§3.8), so they
+    // keep their content rather than breaking when the source is archived. (Restore
+    // leaves the frozen copies as overrides; the owner can accept-source to re-link.)
+    if (archived) {
+      await archiveConvertEmbedsToStatic(auth.supabase, idParsed.data, auth.userId);
+    }
     await setLibraryItemArchived(auth.supabase, {
       id: idParsed.data,
       archived,
