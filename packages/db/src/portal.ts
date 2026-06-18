@@ -43,6 +43,13 @@ export interface PortalDocument {
   resolutionManifest: SpecFieldResolution;
 }
 
+/** C9.6 — a public document resolved to its workspace + id, for analytics metering. */
+export interface PortalDocumentRef {
+  workspaceId: WorkspaceId;
+  documentId: DocumentId;
+  version: string;
+}
+
 /** C9.3 — one public document for the portal sitemap (latest publication per doc). */
 export interface SitemapEntry {
   workspaceSlug: string;
@@ -207,6 +214,53 @@ export async function getGatedPortalDocument(
     version: snap.version,
     blockTree: (snap.block_tree as BlockContent[]) ?? [],
     resolutionManifest: (snap.resolution_manifest as SpecFieldResolution) ?? {},
+  };
+}
+
+/**
+ * C9.6 — resolve a portal URL's coordinates (`/{workspaceSlug}/{productId}/
+ * {documentSlug}`) to a `{ workspaceId, documentId }` ref for analytics metering.
+ * Returns null unless they name a real, non-archived, **public** publication —
+ * so a fabricated beacon resolves to nothing and records no event (the same
+ * public filter the serve path uses, never trusting client-supplied ids).
+ */
+export async function resolvePortalDocumentRef(
+  service: SupabaseClient,
+  input: { workspaceSlug: string; productId: string; documentSlug: string; version?: string },
+): Promise<PortalDocumentRef | null> {
+  const workspace = await getPortalWorkspace(service, input.workspaceSlug);
+  if (!workspace) return null;
+
+  const { data: doc, error: docErr } = await service
+    .from('documents')
+    .select('id, archived_at')
+    .eq('workspace_id', workspace.id)
+    .eq('product_id', input.productId)
+    .eq('slug', input.documentSlug)
+    .is('archived_at', null)
+    .maybeSingle();
+  if (docErr) throw new Error(`resolvePortalDocumentRef.document: ${docErr.message}`);
+  if (!doc || (doc as { archived_at: string | null }).archived_at) return null;
+
+  let query = service
+    .from('published_snapshots')
+    .select('version, access_config')
+    .eq('workspace_id', workspace.id)
+    .eq('document_id', (doc as { id: string }).id)
+    .is('archived_at', null);
+  if (input.version) query = query.eq('version', input.version);
+  const { data: snaps, error: snapErr } = await query
+    .order('published_at', { ascending: false })
+    .limit(1);
+  if (snapErr) throw new Error(`resolvePortalDocumentRef.snapshot: ${snapErr.message}`);
+
+  const snap = (snaps ?? [])[0] as { version: string; access_config: unknown } | undefined;
+  if (!snap || !isPublic(snap.access_config)) return null;
+
+  return {
+    workspaceId: workspace.id,
+    documentId: (doc as { id: string }).id as DocumentId,
+    version: snap.version,
   };
 }
 

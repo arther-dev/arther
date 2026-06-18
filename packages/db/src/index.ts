@@ -162,9 +162,11 @@ export {
   getPortalWorkspace,
   listPortalPublishedDocuments,
   listSitemapEntries,
+  resolvePortalDocumentRef,
   searchPortalDocuments,
   type PortalDocument,
   type PortalDocumentListing,
+  type PortalDocumentRef,
   type PortalSearchHit,
   type PortalWorkspace,
   type SitemapEntry,
@@ -221,8 +223,11 @@ export {
 } from './placeholders';
 export {
   recordAnalyticsEvent,
+  recordPortalEvent,
   type AnalyticsEvent,
   type AnalyticsEventType,
+  type PortalAnalyticsEvent,
+  type PortalAnalyticsEventType,
 } from './analytics';
 export {
   resolveDomainOwnersForDocument,

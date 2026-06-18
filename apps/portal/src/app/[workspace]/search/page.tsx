@@ -1,6 +1,7 @@
 import Link from 'next/link';
-import { getPortalWorkspace, searchPortalDocuments } from '@arther/db';
+import { getPortalWorkspace, recordPortalEvent, searchPortalDocuments } from '@arther/db';
 import { getPortalDb } from '../../../lib/portal-db';
+import { readVisitorId } from '../../../lib/portal-visitor';
 
 // C9.3 — search results are query-dependent; keep them out of the index.
 export const metadata = { robots: { index: false, follow: false } };
@@ -24,6 +25,20 @@ export default async function PortalSearch({
   const db = getPortalDb();
   const workspace = db ? await getPortalWorkspace(db, workspaceSlug) : null;
   const hits = db && workspace && query ? await searchPortalDocuments(db, workspace.id, query) : [];
+
+  // C9.6 — meter the search (best-effort). The page is dynamic (query-dependent),
+  // so a server-side record runs once per submitted search, not per cached view.
+  if (db && workspace && query) {
+    try {
+      await recordPortalEvent(
+        db,
+        { workspaceId: workspace.id },
+        { eventType: 'portal_searched', sessionId: await readVisitorId(), payload: { query, results: hits.length } },
+      );
+    } catch {
+      // analytics are best-effort
+    }
+  }
 
   return (
     <main className="portal-shell">

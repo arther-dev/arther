@@ -21,7 +21,8 @@ export type RateLimitName =
   | 'import'
   | 'generation'
   | 'magic_link_issue'
-  | 'magic_link_access';
+  | 'magic_link_access'
+  | 'portal_track';
 
 export interface RateLimitResult {
   /** True when the request is within budget and may proceed. */
@@ -60,6 +61,9 @@ export const RATE_LIMITS: Record<RateLimitName, LimitConfig> = {
   // C9.4 — anonymous magic-link exchange at the portal, keyed by client IP
   // (blunts token probing; a legitimate visitor exchanges a link once).
   magic_link_access: { limit: 15, windowSeconds: 60 },
+  // C9.6 — anonymous portal analytics beacons (view/search), keyed by client IP.
+  // Generous (a visitor browsing fires one per page) but caps event-spam floods.
+  portal_track: { limit: 60, windowSeconds: 60 },
 };
 
 /** Both REST keys present ⇒ Upstash is the shared store; otherwise in-memory. */
