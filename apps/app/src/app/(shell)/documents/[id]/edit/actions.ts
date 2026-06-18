@@ -14,6 +14,7 @@ import {
 } from '@arther/ai-gateway';
 import {
   applyBlockRegeneration,
+  createLibraryItem,
   createServiceClient,
   deleteBlock,
   getActiveWorkspace,
@@ -36,6 +37,7 @@ import {
 import {
   blockContentSchema,
   blockPlainText,
+  createLibraryItemSchema,
   defaultBlockContent,
   formatFieldValue,
   INSERTABLE_BLOCK_TYPES,
@@ -333,6 +335,53 @@ export async function pasteBlocksAction(input: {
     };
   } catch {
     return { ok: false, error: 'Could not paste the blocks.' };
+  }
+}
+
+export interface SaveToLibraryResult extends SaveResult {
+  /** The new library item id, for linking the author to it. */
+  id?: string;
+}
+
+const saveToLibraryBlocksSchema = blockContentSchema.array().min(1).max(100);
+
+/**
+ * R.2 — the §5.1 promotion flow: turn the editor's selected blocks into a reusable
+ * library item (snippet or template). The selected blocks' content travels (the
+ * source doc's spec/brief references don't, like the clipboard), is re-validated
+ * through `blockContentSchema`, and `createLibraryItem` records the first version.
+ * Editor-seat gated (`doc.write`); reading content to promote it doesn't require
+ * the document to be in Draft (it doesn't mutate the document — that replacement,
+ * for a live snippet embed, is the next R.2 slice). The author gets a link to it.
+ */
+export async function saveSelectionToLibraryAction(input: {
+  name: string;
+  type: string;
+  blocks: unknown[];
+}): Promise<SaveToLibraryResult> {
+  const meta = createLibraryItemSchema.safeParse({ name: input.name, type: input.type });
+  if (!meta.success) return { ok: false, error: meta.error.issues[0]!.message };
+  const blocks = saveToLibraryBlocksSchema.safeParse(input.blocks);
+  if (!blocks.success) return { ok: false, error: 'Select one or more valid blocks to save.' };
+
+  const base = await authorizeBase();
+  if ('error' in base) return { ok: false, error: base.error };
+  const canDo = createCanDo(membershipLookupFor(base.supabase));
+  if (!(await canDo({ id: base.userId }, 'doc.write', { workspaceId: base.workspaceId }))) {
+    return { ok: false, error: 'Viewers can’t save to the library.' };
+  }
+
+  try {
+    const id = await createLibraryItem(base.supabase, {
+      workspaceId: base.workspaceId,
+      userId: base.userId,
+      name: meta.data.name,
+      type: meta.data.type,
+      blocks: blocks.data,
+    });
+    return { ok: true, id };
+  } catch {
+    return { ok: false, error: 'Could not save to the library.' };
   }
 }
 
