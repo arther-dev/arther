@@ -226,6 +226,7 @@ export {
   getLibraryItem,
   listLibraryItems,
   renameLibraryItem,
+  rollbackLibraryItem,
   setLibraryItemArchived,
   updateLibraryItemBlocks,
   type LibraryItemDetail,
@@ -234,6 +235,7 @@ export {
 } from './library';
 export {
   acceptSourceForEmbed,
+  archiveConvertEmbedsToStatic,
   expandSnippetsForPublish,
   getSnippetEmbedContent,
   insertSnippetEmbed,
@@ -248,6 +250,13 @@ export {
   type SourceChangedEmbed,
 } from './snippet-embeds';
 export { duplicateDocument, type DuplicationResult } from './duplication';
+export {
+  clearSnippetStaleness,
+  flagSnippetsForFieldChange,
+  listSnippetReviewItems,
+  type FlaggedSnippet,
+  type SnippetReviewItemRow,
+} from './snippet-staleness';
 export {
   getDocumentConsumption,
   getTopSearches,

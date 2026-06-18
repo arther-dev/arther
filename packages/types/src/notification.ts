@@ -19,6 +19,7 @@ export const NOTIFICATION_EVENT_TYPES = [
   'review_overdue', // due date passed
   'snippet_override_created', // someone overrode your snippet in a doc: snippet owner (R.3)
   'snippet_source_changed', // a snippet you overrode changed at the source: the overriding doc owner (R.3)
+  'snippet_stale_prose', // a spec change may have made your snippet's prose stale: snippet owner (R.9)
 ] as const;
 export type NotificationEventType = (typeof NOTIFICATION_EVENT_TYPES)[number];
 
@@ -62,6 +63,8 @@ export const EMAIL_DEFAULT_ON: Record<NotificationEventType, boolean> = {
   // is informational, in-app by default.
   snippet_source_changed: true,
   snippet_override_created: false,
+  // R.9 — a possibly-stale snippet is actionable for its owner (review the prose).
+  snippet_stale_prose: true,
 };
 
 /** True if `value` is a known event type (guards untrusted/legacy rows). */
@@ -84,6 +87,7 @@ export const NOTIFICATION_EVENT_LABELS: Record<NotificationEventType, string> = 
   review_overdue: 'Review overdue',
   snippet_override_created: 'Your snippet was overridden in a document',
   snippet_source_changed: 'A snippet you overrode changed at the source',
+  snippet_stale_prose: 'A spec change may have made your snippet stale',
 };
 
 export interface NotificationChannelPrefs {
@@ -187,6 +191,9 @@ export function describeNotification(
     case 'snippet_source_changed':
       // The overriding doc owner: link to the document to accept or keep the override.
       return { title: `“${snippet}” changed after you overrode it in ${doc}`, href };
+    case 'snippet_stale_prose':
+      // The snippet owner: link to the snippet to review/refresh its prose.
+      return { title: `“${snippet}” may be stale after a spec change`, href: snippetHref ?? href };
     default:
       return { title: 'Notification', href };
   }

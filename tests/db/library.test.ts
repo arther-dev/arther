@@ -115,6 +115,56 @@ describe('block library RLS (0009)', () => {
     expect(blocks).toEqual([{ type: 'divider' }]);
   });
 
+  it('rolls a snippet back to a prior version, keeping history append-only (R.4)', async () => {
+    const v1 = [{ type: 'divider' }];
+    const v2 = [{ type: 'paragraph', content: { alignment: 'left', nodes: [] } }];
+    const id = (
+      await member`
+        insert into public.library_items (workspace_id, name, type, blocks, created_by)
+        values (${ws}, 'Rollback target', 'snippet', ${member.json(v1)}, ${memberId}) returning id
+      `
+    )[0]!.id as string;
+    const v1Version = (
+      await member`
+        insert into public.library_item_versions (workspace_id, library_item_id, blocks_snapshot, change_note, created_by)
+        values (${ws}, ${id}, ${member.json(v1)}, 'Created', ${memberId}) returning version_id
+      `
+    )[0]!.version_id as string;
+    // Edit forward to v2.
+    await member`update public.library_items set blocks = ${member.json(v2)} where id = ${id}`;
+    await member`
+      insert into public.library_item_versions (workspace_id, library_item_id, blocks_snapshot, change_note, created_by)
+      values (${ws}, ${id}, ${member.json(v2)}, 'Edited', ${memberId})
+    `;
+
+    // Roll back to v1: read its snapshot, write it as current, record a NEW version.
+    const snap = (
+      await member`select blocks_snapshot from public.library_item_versions where version_id = ${v1Version} and library_item_id = ${id}`
+    )[0]!.blocks_snapshot;
+    const snapshot = typeof snap === 'string' ? JSON.parse(snap) : snap;
+    await member`update public.library_items set blocks = ${member.json(snapshot)} where id = ${id}`;
+    await member`
+      insert into public.library_item_versions (workspace_id, library_item_id, blocks_snapshot, change_note, created_by)
+      values (${ws}, ${id}, ${member.json(snapshot)}, 'Rolled back to the version from 2026-06-18', ${memberId})
+    `;
+
+    // Current content is v1 again; the rolled-back-to version is preserved (append-only).
+    const current = (await owner`select blocks from public.library_items where id = ${id}`)[0]!.blocks;
+    expect(typeof current === 'string' ? JSON.parse(current) : current).toEqual(v1);
+    expect(
+      await owner`select version_id from public.library_item_versions where library_item_id = ${id}`,
+    ).toHaveLength(3);
+    expect(
+      await owner`select version_id from public.library_item_versions where version_id = ${v1Version}`,
+    ).toHaveLength(1);
+
+    // A viewer cannot record a rollback version.
+    await expectDenied(
+      () =>
+        viewer`insert into public.library_item_versions (workspace_id, library_item_id, blocks_snapshot, change_note) values (${ws}, ${id}, ${viewer.json(v1)}, 'Rolled back')`,
+    );
+  });
+
   it('stores a promoted block sequence verbatim (content fidelity for R.2 promotion)', async () => {
     // "Save to Library" copies the selected blocks' content into library_items.blocks;
     // the jsonb must round-trip exactly so the promoted snippet renders what was selected.

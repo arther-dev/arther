@@ -1,9 +1,15 @@
 import Link from 'next/link';
-import { getActiveWorkspace, getLibraryItem, listUsersByIds } from '@arther/db';
+import {
+  getActiveWorkspace,
+  getLibraryItem,
+  listSnippetReviewItems,
+  listUsersByIds,
+} from '@arther/db';
 import { blockPlainText, libraryItemIdSchema, libraryItemTypeLabel } from '@arther/types';
 import { AppShell, EmptyState } from '@arther/ui';
 import { getSupabaseServer } from '../../../../lib/supabase/server';
 import { ArchiveSnippetButton, RenameSnippetForm } from '../SnippetForms';
+import { RestoreVersionButton } from './RestoreVersionButton';
 
 function NotFound() {
   return (
@@ -60,6 +66,13 @@ export default async function SnippetDetailPage({
     : 'Unassigned';
   const canEdit = workspace.role !== 'viewer';
 
+  // R.9 — a spec change may have flagged this snippet's prose as stale; editing it
+  // resolves the flag everywhere. Surface the prompt to the owner/editors.
+  const staleReview =
+    item.type === 'snippet'
+      ? (await listSnippetReviewItems(supabase, workspace.id)).find((r) => r.snippetId === item.id)
+      : undefined;
+
   return (
     <AppShell>
       <div className="specs-content">
@@ -76,6 +89,17 @@ export default async function SnippetDetailPage({
         {item.archivedAt ? (
           <p className="ui-field__hint">
             Archived. It can’t be embedded into new documents until it’s restored.
+          </p>
+        ) : null}
+        {staleReview ? (
+          <p className="ui-field__error" role="status">
+            A spec change may have made this snippet’s prose stale
+            {staleReview.embeddingDocumentCount > 0
+              ? ` (used in ${staleReview.embeddingDocumentCount} document${
+                  staleReview.embeddingDocumentCount === 1 ? '' : 's'
+                })`
+              : ''}
+            . {canEdit ? 'Edit the content to review it — that clears the flag everywhere.' : ''}
           </p>
         ) : null}
 
@@ -110,12 +134,23 @@ export default async function SnippetDetailPage({
         <section className="specs-section">
           <h2 className="specs-section__title">Version history</h2>
           <ul className="specs-form" aria-label="Version history">
-            {item.versions.map((v) => (
-              <li key={v.versionId} className="specs-release">
+            {item.versions.map((v, i) => (
+              <li key={v.versionId} className="specs-release" style={{ display: 'flex', gap: 8 }}>
                 <span>{v.changeNote ?? 'Edited'}</span>
                 <span className="specs-grid__meta">
                   {new Date(v.createdAt).toLocaleString()}
                 </span>
+                <span style={{ flex: 1 }} />
+                {/* The newest version (i === 0) is the current content — nothing to restore. */}
+                {canEdit && i > 0 ? (
+                  <RestoreVersionButton
+                    id={item.id}
+                    versionId={v.versionId}
+                    label={new Date(v.createdAt).toLocaleDateString()}
+                  />
+                ) : i === 0 ? (
+                  <span className="specs-grid__meta">Current</span>
+                ) : null}
               </li>
             ))}
           </ul>

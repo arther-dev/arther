@@ -71,3 +71,51 @@ describe('duplication_records RLS (0009)', () => {
     );
   });
 });
+
+/**
+ * R.8 cross-product — the load-bearing premise of cross-product re-resolution
+ * (§5.8): a snippet/spec reference re-links to the **target product's** field of
+ * the same name (matched case-insensitively, the only cross-product identity the
+ * model has), anchored to that field's current version. A name with no populated
+ * match would instead become a placeholder. This locks the SQL the TS path relies on.
+ */
+describe('cross-product field match by name (R.8)', () => {
+  it('finds a same-named populated field in the target product with its current version', async () => {
+    const targetProduct = (
+      await owner`insert into public.products (workspace_id, name, created_by) values (${ws}, 'Widget B', ${ownerId}) returning id`
+    )[0]!.id as string;
+    // A populated field on the target product + its current version (the re-link anchor).
+    const fieldId = (
+      await owner`
+        insert into public.spec_fields (workspace_id, product_id, name, type, value, category, created_by)
+        values (${ws}, ${targetProduct}, 'Rated Voltage', 'scalar', ${owner.json({ kind: 'scalar', value: 5 })}, 'Electrical', ${ownerId})
+        returning id
+      `
+    )[0]!.id as string;
+    const versionId = (
+      await owner`
+        insert into public.field_versions (workspace_id, field_id, value, changed_by)
+        values (${ws}, ${fieldId}, ${owner.json({ kind: 'scalar', value: 5 })}, ${ownerId}) returning id
+      `
+    )[0]!.id as string;
+    await owner`update public.spec_fields set current_version_id = ${versionId} where id = ${fieldId}`;
+
+    // Case-insensitive name match resolves to the field + its current version.
+    const matched = await owner`
+      select id, current_version_id, (value is not null) as populated
+      from public.spec_fields
+      where product_id = ${targetProduct} and lower(name) = lower('rated voltage') and archived_at is null
+    `;
+    expect(matched).toHaveLength(1);
+    expect(matched[0]!.id).toBe(fieldId);
+    expect(matched[0]!.current_version_id).toBe(versionId);
+    expect(matched[0]!.populated).toBe(true);
+
+    // A field the target product lacks yields nothing → that block would placeholder.
+    const missing = await owner`
+      select id from public.spec_fields
+      where product_id = ${targetProduct} and lower(name) = lower('nonexistent field')
+    `;
+    expect(missing).toHaveLength(0);
+  });
+});

@@ -361,6 +361,37 @@ export const blockContentSchema = z.discriminatedUnion('type', [
 ]);
 export type BlockContent = z.infer<typeof blockContentSchema>;
 
+/**
+ * R.9 — every spec field a block references, for snippet staleness detection. A
+ * block "references" a field through an inline `spec_token` (anywhere in its prose,
+ * including inside links, captions, and container children), a `spec_table` row,
+ * or a `chart`'s data field. A deep walk catches them at any nesting depth without
+ * coupling to each block type's shape. Returns distinct field ids.
+ */
+export function blockSpecFieldIds(block: BlockContent): string[] {
+  const out = new Set<string>();
+  const visit = (value: unknown): void => {
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item);
+      return;
+    }
+    if (value && typeof value === 'object') {
+      const obj = value as Record<string, unknown>;
+      if (obj.type === 'spec_token' && typeof obj.field_id === 'string') out.add(obj.field_id);
+      if (obj.type === 'chart' && typeof obj.table_field_id === 'string') out.add(obj.table_field_id);
+      if (obj.type === 'spec_table' && Array.isArray(obj.rows)) {
+        for (const row of obj.rows) {
+          const fid = (row as Record<string, unknown>)?.field_id;
+          if (typeof fid === 'string') out.add(fid);
+        }
+      }
+      for (const nested of Object.values(obj)) visit(nested);
+    }
+  };
+  visit(block);
+  return [...out];
+}
+
 // --- Manual block insertion (G4.6) -------------------------------------------
 //
 // The block types an author can insert by hand in the editor: the prose family
