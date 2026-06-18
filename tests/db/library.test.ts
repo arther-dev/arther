@@ -87,6 +87,34 @@ describe('block library RLS (0009)', () => {
     );
   });
 
+  it('an editor edits the blocks + records a version; a viewer cannot edit (R.2c)', async () => {
+    const id = (
+      await member`
+        insert into public.library_items (workspace_id, name, type, created_by)
+        values (${ws}, 'Editable', 'snippet', ${memberId}) returning id
+      `
+    )[0]!.id as string;
+    // Editor updates the block content and records a version snapshot.
+    await member`update public.library_items set blocks = '[{"type":"divider"}]'::jsonb where id = ${id}`;
+    await member`
+      insert into public.library_item_versions (workspace_id, library_item_id, blocks_snapshot, change_note, created_by)
+      values (${ws}, ${id}, '[{"type":"divider"}]'::jsonb, 'Edited', ${memberId})
+    `;
+    expect(
+      await owner`select version_id from public.library_item_versions where library_item_id = ${id}`,
+    ).toHaveLength(1);
+    // A viewer cannot edit the blocks. RLS UPDATE filters the row out via `using`
+    // (a viewer isn't an editor), so the statement touches 0 rows — no error — and
+    // the content is unchanged.
+    const attempted = await viewer`
+      update public.library_items set blocks = '[]'::jsonb where id = ${id} returning id
+    `;
+    expect(attempted).toHaveLength(0);
+    const after = (await owner`select blocks from public.library_items where id = ${id}`)[0]!.blocks;
+    const blocks = typeof after === 'string' ? JSON.parse(after) : after;
+    expect(blocks).toEqual([{ type: 'divider' }]);
+  });
+
   it('stores a promoted block sequence verbatim (content fidelity for R.2 promotion)', async () => {
     // "Save to Library" copies the selected blocks' content into library_items.blocks;
     // the jsonb must round-trip exactly so the promoted snippet renders what was selected.

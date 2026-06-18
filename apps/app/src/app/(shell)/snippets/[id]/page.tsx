@@ -96,9 +96,15 @@ export default async function SnippetDetailPage({
               })}
             </ol>
           )}
-          <p className="ui-field__hint">
-            Editing block content in place arrives with R.2; this is a read-only preview.
-          </p>
+          {canEdit ? (
+            <p className="specs-grid__meta" style={{ marginTop: 8 }}>
+              <Link className="ui-btn ui-btn--secondary ui-btn--sm" href={`/snippets/${item.id}/edit`}>
+                Edit content
+              </Link>
+            </p>
+          ) : (
+            <p className="ui-field__hint">Read-only preview.</p>
+          )}
         </section>
 
         <section className="specs-section">
