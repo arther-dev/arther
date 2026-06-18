@@ -1,6 +1,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
+  isImmediateEmailEvent,
   isNotificationEventType,
+  renderNotificationEmail,
+  resolveNotificationPreference,
   type NotificationEventType,
   type NotificationPayload,
   type NotificationView,
@@ -19,10 +22,12 @@ import {
 
 /**
  * C3.1/C3.2/C3.5 — write an in-app notification to each recipient (deduped),
- * honoring their per-event in-app preference (C3.2): a recipient who turned the
- * event's in-app channel off is skipped (default = on). Recipients are also
- * confirmed members of the workspace, so a stale/foreign id never receives one.
- * Service-role only. Returns the number of rows written.
+ * honoring each recipient's per-event preferences (C3.2/C3.3): in-app rows for
+ * those with the in-app channel on (default on), and — for immediate-delivery
+ * events (§9.3) — an email to those with the email channel on (default per
+ * `EMAIL_DEFAULT_ON`). Recipients are confirmed members of the workspace, so a
+ * stale/foreign id never receives one. Email is gated on `RESEND_API_KEY` (no key
+ * → in-app only). Service-role only. Returns the number of in-app rows written.
  */
 export async function dispatchNotification(
   service: SupabaseClient,
@@ -48,36 +53,91 @@ export async function dispatchNotification(
     membershipByUser.set(m.user_id, m.id);
   }
 
-  // Memberships that have turned this event's in-app channel OFF (default on).
-  let disabled = new Set<string>();
+  // The recipients' stored prefs for this event (absent = defaults).
+  const prefByMembership = new Map<string, { inAppEnabled: boolean; emailEnabled: boolean }>();
   const membershipIds = [...membershipByUser.values()];
   if (membershipIds.length > 0) {
-    const { data: off, error: pErr } = await service
+    const { data: prefs, error: pErr } = await service
       .from('notification_preferences')
-      .select('workspace_member_id')
+      .select('workspace_member_id, in_app_enabled, email_enabled')
       .eq('event_type', input.eventType)
-      .eq('in_app_enabled', false)
       .in('workspace_member_id', membershipIds);
     if (pErr) throw new Error(`dispatchNotification.prefs: ${pErr.message}`);
-    disabled = new Set((off ?? []).map((r) => r.workspace_member_id as string));
+    for (const row of (prefs ?? []) as Array<Record<string, unknown>>) {
+      prefByMembership.set(row.workspace_member_id as string, {
+        inAppEnabled: row.in_app_enabled as boolean,
+        emailEnabled: row.email_enabled as boolean,
+      });
+    }
   }
 
-  const enabled = recipients.filter((uid) => {
+  const inAppRecipients: string[] = [];
+  const emailRecipients: string[] = [];
+  const immediate = isImmediateEmailEvent(input.eventType);
+  for (const uid of recipients) {
     const membershipId = membershipByUser.get(uid);
-    return membershipId != null && !disabled.has(membershipId);
-  });
-  if (enabled.length === 0) return 0;
+    if (membershipId == null) continue; // not a member of this workspace
+    const channels = resolveNotificationPreference(prefByMembership.get(membershipId), input.eventType);
+    if (channels.inApp) inAppRecipients.push(uid);
+    if (channels.email && immediate) emailRecipients.push(uid);
+  }
 
-  const { error } = await service.from('notifications').insert(
-    enabled.map((recipientId) => ({
-      workspace_id: input.workspaceId,
-      recipient_id: recipientId,
-      event_type: input.eventType,
-      payload: input.payload,
-    })),
+  let written = 0;
+  if (inAppRecipients.length > 0) {
+    const { error } = await service.from('notifications').insert(
+      inAppRecipients.map((recipientId) => ({
+        workspace_id: input.workspaceId,
+        recipient_id: recipientId,
+        event_type: input.eventType,
+        payload: input.payload,
+      })),
+    );
+    if (error) throw new Error(`dispatchNotification: ${error.message}`);
+    written = inAppRecipients.length;
+  }
+
+  await sendNotificationEmails(service, emailRecipients, input.eventType, input.payload);
+  return written;
+}
+
+/**
+ * C3.3 — the email channel of the dispatch fan-out (ADR-011: Resend, no SDK, one
+ * fetch; gated on `RESEND_API_KEY`). Sends the same rendered email to each
+ * recipient. Best-effort — a send failure never affects the in-app rows. (The
+ * durable Trigger.dev task + the batched daily digest are C3.6 follow-ups.)
+ */
+async function sendNotificationEmails(
+  service: SupabaseClient,
+  recipientUserIds: string[],
+  eventType: NotificationEventType,
+  payload: NotificationPayload,
+): Promise<void> {
+  const resendKey = process.env.RESEND_API_KEY;
+  if (!resendKey || recipientUserIds.length === 0) return;
+
+  const { data: users, error } = await service
+    .from('users')
+    .select('email')
+    .in('id', recipientUserIds);
+  if (error) return; // best-effort
+  const { subject, text, html } = renderNotificationEmail(
+    eventType,
+    payload,
+    process.env.APP_URL ?? '',
   );
-  if (error) throw new Error(`dispatchNotification: ${error.message}`);
-  return enabled.length;
+  const from = process.env.RESEND_FROM ?? 'Arther <onboarding@resend.dev>';
+  for (const row of (users ?? []) as Array<{ email: string | null }>) {
+    if (!row.email) continue;
+    try {
+      await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ from, to: [row.email], subject, text, html }),
+      });
+    } catch {
+      // ignore — email is best-effort
+    }
+  }
 }
 
 export interface StoredNotificationPreference {

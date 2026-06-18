@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
   describeNotification,
+  EMAIL_BATCHED,
   EMAIL_DEFAULT_ON,
+  isImmediateEmailEvent,
   isNotificationEventType,
   NOTIFICATION_EVENT_LABELS,
   NOTIFICATION_EVENT_TYPES,
+  renderNotificationEmail,
   resolveNotificationPreference,
 } from './notification';
 
@@ -69,5 +72,28 @@ describe('resolveNotificationPreference (C3.2)', () => {
     expect(
       resolveNotificationPreference({ inAppEnabled: false, emailEnabled: true }, 'comment_added'),
     ).toEqual({ inApp: false, email: true });
+  });
+});
+
+describe('email delivery (C3.3)', () => {
+  it('immediate vs batched matches spec §9.3', () => {
+    expect(isImmediateEmailEvent('review_requested')).toBe(true);
+    expect(isImmediateEmailEvent('comment_mention')).toBe(true);
+    expect(isImmediateEmailEvent('comment_added')).toBe(false); // batched
+    expect(isImmediateEmailEvent('comment_reply')).toBe(false);
+    expect(EMAIL_BATCHED.has('spec_stale')).toBe(true);
+  });
+
+  it('renders subject + absolute link, escaping user content', () => {
+    const email = renderNotificationEmail(
+      'review_requested',
+      { documentId: 'doc-1', documentTitle: 'A & B <Spec>' },
+      'https://app.arther.io/',
+    );
+    expect(email.subject).toBe('Review requested: A & B <Spec>');
+    expect(email.text).toContain('https://app.arther.io/documents/doc-1');
+    expect(email.html).toContain('&amp;');
+    expect(email.html).toContain('&lt;Spec&gt;');
+    expect(email.html).not.toContain('<Spec>'); // escaped, no raw injection
   });
 });
