@@ -241,6 +241,7 @@ export {
   getDocumentConsumption,
   getTopSearches,
   getWorkspaceDocumentConsumption,
+  getWorkspaceHealth,
   getZeroResultSearches,
   recordAnalyticsEvent,
   recordPortalEvent,
@@ -251,6 +252,7 @@ export {
   type PortalAnalyticsEventType,
   type SearchQueryCount,
   type WorkspaceDocumentConsumption,
+  type WorkspaceHealth,
 } from './analytics';
 export {
   resolveDomainOwnersForDocument,

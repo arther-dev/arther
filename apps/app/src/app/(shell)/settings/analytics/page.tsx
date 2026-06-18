@@ -3,10 +3,13 @@ import {
   getActiveWorkspace,
   getTopSearches,
   getWorkspaceDocumentConsumption,
+  getWorkspaceHealth,
   getZeroResultSearches,
 } from '@arther/db';
 import { AppShell, EmptyState } from '@arther/ui';
 import { getSupabaseServer } from '../../../../lib/supabase/server';
+
+const pct = (rate: number | null): string => (rate === null ? '—' : `${Math.round(rate * 100)}%`);
 
 /**
  * A.6 — admin consumption analytics: a workspace-wide view of how the published
@@ -57,10 +60,11 @@ export default async function WorkspaceAnalyticsPage() {
     );
   }
 
-  const [documents, topSearches, zeroResults] = await Promise.all([
+  const [documents, topSearches, zeroResults, health] = await Promise.all([
     getWorkspaceDocumentConsumption(supabase, workspace.id),
     getTopSearches(supabase, workspace.id),
     getZeroResultSearches(supabase, workspace.id),
+    getWorkspaceHealth(supabase, workspace.id),
   ]);
 
   return (
@@ -74,6 +78,41 @@ export default async function WorkspaceAnalyticsPage() {
           How your published portal is consumed. Counts aggregate the portal's view, download, and
           search events.
         </p>
+
+        <section className="specs-section">
+          <h2 className="specs-section__title">Workspace health</h2>
+          <dl className="specs-form" style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+            <div>
+              <dt className="specs-grid__meta">Generation success</dt>
+              <dd style={{ margin: 0, fontSize: 22, fontWeight: 650 }}>
+                {pct(health.generationSuccessRate)}
+              </dd>
+              <span className="specs-grid__meta">
+                {health.generationsSucceeded.toLocaleString()} of{' '}
+                {health.generationsTotal.toLocaleString()} runs
+              </span>
+            </div>
+            <div>
+              <dt className="specs-grid__meta">Rejection rate</dt>
+              <dd style={{ margin: 0, fontSize: 22, fontWeight: 650 }}>{pct(health.rejectionRate)}</dd>
+              <span className="specs-grid__meta">
+                {health.approvalsRejected.toLocaleString()} of{' '}
+                {health.approvalsTotal.toLocaleString()} decisions
+              </span>
+            </div>
+            <div>
+              <dt className="specs-grid__meta">Documents with stale spec data</dt>
+              <dd style={{ margin: 0, fontSize: 22, fontWeight: 650 }}>
+                {health.staleDocuments.toLocaleString()}
+              </dd>
+              <span className="specs-grid__meta">references behind the current field version</span>
+            </div>
+          </dl>
+          <p className="specs-grid__meta">
+            Operational health across generation, review, and spec tracking. (Review cycle times
+            arrive in a follow-up.)
+          </p>
+        </section>
 
         <section className="specs-section">
           <h2 className="specs-section__title">Documents by consumption</h2>

@@ -186,3 +186,47 @@ export function getZeroResultSearches(
 ): Promise<SearchQueryCount[]> {
   return searchCounts(client, 'workspace_zero_result_searches', workspaceId, limit);
 }
+
+/**
+ * A.7 — workspace operational-health metrics (the `workspace_health` RPC, 0026):
+ * generation success, approval rejection rate, and the live count of documents
+ * carrying stale spec references. Drawn from the operational tables + the
+ * spec-tracking state, RLS-scoped to the caller's workspace. Rates are null when
+ * there's no denominator yet (no runs / no decisions).
+ */
+export interface WorkspaceHealth {
+  generationsTotal: number;
+  generationsSucceeded: number;
+  generationsFailed: number;
+  /** succeeded / total terminal runs, or null when there are none. */
+  generationSuccessRate: number | null;
+  approvalsTotal: number;
+  approvalsRejected: number;
+  /** rejected / total decisions, or null when there are none. */
+  rejectionRate: number | null;
+  /** Documents with at least one spec reference behind the field's current version. */
+  staleDocuments: number;
+}
+
+export async function getWorkspaceHealth(
+  client: SupabaseClient,
+  workspaceId: WorkspaceId,
+): Promise<WorkspaceHealth> {
+  const { data, error } = await client.rpc('workspace_health', { p_workspace_id: workspaceId });
+  if (error) throw new Error(`getWorkspaceHealth: ${error.message}`);
+  const r = (Array.isArray(data) ? data[0] : data) as Record<string, unknown> | undefined;
+  const generationsTotal = num(r?.generations_total as number | string);
+  const generationsSucceeded = num(r?.generations_succeeded as number | string);
+  const approvalsTotal = num(r?.approvals_total as number | string);
+  const approvalsRejected = num(r?.approvals_rejected as number | string);
+  return {
+    generationsTotal,
+    generationsSucceeded,
+    generationsFailed: num(r?.generations_failed as number | string),
+    generationSuccessRate: generationsTotal > 0 ? generationsSucceeded / generationsTotal : null,
+    approvalsTotal,
+    approvalsRejected,
+    rejectionRate: approvalsTotal > 0 ? approvalsRejected / approvalsTotal : null,
+    staleDocuments: num(r?.stale_documents as number | string),
+  };
+}

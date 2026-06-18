@@ -54,8 +54,12 @@ jobs:
           key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
           restore-keys: |
             playwright-${{ runner.os }}-
+      # No `--with-deps`: that runs `apt-get` against the runner's Azure Ubuntu
+      # mirror, which intermittently hangs (the cause of the stuck E2E jobs).
+      # ubuntu-latest already ships Chromium's system libraries, so we only need
+      # the (cached) browser binary — no apt, no mirror dependency.
       - name: Install Playwright browsers
-        run: pnpm --filter @arther/e2e exec playwright install --with-deps chromium
+        run: pnpm --filter @arther/e2e exec playwright install chromium
       - name: Run E2E suite
         run: pnpm test:e2e
         env:
