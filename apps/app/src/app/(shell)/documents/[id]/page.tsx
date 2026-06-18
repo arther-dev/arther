@@ -12,10 +12,13 @@ import {
   listSnapshotsForDocument,
   listStaleBriefReferencesForDocument,
   listStaleReferencesForDocument,
+  listVariants,
   loadDocumentTree,
   resolveSpecFields,
+  resolveSpecFieldsForVariant,
 } from '@arther/db';
 import {
+  applyTokenReplacements,
   blockAnchorLabel,
   canManageDocumentLifecycle,
   parseDocumentAccess,
@@ -23,6 +26,7 @@ import {
   summarizeBriefStaleness,
   summarizeReview,
   summarizeStaleness,
+  variantIdSchema,
   type DocumentId,
 } from '@arther/types';
 import { AppShell, EmptyState } from '@arther/ui';
@@ -42,8 +46,15 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
  * and render it through the one shared `block-renderer`. The three-panel editor
  * (G4.1) builds on this; for now generated Drafts are viewable end-to-end.
  */
-export default async function DocumentPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function DocumentPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ variant?: string }>;
+}) {
   const { id } = await params;
+  const { variant: variantParam } = await searchParams;
   const supabase = await getSupabaseServer();
   if (!supabase) {
     return (
@@ -210,12 +221,32 @@ export default async function DocumentPage({ params }: { params: Promise<{ id: s
       ? await listDocumentSnippetEmbeds(supabase, tree.document.id)
       : [];
 
-  // G4 live data blocks — resolve current field values for spec_table + chart.
-  const resolved = tree.blocks.some(
+  // R.7 — a variant shares the base product's document; "preview as variant"
+  // resolves every spec token (including those inside embedded snippets) against
+  // the variant's resolved spec (§3.6). The product's variants drive the picker.
+  const variants = await listVariants(supabase, tree.document.product_id);
+  const selectedVariantId =
+    variantParam && variantIdSchema.safeParse(variantParam).success
+      ? variants.find((v) => v.id === variantParam)?.id
+      : undefined;
+  const variantPreview = selectedVariantId
+    ? await resolveSpecFieldsForVariant(supabase, selectedVariantId, workspace.id)
+    : null;
+
+  // G4 live data blocks — current field values for spec_table + chart (variant-
+  // aware when previewing). Inline tokens carry a baked display value, so under a
+  // variant preview they are rewritten to the variant's value.
+  const hasLiveBlocks = tree.blocks.some(
     (b) => b.content.type === 'spec_table' || b.content.type === 'chart',
-  )
-    ? await resolveSpecFields(supabase, tree.document.product_id, workspace.id)
-    : undefined;
+  );
+  const resolved = variantPreview
+    ? variantPreview.resolution
+    : hasLiveBlocks
+      ? await resolveSpecFields(supabase, tree.document.product_id, workspace.id)
+      : undefined;
+  const renderBlocks = variantPreview
+    ? tree.blocks.map((b) => applyTokenReplacements(b.content, variantPreview.replacements))
+    : tree.blocks.map((b) => b.content);
 
   return (
     <AppShell>
@@ -269,6 +300,36 @@ export default async function DocumentPage({ params }: { params: Promise<{ id: s
             {rejection.reason ? `: “${rejection.reason}”` : '.'}
           </p>
         ) : null}
+        {variants.length > 0 ? (
+          <nav className="specs-tabs" aria-label="Preview as variant">
+            <Link
+              className={`specs-tabs__tab${!variantPreview ? ' specs-tabs__tab--active' : ''}`}
+              href={`/documents/${tree.document.id}`}
+            >
+              Base product
+            </Link>
+            {variants.map((v) => (
+              <Link
+                key={v.id}
+                className={`specs-tabs__tab${variantPreview?.variant.id === v.id ? ' specs-tabs__tab--active' : ''}`}
+                href={`/documents/${tree.document.id}?variant=${v.id}`}
+              >
+                {v.name}
+              </Link>
+            ))}
+          </nav>
+        ) : null}
+        {variantPreview ? (
+          <p className="specs-grid__meta" role="status">
+            Previewing as <strong>{variantPreview.variant.name}</strong> — spec tokens show this
+            variant’s resolved values. This is a preview; the document itself is unchanged.
+            {variantPreview.warnings.length > 0
+              ? ` (${variantPreview.warnings.length} resolution warning${
+                  variantPreview.warnings.length === 1 ? '' : 's'
+                })`
+              : ''}
+          </p>
+        ) : null}
         {canManage ? (
           <DocumentLifecycle
             documentId={tree.document.id}
@@ -316,8 +377,8 @@ export default async function DocumentPage({ params }: { params: Promise<{ id: s
             this draft was generated ({briefStale.keys.join(', ')}) — the prose may want a refresh.
           </p>
         ) : null}
-        {tree.blocks.length > 0 ? (
-          <BlockRenderer blocks={tree.blocks.map((b) => b.content)} resolved={resolved} />
+        {renderBlocks.length > 0 ? (
+          <BlockRenderer blocks={renderBlocks} resolved={resolved} />
         ) : (
           <p className="specs-grid__meta">This document has no content yet.</p>
         )}

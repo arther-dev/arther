@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
+  formatFieldValue,
   resolveVariantSpec,
   slugifyVariantName,
   type DeltaType,
@@ -7,6 +8,8 @@ import {
   type FieldValue,
   type ProductId,
   type ResolvedSpecEntry,
+  type SpecFieldResolution,
+  type SpecTokenReplacement,
   type UserId,
   type VariantDeltaForResolution,
   type VariantDeltaId,
@@ -16,6 +19,7 @@ import {
   type WorkspaceId,
 } from '@arther/types';
 import { loadGenerationFields } from './generation-context';
+import { listUnits } from './spec';
 
 /**
  * V.1 — the variant delta repository (Product Variants §3.2). Variants and their
@@ -359,4 +363,51 @@ export async function loadResolvedVariantSpec(
     deltas: forResolution,
   });
   return { variant, entries, warnings };
+}
+
+export interface VariantSpecResolution {
+  variant: ProductVariantRow;
+  /** Keyed by field id — what spec_table / chart blocks read at render time. */
+  resolution: SpecFieldResolution;
+  /** Keyed by field id — token rewrites so inline spec tokens show variant values. */
+  replacements: Record<string, SpecTokenReplacement>;
+  warnings: VariantResolutionWarning[];
+}
+
+/**
+ * R.7 — resolve a document's spec tokens against a **variant's** resolved spec
+ * (Content Reuse §3.6 / Variants §5.3). A variant shares the base product's
+ * document; previewing it as a variant means every spec token — including those
+ * inside embedded snippets — shows the variant's value. Returns both the field
+ * resolution (for spec_table/chart, read live) and per-field token replacements
+ * (for inline tokens, whose display value is baked and must be rewritten). Null if
+ * the variant doesn't exist.
+ */
+export async function resolveSpecFieldsForVariant(
+  client: SupabaseClient,
+  variantId: VariantId,
+  workspaceId: WorkspaceId,
+): Promise<VariantSpecResolution | null> {
+  const resolved = await loadResolvedVariantSpec(client, variantId);
+  if (!resolved) return null;
+  const units = await listUnits(client, workspaceId);
+  const unitSymbol = new Map(units.map((u) => [u.id as string, u.symbol]));
+
+  const resolution: SpecFieldResolution = {};
+  const replacements: Record<string, SpecTokenReplacement> = {};
+  for (const e of resolved.entries) {
+    const symbol = e.unitId ? (unitSymbol.get(e.unitId) ?? null) : null;
+    resolution[e.fieldId] = {
+      name: e.name,
+      type: e.type,
+      value: e.value,
+      unitSymbol: symbol,
+      ownerName: e.componentName,
+    };
+    replacements[e.fieldId] = {
+      fieldVersionId: e.currentVersionId ?? '',
+      displayValue: formatFieldValue(e.type, e.value, symbol ?? undefined),
+    };
+  }
+  return { variant: resolved.variant, resolution, replacements, warnings: resolved.warnings };
 }
