@@ -46,7 +46,7 @@ export function loadDocument(
 
 function Message({ title, body }: { title: string; body: string }) {
   return (
-    <main className="portal-shell">
+    <main id="main-content" tabIndex={-1} className="portal-shell">
       <h1 className="portal-title">{title}</h1>
       <p className="portal-empty">{body}</p>
     </main>
@@ -87,7 +87,7 @@ export async function PortalDocumentView({
 
   const { doc, workspaceName } = result;
   return (
-    <main className="portal-shell">
+    <main id="main-content" tabIndex={-1} className="portal-shell">
       <ViewBeacon
         workspace={workspaceSlug}
         product={productId}

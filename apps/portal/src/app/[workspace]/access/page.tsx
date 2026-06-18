@@ -23,7 +23,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 function Gate({ title, body }: { title: string; body: string }) {
   return (
-    <main className="portal-shell">
+    <main id="main-content" tabIndex={-1} className="portal-shell">
       <h1 className="portal-title">{title}</h1>
       <p className="portal-empty">{body}</p>
     </main>
@@ -67,7 +67,7 @@ export default async function GatedAccessPage({
   }
 
   return (
-    <main className="portal-shell">
+    <main id="main-content" tabIndex={-1} className="portal-shell">
       <header className="portal-header">
         <p className="portal-header__eyebrow">{doc.productName}</p>
         <h1 className="portal-title">{doc.title}</h1>

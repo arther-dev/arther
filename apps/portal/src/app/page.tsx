@@ -5,7 +5,7 @@
  */
 export default function Home() {
   return (
-    <main className="portal-shell">
+    <main id="main-content" tabIndex={-1} className="portal-shell">
       <h1 className="portal-title">Arther Portal</h1>
       <p className="portal-empty">
         Published product documentation is served per workspace. Open a workspace’s portal at its

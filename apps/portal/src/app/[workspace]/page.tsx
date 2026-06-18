@@ -52,7 +52,7 @@ export default async function WorkspaceHome({
 
   if (result.state === 'unprovisioned') {
     return (
-      <main className="portal-shell">
+      <main id="main-content" tabIndex={-1} className="portal-shell">
         <h1 className="portal-title">Portal</h1>
         <p className="portal-empty">
           Published documentation appears here once the workspace is provisioned.
@@ -62,7 +62,7 @@ export default async function WorkspaceHome({
   }
   if (result.state === 'notfound') {
     return (
-      <main className="portal-shell">
+      <main id="main-content" tabIndex={-1} className="portal-shell">
         <h1 className="portal-title">Not found</h1>
         <p className="portal-empty">No portal is published at this address.</p>
       </main>
@@ -71,7 +71,7 @@ export default async function WorkspaceHome({
 
   const { name, documents } = result;
   return (
-    <main className="portal-shell">
+    <main id="main-content" tabIndex={-1} className="portal-shell">
       <header className="portal-header">
         <p className="portal-header__eyebrow">Documentation</p>
         <h1 className="portal-title">{name}</h1>
