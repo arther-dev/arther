@@ -21,6 +21,7 @@ import {
   getEntityBrief,
   getLibraryItem,
   insertBlocks,
+  insertSnippetEmbed,
   listApprovalRoles,
   listLibraryItems,
   listUnits,
@@ -486,6 +487,50 @@ export async function insertTemplateAction(input: {
     };
   } catch {
     return { ok: false, error: 'Could not insert the template.' };
+  }
+}
+
+/**
+ * R.2 — embed a **snippet** from the library as a live transclusion (§5.3): a
+ * single `source='snippet'` placement block + a `snippet_embeds` row. The doc
+ * keeps a reference (not a copy), so source edits propagate; the blocks are
+ * materialized at publish. Structural, so Draft-only + editor-gated.
+ */
+export async function insertSnippetEmbedAction(input: {
+  revisionId: string;
+  documentId: string;
+  afterBlockId: string | null;
+  libraryItemId: string;
+}): Promise<PasteResult> {
+  const env = insertTemplateSchema.safeParse(input);
+  if (!env.success) return { ok: false, error: 'Invalid request.' };
+
+  const auth = await authorizeStructuralEdit({ revisionId: env.data.revisionId });
+  if ('error' in auth) return { ok: false, error: auth.error };
+
+  try {
+    const res = await insertSnippetEmbed(auth.supabase, {
+      workspaceId: auth.workspaceId,
+      documentId: env.data.documentId as DocumentId,
+      revisionId: env.data.revisionId as DocumentRevisionId,
+      libraryItemId: env.data.libraryItemId as LibraryItemId,
+      afterBlockId: env.data.afterBlockId,
+      userId: auth.userId,
+    });
+    if ('error' in res) {
+      const message =
+        res.error === 'not_snippet'
+          ? 'That item is a template — insert it as a copy instead.'
+          : res.error === 'archived'
+            ? 'That snippet is archived.'
+            : res.error === 'empty'
+              ? 'That snippet has no content.'
+              : 'That snippet isn’t available.';
+      return { ok: false, error: message };
+    }
+    return { ok: true, blocks: [res.block], orderedIds: res.orderedIds };
+  } catch {
+    return { ok: false, error: 'Could not embed the snippet.' };
   }
 }
 

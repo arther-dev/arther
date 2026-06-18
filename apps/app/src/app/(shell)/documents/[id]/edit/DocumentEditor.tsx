@@ -18,6 +18,7 @@ import { AppShell, Button } from '@arther/ui';
 import {
   addBlockAfterAction,
   deleteBlockAction,
+  insertSnippetEmbedAction,
   insertTemplateAction,
   pasteBlocksAction,
   regenerateBlockAction,
@@ -342,11 +343,15 @@ export function DocumentEditor({
     setAnchor(added[added.length - 1]?.id ?? null);
   }
 
-  // R.6 — insert a template from the library after the selection, as independent
-  // manual blocks (copy-on-insert). Mirrors paste's state merge.
-  async function insertTemplate(libraryItemId: string) {
+  // R.6 / R.2 — insert from the library after the selection: a template copies
+  // its blocks in (independent), a snippet inserts a live embed placement block.
+  // Both merge into the block list like paste.
+  async function insertFromLibrary(libraryItemId: string, type: 'snippet' | 'template') {
     if (structuralBlocked) return;
-    const res = await insertTemplateAction({ revisionId, documentId, afterBlockId: selected, libraryItemId });
+    const res =
+      type === 'snippet'
+        ? await insertSnippetEmbedAction({ revisionId, documentId, afterBlockId: selected, libraryItemId })
+        : await insertTemplateAction({ revisionId, documentId, afterBlockId: selected, libraryItemId });
     if (!res.ok || !res.blocks || !res.orderedIds) return;
     const added: EditorBlock[] = res.blocks.map((b) => ({
       id: b.id,
@@ -634,7 +639,7 @@ export function DocumentEditor({
               >
                 Paste{clipboardCount > 0 ? ` (${clipboardCount})` : ''}
               </Button>
-              <LibraryInsert onInsertTemplate={insertTemplate} disabled={structuralBlocked} />
+              <LibraryInsert onInsert={insertFromLibrary} disabled={structuralBlocked} />
               <Button
                 size="sm"
                 variant={showOutline ? 'secondary' : 'ghost'}
