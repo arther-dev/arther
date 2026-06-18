@@ -108,6 +108,9 @@ export function VariantManager({
                   {v.deltaCount} delta{v.deltaCount === 1 ? '' : 's'} · /{v.slug}
                 </span>
                 <span style={{ flex: 1 }} />
+                <a className="ui-btn ui-btn--ghost ui-btn--sm" href={`/specs/variants/${v.id}`}>
+                  Resolved spec
+                </a>
                 {!v.isDefault ? (
                   <Button
                     size="sm"
