@@ -35,3 +35,4 @@ export * from './search';
 export * from './thread';
 export * from './combobox';
 export * from './list-move';
+export * from './library';

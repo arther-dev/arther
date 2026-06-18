@@ -222,6 +222,16 @@ export {
   type PlaceholderForFill,
 } from './placeholders';
 export {
+  createLibraryItem,
+  getLibraryItem,
+  listLibraryItems,
+  renameLibraryItem,
+  setLibraryItemArchived,
+  type LibraryItemDetail,
+  type LibraryItemRow,
+  type LibraryItemVersionRow,
+} from './library';
+export {
   recordAnalyticsEvent,
   recordPortalEvent,
   type AnalyticsEvent,
