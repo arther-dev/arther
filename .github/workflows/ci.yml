@@ -5,10 +5,18 @@ on:
   push:
     branches: [main]
 
+# Supersede an in-flight run when a newer commit lands on the same ref, so a
+# stuck/slow run (e.g. a hung Playwright browser install) is auto-cancelled
+# instead of piling up or blocking the PR.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   quality:
     name: Lint · typecheck · test · build
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -24,6 +32,9 @@ jobs:
   e2e:
     name: Playwright E2E (app + portal)
     runs-on: ubuntu-latest
+    # The slowest job (builds both apps + installs a browser); cap it so a hung
+    # browser install fails fast and the run can be re-kicked, not left for 6h.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -33,6 +44,16 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm turbo build --filter=app --filter=portal
+      # Cache the browser binaries (keyed on the lockfile, which pins Playwright)
+      # so the slow, network-bound download is skipped on a hit — the main cause
+      # of this job's run-to-run time swings.
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
       - name: Install Playwright browsers
         run: pnpm --filter @arther/e2e exec playwright install --with-deps chromium
       - name: Run E2E suite
@@ -49,6 +70,7 @@ jobs:
   database:
     name: Migrations · smoke · RLS probe
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     services:
       postgres:
         image: postgres:17
