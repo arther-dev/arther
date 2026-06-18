@@ -103,10 +103,16 @@ describe('block library RLS (0009)', () => {
     expect(
       await owner`select version_id from public.library_item_versions where library_item_id = ${id}`,
     ).toHaveLength(1);
-    // A viewer cannot edit the blocks.
-    await expectDenied(
-      () => viewer`update public.library_items set blocks = '[]'::jsonb where id = ${id}`,
-    );
+    // A viewer cannot edit the blocks. RLS UPDATE filters the row out via `using`
+    // (a viewer isn't an editor), so the statement touches 0 rows — no error — and
+    // the content is unchanged.
+    const attempted = await viewer`
+      update public.library_items set blocks = '[]'::jsonb where id = ${id} returning id
+    `;
+    expect(attempted).toHaveLength(0);
+    const after = (await owner`select blocks from public.library_items where id = ${id}`)[0]!.blocks;
+    const blocks = typeof after === 'string' ? JSON.parse(after) : after;
+    expect(blocks).toEqual([{ type: 'divider' }]);
   });
 
   it('stores a promoted block sequence verbatim (content fidelity for R.2 promotion)', async () => {
