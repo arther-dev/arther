@@ -97,12 +97,13 @@ describe('block library RLS (0009)', () => {
     const id = (
       await member`
         insert into public.library_items (workspace_id, name, type, blocks, created_by)
-        values (${ws}, 'Promoted', 'snippet', ${JSON.stringify(blocks)}::jsonb, ${memberId})
+        values (${ws}, 'Promoted', 'snippet', ${member.json(blocks)}, ${memberId})
         returning id
       `
     )[0]!.id as string;
-    const stored = (await owner`select blocks from public.library_items where id = ${id}`)[0]!
-      .blocks;
+    const raw = (await owner`select blocks from public.library_items where id = ${id}`)[0]!.blocks;
+    // jsonb comes back parsed or as text depending on the driver path; normalize.
+    const stored = typeof raw === 'string' ? JSON.parse(raw) : raw;
     expect(stored).toEqual(blocks);
   });
 
