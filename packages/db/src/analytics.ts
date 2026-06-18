@@ -80,3 +80,40 @@ export async function recordPortalEvent(
     if (error) throw new Error(`recordPortalEvent: ${error.message}`);
   });
 }
+
+/**
+ * A.5 — the per-document consumption panel's metrics: portal views, unique
+ * anonymous visitors (distinct session), downloads, and identified viewers
+ * (distinct magic-link recipients, for gated docs). One SQL aggregate over the
+ * events store (the `document_consumption` RPC, 0024) — SECURITY INVOKER, so the
+ * caller's RLS scopes it to their workspace. Read through the user-JWT client.
+ */
+export interface DocumentConsumption {
+  views: number;
+  uniqueVisitors: number;
+  downloads: number;
+  identifiedViewers: number;
+}
+
+export async function getDocumentConsumption(
+  client: SupabaseClient,
+  documentId: DocumentId,
+): Promise<DocumentConsumption> {
+  const { data, error } = await client.rpc('document_consumption', { p_document_id: documentId });
+  if (error) throw new Error(`getDocumentConsumption: ${error.message}`);
+  const row = (Array.isArray(data) ? data[0] : data) as
+    | {
+        views: number | string;
+        unique_visitors: number | string;
+        downloads: number | string;
+        identified_viewers: number | string;
+      }
+    | undefined;
+  const n = (v: number | string | null | undefined): number => Number(v ?? 0);
+  return {
+    views: n(row?.views),
+    uniqueVisitors: n(row?.unique_visitors),
+    downloads: n(row?.downloads),
+    identifiedViewers: n(row?.identified_viewers),
+  };
+}

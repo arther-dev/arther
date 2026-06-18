@@ -238,10 +238,12 @@ export {
   type InsertSnippetEmbedError,
 } from './snippet-embeds';
 export {
+  getDocumentConsumption,
   recordAnalyticsEvent,
   recordPortalEvent,
   type AnalyticsEvent,
   type AnalyticsEventType,
+  type DocumentConsumption,
   type PortalAnalyticsEvent,
   type PortalAnalyticsEventType,
 } from './analytics';
