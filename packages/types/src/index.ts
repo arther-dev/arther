@@ -16,6 +16,7 @@ export * from './document';
 export * from './document-access';
 export * from './document-lifecycle';
 export * from './notification';
+export * from './review-reminder';
 export * from './approval';
 export * from './publish-preflight';
 export * from './generation-run';
