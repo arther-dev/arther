@@ -21,6 +21,19 @@ export async function userClient(userId: string): Promise<Sql> {
   return sql;
 }
 
+/**
+ * A connection simulating an UNAUTHENTICATED Supabase visitor: SET ROLE anon
+ * with no `sub` claim, so `auth.uid()` is null. This is the portal's worst-case
+ * boundary — member-RLS tables (drafts, specs, snapshots) have no anon policy,
+ * so anon reads return nothing (the portal must use the constrained service role).
+ */
+export async function anonClient(): Promise<Sql> {
+  const sql = postgres(DATABASE_URL, { max: 1, onnotice: () => {} });
+  await sql.unsafe(`select set_config('request.jwt.claims', '{}', false)`);
+  await sql.unsafe('set role anon');
+  return sql;
+}
+
 /** Insert an auth.users row (the shim's GoTrue stand-in); the 0002 trigger mirrors it. */
 export async function createAuthUser(admin: Sql, email: string): Promise<string> {
   const rows = await admin`
