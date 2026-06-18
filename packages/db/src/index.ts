@@ -251,6 +251,11 @@ export {
 } from './snippet-embeds';
 export { duplicateDocument, type DuplicationResult } from './duplication';
 export {
+  loadBlockVariantScopes,
+  setBlockVariantScope,
+  type BlockVariantScopeRow,
+} from './block-variant-scopes';
+export {
   addVariantDelta,
   createVariant,
   deleteVariant,

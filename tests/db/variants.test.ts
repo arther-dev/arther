@@ -136,3 +136,70 @@ describe('product variants + deltas (0010)', () => {
     );
   });
 });
+
+/**
+ * V.4 — per-block variant scope (0010 `block_variant_scopes`). One row per scoped
+ * block (block_id PK), member-read / editor-write. The `mode` CHECK guards the
+ * three modes; a viewer can't scope a block.
+ */
+describe('block variant scopes (0010)', () => {
+  let docId: string;
+  let revId: string;
+  let blockId: string;
+
+  beforeAll(async () => {
+    const docTypeId = (
+      await owner`select id from public.document_types where workspace_id is null limit 1`
+    )[0]!.id as string;
+    docId = (
+      await owner`
+        insert into public.documents (workspace_id, product_id, document_type_id, title, slug, owner_id, created_by)
+        values (${ws}, ${productId}, ${docTypeId}, 'Scoped', 'scoped', ${ownerId}, ${ownerId}) returning id
+      `
+    )[0]!.id as string;
+    revId = (
+      await owner`
+        insert into public.document_revisions (workspace_id, document_id, revision_number, state, created_by)
+        values (${ws}, ${docId}, 1, 'draft', ${ownerId}) returning id
+      `
+    )[0]!.id as string;
+    blockId = (
+      await owner`
+        insert into public.blocks (workspace_id, document_id, revision_id, type, display_order, source, content, created_by)
+        values (${ws}, ${docId}, ${revId}, 'paragraph', 0, 'manual', ${owner.json({ type: 'paragraph', content: { alignment: 'left', nodes: [] } })}, ${ownerId})
+        returning id
+      `
+    )[0]!.id as string;
+  });
+
+  it('an editor scopes a block (MANUAL) that every member can read', async () => {
+    const variantId = (
+      await owner`insert into public.product_variants (workspace_id, product_id, name, slug, created_by) values (${ws}, ${productId}, 'Scoped-A', 'scoped-a', ${ownerId}) returning id`
+    )[0]!.id as string;
+    await member`
+      insert into public.block_variant_scopes (block_id, workspace_id, mode, variant_ids, updated_by)
+      values (${blockId}, ${ws}, 'MANUAL', ${member.json([variantId])}, ${memberId})
+    `;
+    for (const client of [owner, member, viewer]) {
+      const rows = await client`select mode, variant_ids from public.block_variant_scopes where block_id = ${blockId}`;
+      expect(rows).toHaveLength(1);
+      expect(rows[0]!.mode).toBe('MANUAL');
+    }
+  });
+
+  it('the mode CHECK rejects an unknown mode', async () => {
+    await expectDenied(
+      () =>
+        owner`update public.block_variant_scopes set mode = 'SOMETIMES' where block_id = ${blockId}`,
+    );
+  });
+
+  it('a viewer cannot scope a block (RLS — zero rows, unchanged)', async () => {
+    const touched = await viewer`
+      update public.block_variant_scopes set mode = 'ALL' where block_id = ${blockId} returning block_id
+    `;
+    expect(touched).toHaveLength(0);
+    const after = (await owner`select mode from public.block_variant_scopes where block_id = ${blockId}`)[0]!;
+    expect(after.mode).toBe('MANUAL');
+  });
+});

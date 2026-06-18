@@ -5,6 +5,7 @@ import {
   getDocumentConsumption,
   listApprovalRecords,
   listApprovalRoles,
+  loadBlockVariantScopes,
   listCommentThreads,
   listDocumentMagicLinks,
   listDocumentSnippetEmbeds,
@@ -21,6 +22,7 @@ import {
   applyTokenReplacements,
   blockAnchorLabel,
   canManageDocumentLifecycle,
+  isBlockVisibleForVariant,
   parseDocumentAccess,
   parseDocumentAllowlist,
   summarizeBriefStaleness,
@@ -244,9 +246,26 @@ export default async function DocumentPage({
     : hasLiveBlocks
       ? await resolveSpecFields(supabase, tree.document.product_id, workspace.id)
       : undefined;
-  const renderBlocks = variantPreview
-    ? tree.blocks.map((b) => applyTokenReplacements(b.content, variantPreview.replacements))
-    : tree.blocks.map((b) => b.content);
+  // R.7 (resolution) + V.4 (visibility): under a variant preview, hide blocks whose
+  // variant scope excludes this variant (a DERIVED block whose gating component was
+  // removed, or a MANUAL block not listed for it) and rewrite the rest's tokens.
+  let renderBlocks = tree.blocks.map((b) => b.content);
+  let hiddenForVariant = 0;
+  if (variantPreview) {
+    const scopes = await loadBlockVariantScopes(
+      supabase,
+      tree.blocks.map((b) => b.id),
+    );
+    const componentIds = new Set(variantPreview.componentIds);
+    const visible = tree.blocks.filter((b) =>
+      isBlockVisibleForVariant(scopes.get(b.id), {
+        variantId: variantPreview.variant.id,
+        componentIds,
+      }),
+    );
+    hiddenForVariant = tree.blocks.length - visible.length;
+    renderBlocks = visible.map((b) => applyTokenReplacements(b.content, variantPreview.replacements));
+  }
 
   return (
     <AppShell>
@@ -322,12 +341,23 @@ export default async function DocumentPage({
         {variantPreview ? (
           <p className="specs-grid__meta" role="status">
             Previewing as <strong>{variantPreview.variant.name}</strong> — spec tokens show this
-            variant’s resolved values. This is a preview; the document itself is unchanged.
+            variant’s resolved values
+            {hiddenForVariant > 0
+              ? `, and ${hiddenForVariant} block${hiddenForVariant === 1 ? '' : 's'} scoped out of it ${
+                  hiddenForVariant === 1 ? 'is' : 'are'
+                } hidden`
+              : ''}
+            . This is a preview; the document itself is unchanged.
             {variantPreview.warnings.length > 0
               ? ` (${variantPreview.warnings.length} resolution warning${
                   variantPreview.warnings.length === 1 ? '' : 's'
                 })`
               : ''}
+          </p>
+        ) : null}
+        {workspace.role !== 'viewer' && variants.length > 0 ? (
+          <p className="specs-grid__meta">
+            <Link href={`/documents/${tree.document.id}/variant-scope`}>Manage variant scope →</Link>
           </p>
         ) : null}
         {canManage ? (

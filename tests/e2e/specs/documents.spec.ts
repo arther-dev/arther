@@ -19,4 +19,10 @@ test.describe('document view', () => {
     await page.goto(`${APP}/documents/${FAKE_ID}`);
     await expect(page.getByRole('banner')).toBeVisible();
   });
+
+  test('the variant-scope surface renders its baseline (V.4), never a 500', async ({ page }) => {
+    const response = await page.goto(`${APP}/documents/${FAKE_ID}/variant-scope`);
+    expect(response?.status()).toBeLessThan(500);
+    await expect(page.getByRole('heading', { name: 'Variant scope' })).toBeVisible();
+  });
 });

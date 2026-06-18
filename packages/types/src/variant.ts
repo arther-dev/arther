@@ -94,6 +94,44 @@ export function slugifyVariantName(name: string): string {
  * A pure, human-readable one-line summary of a delta, given name lookups for the
  * referenced entities (the editor/list render this without re-deriving wording).
  */
+/**
+ * V.4 — per-block variant scope (Product Variants §3.4). A block in the shared
+ * variant-aware document is shown for a variant based on its scope:
+ *   • ALL — shown for every variant (the default);
+ *   • DERIVED — shown only when its gating component (`derivedComponentId`) is
+ *     present in that variant's resolved spec (a REMOVE/never-ADD hides it);
+ *   • MANUAL — shown only for the explicitly listed `variantIds`.
+ */
+export const BLOCK_VARIANT_SCOPE_MODES = ['ALL', 'DERIVED', 'MANUAL'] as const;
+export type BlockVariantScopeMode = (typeof BLOCK_VARIANT_SCOPE_MODES)[number];
+
+export const BLOCK_VARIANT_SCOPE_LABELS: Record<BlockVariantScopeMode, string> = {
+  ALL: 'All variants',
+  DERIVED: 'Where a component exists',
+  MANUAL: 'Selected variants only',
+};
+
+export interface BlockVariantScope {
+  mode: BlockVariantScopeMode;
+  variantIds: string[];
+  derivedComponentId: string | null;
+}
+
+/**
+ * Pure — is a block shown when previewing/publishing a given variant? Defaults to
+ * visible when unscoped (no row = ALL). DERIVED with no gating component can't be
+ * decided, so it stays visible.
+ */
+export function isBlockVisibleForVariant(
+  scope: BlockVariantScope | undefined,
+  ctx: { variantId: string; componentIds: ReadonlySet<string> },
+): boolean {
+  if (!scope || scope.mode === 'ALL') return true;
+  if (scope.mode === 'MANUAL') return scope.variantIds.includes(ctx.variantId);
+  // DERIVED
+  return scope.derivedComponentId == null ? true : ctx.componentIds.has(scope.derivedComponentId);
+}
+
 export function describeVariantDelta(
   delta: {
     type: DeltaType;
