@@ -19,6 +19,7 @@ import {
   loadDocumentTree,
   membershipLookupFor,
   publishDocument,
+  recordAnalyticsEvent,
   resolveSpecFields,
   restoreLatestSnapshot,
   revokeMagicLink,
@@ -195,10 +196,39 @@ async function runOwnerTransition(
     if (action === 'submit_for_review' && outcome.state === 'review') {
       await notifyReviewRequested(auth, documentId, approverMembershipIds);
     }
+    // C9.6 — meter the lifecycle transition.
+    await recordStateChange(auth.workspaceId, documentId, auth.userId, {
+      action,
+      from: revision.state,
+      to: outcome.state,
+    });
     revalidateDocument(documentId);
     return { ok: true, state: outcome.state };
   } catch {
     return { ok: false, error: 'Could not update the document’s status.' };
+  }
+}
+
+/** C9.6 — append a `document_state_changed` analytics event (service-role; best-effort). */
+async function recordStateChange(
+  workspaceId: WorkspaceId,
+  documentId: string,
+  userId: UserId,
+  payload: Record<string, unknown>,
+): Promise<void> {
+  try {
+    await recordAnalyticsEvent(
+      createServiceClient(),
+      { workspaceId },
+      {
+        eventType: 'document_state_changed',
+        actorUserId: userId,
+        documentId: documentId as DocumentId,
+        payload,
+      },
+    );
+  } catch {
+    // ignore — metering never fails the action
   }
 }
 
@@ -334,6 +364,12 @@ export async function publishDocumentAction(documentId: string): Promise<Lifecyc
     );
     // C3.5 — notify the owner + everyone who commented on this revision (§9.2).
     await notifyPublished(auth, documentId, tree.revision.id);
+    // C9.6 — meter the publish (approved → published).
+    await recordStateChange(auth.workspaceId, documentId, auth.userId, {
+      action: 'publish',
+      from: 'approved',
+      to: 'published',
+    });
     revalidateDocument(documentId);
     // C6.5 — bust the workspace's portal CDN cache (best-effort, env-gated).
     await revalidatePortal([`portal:${auth.workspaceSlug}`]);

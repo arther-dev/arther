@@ -11,6 +11,7 @@ import {
   getDocument,
   membershipLookupFor,
   overrideApproval,
+  recordAnalyticsEvent,
   recordApproval,
 } from '@arther/db';
 import {
@@ -25,10 +26,12 @@ import {
 import { getSupabaseServer } from '../../../../lib/supabase/server';
 
 /**
- * C3.5 — notify the document owner of an approval outcome (spec §9.2): a reached
- * Approved state, or a Send-back to Draft. Best-effort; the owner never equals the
- * actor (an owner can't review their own doc, and an owner override notifies no
- * one). Service-role dispatch (notifications have no authenticated INSERT).
+ * C3.5 / C9.6 — after an approval outcome (spec §9.2: a reached Approved state, or
+ * a Send-back to Draft) meter a `document_state_changed` analytics event and notify
+ * the document owner. Both are best-effort and service-role (notifications and
+ * analytics_events have no authenticated INSERT). Metering fires for every outcome —
+ * including an owner's own override — while the notification is skipped when the
+ * owner is the actor (you don't notify yourself).
  */
 async function notifyApprovalOutcome(
   supabase: SupabaseClient,
@@ -46,16 +49,24 @@ async function notifyApprovalOutcome(
         : null;
   if (!eventType) return;
   try {
+    const service = createServiceClient();
     const doc = await getDocument(supabase, documentId as DocumentId);
-    if (!doc?.owner_id || doc.owner_id === actorId) return;
-    await dispatchNotification(createServiceClient(), {
-      workspaceId,
-      recipientIds: [doc.owner_id],
-      eventType,
-      payload: { documentId, documentTitle: doc.title },
+    await recordAnalyticsEvent(service, { workspaceId }, {
+      eventType: 'document_state_changed',
+      actorUserId: actorId as UserId,
+      documentId: documentId as DocumentId,
+      payload: { via: 'approval', action, to: state },
     });
+    if (doc?.owner_id && doc.owner_id !== actorId) {
+      await dispatchNotification(service, {
+        workspaceId,
+        recipientIds: [doc.owner_id],
+        eventType,
+        payload: { documentId, documentTitle: doc.title },
+      });
+    }
   } catch {
-    // ignore — notifications are best-effort
+    // ignore — metering and notifications are best-effort
   }
 }
 

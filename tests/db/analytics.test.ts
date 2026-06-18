@@ -4,11 +4,13 @@ import { adminClient, createAuthUser, expectDenied, uniqueSlug, userClient } fro
 
 /**
  * G8.2 probes — `analytics_events` (0011): the metering store the app writes
- * (document_generated / block_regenerated / spec_field_updated). Locks the 0011
+ * (document_generated / block_regenerated / spec_field_updated) and the anonymous
+ * portal events C9.6 writes (document_viewed / portal_searched). Locks the 0011
  * invariants the emit relies on:
  *   • written by the service role only — no authenticated INSERT policy;
  *   • members read their workspace's events, strangers see none (cross-tenant);
- *   • append-only — update/delete are blocked even for the owner role.
+ *   • append-only — update/delete are blocked even for the owner role;
+ *   • a portal event carries an anonymous session_id (no actor) and is member-read.
  */
 
 let admin: Sql;
@@ -63,5 +65,24 @@ describe('analytics_events (G8.2)', () => {
   it('is append-only — update and delete are blocked even for the owner role', async () => {
     await expectDenied(() => admin`update public.analytics_events set event_type = 'x' where id = ${eventId}`);
     await expectDenied(() => admin`delete from public.analytics_events where id = ${eventId}`);
+  });
+
+  it('stores an anonymous portal event (session_id, no actor) and a member reads it', async () => {
+    const sessionId = crypto.randomUUID();
+    await admin`
+      insert into public.analytics_events (workspace_id, event_type, session_id, payload)
+      values (${w1}, 'document_viewed', ${sessionId}, ${JSON.stringify({ version: '1.0' })}::jsonb)
+    `;
+    const rows = await alice`
+      select actor_user_id, session_id from public.analytics_events
+      where workspace_id = ${w1} and event_type = 'document_viewed'
+    `;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.actor_user_id).toBeNull();
+    expect(rows[0]!.session_id).toBe(sessionId);
+    // A stranger still sees nothing — portal events are workspace-scoped too.
+    expect(
+      await bob`select id from public.analytics_events where workspace_id = ${w1} and event_type = 'document_viewed'`,
+    ).toHaveLength(0);
   });
 });

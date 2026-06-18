@@ -56,6 +56,18 @@ test.describe('public portal (C6)', () => {
     await expect(page.getByText(/access link/i)).toBeVisible();
   });
 
+  test('the analytics beacon endpoint accepts a POST and answers 204 (C9.6)', async ({ request }) => {
+    // The view beacon is fire-and-forget: /api/track always answers 204, even
+    // unprovisioned (no Supabase in the E2E build) — it must never error or
+    // return content. A bad/foreign body is ignored, still 204.
+    const ok = await request.post(`${PORTAL}/api/track`, {
+      data: { type: 'document_viewed', workspace: 'acme', product: UUID, document: 'install-guide' },
+    });
+    expect(ok.status()).toBe(204);
+    const junk = await request.post(`${PORTAL}/api/track`, { data: { type: 'nonsense' } });
+    expect(junk.status()).toBe(204);
+  });
+
   test('robots.txt points at the sitemap and fences /api (C9.3)', async ({ page }) => {
     const res = await page.goto(`${PORTAL}/robots.txt`);
     expect(res?.status()).toBe(200);

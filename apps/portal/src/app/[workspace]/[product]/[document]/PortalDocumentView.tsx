@@ -4,6 +4,7 @@ import { BlockRenderer } from '@arther/block-renderer';
 import { getPortalDocument, getPortalWorkspace, type PortalDocument } from '@arther/db';
 import { portalTag } from '../../../../lib/portal-cache';
 import { getPortalDb } from '../../../../lib/portal-db';
+import { ViewBeacon } from './ViewBeacon';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -87,6 +88,12 @@ export async function PortalDocumentView({
   const { doc, workspaceName } = result;
   return (
     <main className="portal-shell">
+      <ViewBeacon
+        workspace={workspaceSlug}
+        product={productId}
+        document={documentSlug}
+        version={version}
+      />
       <header className="portal-header">
         <p className="portal-header__eyebrow">{doc.productName}</p>
         <h1 className="portal-title">{doc.title}</h1>
