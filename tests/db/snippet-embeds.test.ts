@@ -140,3 +140,89 @@ describe('snippet embeds + count (0009/0023)', () => {
     );
   });
 });
+
+/**
+ * R.3 — the override model on `snippet_embeds` (live → overridden → live again).
+ * An override is a document-local copy (`override_blocks`) that detaches the embed
+ * from its live source; accepting the source clears it. The columns are
+ * editor-write, so a viewer's override update touches zero rows under RLS.
+ */
+describe('snippet embed override / accept-source (R.3)', () => {
+  const override = [{ type: 'divider' }];
+
+  async function freshEmbed(): Promise<{ blockId: string; tmpItem: string }> {
+    const tmpItem = (
+      await owner`
+        insert into public.library_items (workspace_id, name, type, blocks, created_by)
+        values (${ws}, 'Override src', 'snippet', ${owner.json([snippetParagraph])}, ${ownerId}) returning id
+      `
+    )[0]!.id as string;
+    const blockId = (
+      await owner`
+        insert into public.blocks (workspace_id, document_id, revision_id, type, display_order, source, snippet_id, content, created_by)
+        values (${ws}, ${documentId}, ${revisionId}, 'snippet', 20, 'snippet', ${tmpItem},
+                ${owner.json({ type: 'snippet', snippet_id: tmpItem, snippet_name: 'Override src' })}, ${ownerId})
+        returning id
+      `
+    )[0]!.id as string;
+    await owner`
+      insert into public.snippet_embeds (workspace_id, document_id, block_id, library_item_id, state)
+      values (${ws}, ${documentId}, ${blockId}, ${tmpItem}, 'live')
+    `;
+    return { blockId, tmpItem };
+  }
+
+  it('the owner can override an embed and then accept the source again', async () => {
+    const { blockId, tmpItem } = await freshEmbed();
+
+    // Override: detach from the live source, freezing this doc's copy.
+    await owner`
+      update public.snippet_embeds
+      set state = 'overridden',
+          override_blocks = ${owner.json(override)},
+          override_created_at = now(),
+          override_created_by = ${ownerId}
+      where block_id = ${blockId}
+    `;
+    const overridden = (
+      await owner`select state, override_blocks from public.snippet_embeds where block_id = ${blockId}`
+    )[0]!;
+    expect(overridden.state).toBe('overridden');
+    const stored =
+      typeof overridden.override_blocks === 'string'
+        ? JSON.parse(overridden.override_blocks)
+        : overridden.override_blocks;
+    expect(stored).toEqual(override);
+
+    // Accept source: drop the override, follow the live snippet again.
+    await owner`
+      update public.snippet_embeds
+      set state = 'live', override_blocks = null, override_created_at = null, override_created_by = null
+      where block_id = ${blockId}
+    `;
+    const live = (
+      await owner`select state, override_blocks from public.snippet_embeds where block_id = ${blockId}`
+    )[0]!;
+    expect(live.state).toBe('live');
+    expect(live.override_blocks).toBeNull();
+
+    await owner`delete from public.blocks where id = ${blockId}`;
+    await owner`delete from public.library_items where id = ${tmpItem}`;
+  });
+
+  it("a viewer's override update touches zero rows (RLS), leaving the embed live", async () => {
+    const { blockId, tmpItem } = await freshEmbed();
+
+    // RLS UPDATE filtered by `using` affects no rows without raising.
+    const touched = await viewer`
+      update public.snippet_embeds set state = 'overridden', override_blocks = ${viewer.json(override)}
+      where block_id = ${blockId} returning block_id
+    `;
+    expect(touched).toHaveLength(0);
+    const after = (await owner`select state from public.snippet_embeds where block_id = ${blockId}`)[0]!;
+    expect(after.state).toBe('live');
+
+    await owner`delete from public.blocks where id = ${blockId}`;
+    await owner`delete from public.library_items where id = ${tmpItem}`;
+  });
+});

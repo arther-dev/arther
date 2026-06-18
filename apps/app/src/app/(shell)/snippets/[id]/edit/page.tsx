@@ -4,6 +4,7 @@ import { libraryItemIdSchema } from '@arther/types';
 import { AppShell, EmptyState } from '@arther/ui';
 import { getSupabaseServer } from '../../../../../lib/supabase/server';
 import { LibraryItemEditor } from './LibraryItemEditor';
+import { saveLibraryItemBlocksAction } from './actions';
 
 /**
  * R.2c — edit a library item's block content in place. Editor-gated (members
@@ -57,7 +58,15 @@ export default async function SnippetEditPage({ params }: { params: Promise<{ id
 
   return (
     <AppShell>
-      <LibraryItemEditor id={item.id} initialBlocks={item.blocks} />
+      <LibraryItemEditor
+        id={item.id}
+        initialBlocks={item.blocks}
+        onSave={saveLibraryItemBlocksAction}
+        heading="Edit content"
+        intro="Editing the source updates every live embed at the next publish. Saving records a version."
+        backHref={`/snippets/${item.id}`}
+        backLabel="Back to the item"
+      />
     </AppShell>
   );
 }

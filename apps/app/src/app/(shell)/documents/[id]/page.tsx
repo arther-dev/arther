@@ -7,6 +7,7 @@ import {
   listApprovalRoles,
   listCommentThreads,
   listDocumentMagicLinks,
+  listDocumentSnippetEmbeds,
   listMembers,
   listSnapshotsForDocument,
   listStaleBriefReferencesForDocument,
@@ -31,6 +32,7 @@ import { CommentsPanel } from './CommentsPanel';
 import { DocumentAnalytics } from './DocumentAnalytics';
 import { DocumentLifecycle } from './DocumentLifecycle';
 import { DuplicateDocumentButton } from './DuplicateDocumentButton';
+import { SnippetEmbedsPanel } from './SnippetEmbedsPanel';
 import { ApprovalPanel, type PanelRole } from './ApprovalPanel';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -200,6 +202,14 @@ export default async function DocumentPage({ params }: { params: Promise<{ id: s
     await listStaleBriefReferencesForDocument(supabase, tree.document.id),
   );
 
+  // R.3 — snippet embeds in this document, for the owner's override panel. Only
+  // the document owner (or a workspace admin) can override embeds, so skip the
+  // query for everyone else and for documents with no embeds.
+  const snippetEmbeds =
+    canManage && tree.blocks.some((b) => b.content.type === 'snippet')
+      ? await listDocumentSnippetEmbeds(supabase, tree.document.id)
+      : [];
+
   // G4 live data blocks — resolve current field values for spec_table + chart.
   const resolved = tree.blocks.some(
     (b) => b.content.type === 'spec_table' || b.content.type === 'chart',
@@ -308,6 +318,9 @@ export default async function DocumentPage({ params }: { params: Promise<{ id: s
         ) : (
           <p className="specs-grid__meta">This document has no content yet.</p>
         )}
+        {canManage ? (
+          <SnippetEmbedsPanel documentId={tree.document.id} embeds={snippetEmbeds} />
+        ) : null}
         {user ? (
           <CommentsPanel
             documentId={tree.document.id}
