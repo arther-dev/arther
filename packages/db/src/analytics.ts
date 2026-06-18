@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { DocumentId, UserId } from '@arther/types';
+import type { DocumentId, UserId, WorkspaceId } from '@arther/types';
 import { scopedServiceQuery, type WorkspaceScope } from './guard';
 
 /**
@@ -116,4 +116,73 @@ export async function getDocumentConsumption(
     downloads: n(row?.downloads),
     identifiedViewers: n(row?.identified_viewers),
   };
+}
+
+/**
+ * A.6 — the admin (owner/admin) consumption surfaces over the events store
+ * (0025 RPCs, SECURITY INVOKER + workspace-scoped): cross-document consumption,
+ * the most-run portal searches, and the zero-result searches (content gaps).
+ * The admin restriction is enforced at the call site (canDo); these reads are
+ * member-RLS safe.
+ */
+export interface WorkspaceDocumentConsumption {
+  documentId: DocumentId;
+  title: string;
+  views: number;
+  uniqueVisitors: number;
+  downloads: number;
+}
+
+export interface SearchQueryCount {
+  query: string;
+  searches: number;
+}
+
+const num = (v: number | string | null | undefined): number => Number(v ?? 0);
+
+export async function getWorkspaceDocumentConsumption(
+  client: SupabaseClient,
+  workspaceId: WorkspaceId,
+): Promise<WorkspaceDocumentConsumption[]> {
+  const { data, error } = await client.rpc('workspace_document_consumption', {
+    p_workspace_id: workspaceId,
+  });
+  if (error) throw new Error(`getWorkspaceDocumentConsumption: ${error.message}`);
+  return ((data ?? []) as Array<Record<string, unknown>>).map((r) => ({
+    documentId: r.document_id as DocumentId,
+    title: (r.title as string) ?? 'Untitled',
+    views: num(r.views as number | string),
+    uniqueVisitors: num(r.unique_visitors as number | string),
+    downloads: num(r.downloads as number | string),
+  }));
+}
+
+async function searchCounts(
+  client: SupabaseClient,
+  rpc: 'workspace_top_searches' | 'workspace_zero_result_searches',
+  workspaceId: WorkspaceId,
+  limit: number,
+): Promise<SearchQueryCount[]> {
+  const { data, error } = await client.rpc(rpc, { p_workspace_id: workspaceId, p_limit: limit });
+  if (error) throw new Error(`${rpc}: ${error.message}`);
+  return ((data ?? []) as Array<Record<string, unknown>>).map((r) => ({
+    query: (r.query as string) ?? '',
+    searches: num(r.searches as number | string),
+  }));
+}
+
+export function getTopSearches(
+  client: SupabaseClient,
+  workspaceId: WorkspaceId,
+  limit = 20,
+): Promise<SearchQueryCount[]> {
+  return searchCounts(client, 'workspace_top_searches', workspaceId, limit);
+}
+
+export function getZeroResultSearches(
+  client: SupabaseClient,
+  workspaceId: WorkspaceId,
+  limit = 20,
+): Promise<SearchQueryCount[]> {
+  return searchCounts(client, 'workspace_zero_result_searches', workspaceId, limit);
 }
