@@ -18,6 +18,7 @@ import { AppShell, Button } from '@arther/ui';
 import {
   addBlockAfterAction,
   deleteBlockAction,
+  insertTemplateAction,
   pasteBlocksAction,
   regenerateBlockAction,
   reorderBlocksAction,
@@ -25,6 +26,7 @@ import {
 } from './actions';
 import { readBlockClipboard, writeBlockClipboard } from './clipboard';
 import { BlockProperties } from './BlockProperties';
+import { LibraryInsert } from './LibraryInsert';
 import { RichTextEditor } from './RichTextEditor';
 import { SaveToLibrary } from './SaveToLibrary';
 import { useSaveQueue } from './useSaveQueue';
@@ -340,6 +342,27 @@ export function DocumentEditor({
     setAnchor(added[added.length - 1]?.id ?? null);
   }
 
+  // R.6 — insert a template from the library after the selection, as independent
+  // manual blocks (copy-on-insert). Mirrors paste's state merge.
+  async function insertTemplate(libraryItemId: string) {
+    if (structuralBlocked) return;
+    const res = await insertTemplateAction({ revisionId, documentId, afterBlockId: selected, libraryItemId });
+    if (!res.ok || !res.blocks || !res.orderedIds) return;
+    const added: EditorBlock[] = res.blocks.map((b) => ({
+      id: b.id,
+      content: b.content,
+      type: b.type,
+      source: b.source,
+    }));
+    const order = res.orderedIds;
+    setBlocks((prev) => {
+      const byId = new Map<string, EditorBlock>([...prev, ...added].map((b) => [b.id, b]));
+      return order.map((id) => byId.get(id)).filter((b): b is EditorBlock => Boolean(b));
+    });
+    setSelectedIds(new Set(added.map((b) => b.id)));
+    setAnchor(added[added.length - 1]?.id ?? null);
+  }
+
   async function moveSelected(direction: -1 | 1) {
     if (!selected || structuralBlocked) return;
     const idx = blocks.findIndex((b) => b.id === selected);
@@ -611,6 +634,7 @@ export function DocumentEditor({
               >
                 Paste{clipboardCount > 0 ? ` (${clipboardCount})` : ''}
               </Button>
+              <LibraryInsert onInsertTemplate={insertTemplate} disabled={structuralBlocked} />
               <Button
                 size="sm"
                 variant={showOutline ? 'secondary' : 'ghost'}
