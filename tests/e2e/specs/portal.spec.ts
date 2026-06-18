@@ -46,6 +46,26 @@ test.describe('public portal (C6)', () => {
     await context.close();
   });
 
+  test('exposes a skip link, a main landmark, a labelled search box, and a lang (C9.5)', async ({
+    page,
+  }) => {
+    // The search page renders its form unconditionally (even unprovisioned), so
+    // the a11y scaffolding is assertable without Supabase.
+    await page.goto(`${PORTAL}/acme/search?q=x`);
+    // Skip link → the main landmark it targets (first focusable, bypasses preamble).
+    await expect(page.getByRole('link', { name: /skip to content/i })).toHaveAttribute(
+      'href',
+      '#main-content',
+    );
+    await expect(page.locator('main#main-content')).toBeVisible();
+    // The search field keeps an accessible name even though its label is a placeholder.
+    await expect(
+      page.getByRole('searchbox', { name: /search published documentation/i }),
+    ).toBeVisible();
+    // The page declares its language (WCAG 3.1.1).
+    await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+  });
+
   test('a gated document shows the access gate, never content, without a session (C7)', async ({
     page,
   }) => {

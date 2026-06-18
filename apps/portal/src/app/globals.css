@@ -16,6 +16,56 @@ body {
   line-height: 1.6;
 }
 
+/* C9.5 — one consistent, AA-contrast focus indicator for every keyboard-
+   reachable control (WCAG 2.4.7). #1A66C9 is the light-surface focus/link token
+   from the a11y audit (≥3:1 non-text on white). The skip-link target (the
+   programmatically-focused <main tabindex="-1">) is exempt — it isn't in the tab
+   order, and its heading is the visible cue. */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+summary:focus-visible,
+[tabindex='0']:focus-visible {
+  outline: 2px solid #1a66c9;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.portal-shell:focus {
+  outline: none;
+}
+
+/* C9.5 — "Skip to content": the first focusable element, off-screen until
+   focused, so keyboard/SR users can bypass any preamble straight to <main>. */
+.portal-skip-link {
+  position: absolute;
+  left: 16px;
+  top: -56px;
+  z-index: 100;
+  padding: 10px 16px;
+  background: #1a1a1a;
+  color: #ffffff;
+  border-radius: 0 0 8px 8px;
+  text-decoration: none;
+  transition: top 0.15s ease;
+}
+.portal-skip-link:focus {
+  top: 0;
+}
+
+/* C9.5 — honor a reduced-motion preference (WCAG 2.3.3): neutralize transitions,
+   animations, and smooth scrolling for users who opt out of motion. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 .portal-shell {
   max-width: 820px;
   margin: 0 auto;
@@ -31,7 +81,7 @@ body {
   font-size: 13px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: #6b6b6b;
+  color: #5a5a62;
   margin: 0 0 4px;
 }
 .portal-title {
@@ -40,7 +90,7 @@ body {
   margin: 0;
 }
 .portal-meta {
-  color: #6b6b6b;
+  color: #5a5a62;
   font-size: 14px;
 }
 
@@ -88,7 +138,7 @@ body {
   text-align: left;
 }
 .portal-empty {
-  color: #6b6b6b;
+  color: #5a5a62;
 }
 
 .portal-search {
@@ -100,12 +150,10 @@ body {
   flex: 1;
   padding: 10px 12px;
   font-size: 15px;
-  border: 1px solid #d6d6d6;
+  /* #6E6E76 (DS border/input) clears the 3:1 non-text contrast bar on white;
+     the prior #D6D6D6 (~1.4:1) gave the field no perceivable boundary (a11y P4). */
+  border: 1px solid #6e6e76;
   border-radius: 8px;
-}
-.portal-search__input:focus-visible {
-  outline: 2px solid #2563eb;
-  outline-offset: 1px;
 }
 .portal-search__button {
   padding: 10px 18px;

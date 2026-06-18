@@ -41,7 +41,7 @@ export default async function PortalSearch({
   }
 
   return (
-    <main className="portal-shell">
+    <main id="main-content" tabIndex={-1} className="portal-shell">
       <header className="portal-header">
         <p className="portal-header__eyebrow">
           <Link href={`/${workspaceSlug}`}>{workspace?.name ?? 'Documentation'}</Link>

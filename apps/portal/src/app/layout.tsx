@@ -21,6 +21,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" data-theme="light">
       <body style={{ margin: 0, fontFamily: 'system-ui, sans-serif', background: '#ffffff' }}>
+        {/* C9.5 — skip link: the first focusable element on every page, jumping
+            past any preamble to the <main id="main-content"> landmark below. */}
+        <a className="portal-skip-link" href="#main-content">
+          Skip to content
+        </a>
         {children}
       </body>
     </html>
