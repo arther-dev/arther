@@ -237,6 +237,7 @@ export {
   type InsertedSnippetEmbed,
   type InsertSnippetEmbedError,
 } from './snippet-embeds';
+export { duplicateDocument, type DuplicationResult } from './duplication';
 export {
   getDocumentConsumption,
   getTopSearches,
