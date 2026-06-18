@@ -251,6 +251,19 @@ export {
 } from './snippet-embeds';
 export { duplicateDocument, type DuplicationResult } from './duplication';
 export {
+  addVariantDelta,
+  createVariant,
+  deleteVariant,
+  getVariant,
+  listVariantDeltas,
+  listVariants,
+  removeVariantDelta,
+  renameVariant,
+  setVariantDefault,
+  type ProductVariantRow,
+  type VariantDeltaRow,
+} from './variants';
+export {
   clearSnippetStaleness,
   flagSnippetsForFieldChange,
   listSnippetReviewItems,

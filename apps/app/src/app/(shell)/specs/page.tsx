@@ -226,6 +226,9 @@ export default async function SpecsPage({
           <Link className="ui-btn ui-btn--ghost" href={`/specs/import?product=${selected.id}`}>
             Re-import spec sheet
           </Link>
+          <Link className="ui-btn ui-btn--ghost" href={`/specs/variants?product=${selected.id}`}>
+            Variants
+          </Link>
           <ArchiveToggle entity="products" id={selected.id} archived={false} label={selected.name} />
         </header>
 

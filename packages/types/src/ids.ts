@@ -37,8 +37,12 @@ export type GenerationRunSectionId = Branded<string, 'GenerationRunSectionId'>;
 export type LibraryItemId = Branded<string, 'LibraryItemId'>;
 export type LibraryItemVersionId = Branded<string, 'LibraryItemVersionId'>;
 export type SnippetEmbedId = Branded<string, 'SnippetEmbedId'>;
+export type VariantId = Branded<string, 'VariantId'>;
+export type VariantDeltaId = Branded<string, 'VariantDeltaId'>;
 
 const uuid = z.string().uuid();
+export const variantIdSchema = uuid.transform((v) => v as VariantId);
+export const variantDeltaIdSchema = uuid.transform((v) => v as VariantDeltaId);
 export const userIdSchema = uuid.transform((v) => v as UserId);
 export const workspaceIdSchema = uuid.transform((v) => v as WorkspaceId);
 export const membershipIdSchema = uuid.transform((v) => v as MembershipId);
