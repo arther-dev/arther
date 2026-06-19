@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { slugifyWorkspaceName, workspaceSlugSchema, workspaceRoleSchema } from './workspace';
+import {
+  seatTierForRole,
+  slugifyWorkspaceName,
+  summarizeSeats,
+  workspaceSlugSchema,
+  workspaceRoleSchema,
+} from './workspace';
 
 describe('workspaceSlugSchema', () => {
   it('accepts portal-safe slugs', () => {
@@ -37,5 +43,23 @@ describe('slugifyWorkspaceName', () => {
 describe('workspaceRoleSchema', () => {
   it('matches the migration 0002 role check constraint', () => {
     expect(workspaceRoleSchema.options).toEqual(['owner', 'admin', 'member', 'viewer']);
+  });
+});
+
+describe('seat tracking (H.4)', () => {
+  it('maps owner/admin/member to paid Editor seats and viewer to a free seat', () => {
+    expect(seatTierForRole('owner')).toBe('editor');
+    expect(seatTierForRole('admin')).toBe('editor');
+    expect(seatTierForRole('member')).toBe('editor');
+    expect(seatTierForRole('viewer')).toBe('viewer');
+  });
+
+  it('summarizes editor vs viewer seat counts', () => {
+    expect(summarizeSeats(['owner', 'admin', 'member', 'viewer', 'viewer'])).toEqual({
+      editorSeats: 3,
+      viewerSeats: 2,
+      total: 5,
+    });
+    expect(summarizeSeats([])).toEqual({ editorSeats: 0, viewerSeats: 0, total: 0 });
   });
 });

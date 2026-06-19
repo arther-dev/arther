@@ -9,6 +9,39 @@ export type WorkspaceRole = z.infer<typeof workspaceRoleSchema>;
 export const seatTierSchema = z.enum(['editor', 'viewer']);
 export type SeatTier = z.infer<typeof seatTierSchema>;
 
+/**
+ * H.4 — the role→seat mapping the (post-launch) billing UI reads. Owner, Admin,
+ * and Member are paid Editor seats; Viewer is a free seat (billing spec §2.4).
+ * The seat tier follows the workspace role automatically, so a role change that
+ * crosses this boundary is a billable seat change.
+ */
+export function seatTierForRole(role: WorkspaceRole): SeatTier {
+  return role === 'viewer' ? 'viewer' : 'editor';
+}
+
+export const SEAT_TIER_LABELS: Record<SeatTier, string> = {
+  editor: 'Editor',
+  viewer: 'Viewer',
+};
+
+/** Current seat counts for a workspace — what the billing admin UI tracks (§6). */
+export interface WorkspaceSeatSummary {
+  editorSeats: number;
+  viewerSeats: number;
+  total: number;
+}
+
+/** Count editor vs viewer seats from a list of member roles. Pure. */
+export function summarizeSeats(roles: WorkspaceRole[]): WorkspaceSeatSummary {
+  let editorSeats = 0;
+  let viewerSeats = 0;
+  for (const role of roles) {
+    if (seatTierForRole(role) === 'editor') editorSeats += 1;
+    else viewerSeats += 1;
+  }
+  return { editorSeats, viewerSeats, total: roles.length };
+}
+
 /** Only admin/member are invitable (0002: owner is not invitable). */
 export const invitableRoleSchema = z.enum(['admin', 'member']);
 export type InvitableRole = z.infer<typeof invitableRoleSchema>;

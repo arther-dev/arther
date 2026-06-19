@@ -1,5 +1,11 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { UserId, WorkspaceId, WorkspaceRole } from '@arther/types';
+import {
+  summarizeSeats,
+  type UserId,
+  type WorkspaceId,
+  type WorkspaceRole,
+  type WorkspaceSeatSummary,
+} from '@arther/types';
 
 /**
  * Workspace-admin repository (F4): members, invitations, ownership — thin,
@@ -13,6 +19,13 @@ export interface MemberRow {
   user_id: UserId;
   role: WorkspaceRole;
   joined_at: string;
+  /**
+   * H.4 — the role→seat transition timestamp the (post-launch) billing UI reads
+   * for proration: the 0002 `workspace_members_set_updated_at` trigger bumps it on
+   * every role change, so a change that crosses the Editor/Viewer boundary is
+   * timestamped (billing spec §6).
+   */
+  updated_at: string;
   name: string | null;
   email: string;
 }
@@ -23,7 +36,9 @@ export async function listMembers(
 ): Promise<MemberRow[]> {
   const { data, error } = await client
     .from('workspace_members')
-    .select('id, user_id, role, joined_at, users!workspace_members_user_id_fkey(name, email)')
+    .select(
+      'id, user_id, role, joined_at, updated_at, users!workspace_members_user_id_fkey(name, email)',
+    )
     .eq('workspace_id', workspaceId)
     .order('joined_at');
   if (error) throw new Error(`listMembers: ${error.message}`);
@@ -34,10 +49,29 @@ export async function listMembers(
       user_id: (row as { user_id: string }).user_id as UserId,
       role: (row as { role: WorkspaceRole }).role,
       joined_at: (row as { joined_at: string }).joined_at,
+      updated_at: (row as { updated_at: string }).updated_at,
       name: u?.name ?? null,
       email: u?.email ?? '',
     };
   });
+}
+
+/**
+ * H.4 — current Editor/Viewer seat counts for the workspace (billing spec §6
+ * "seat count tracking"). RLS-scoped to members; the seat tier follows the role
+ * (owner/admin/member = paid Editor, viewer = free), so this is computed, not
+ * stored. The role→seat transition timestamp lives on each member's `updated_at`.
+ */
+export async function getWorkspaceSeatSummary(
+  client: SupabaseClient,
+  workspaceId: WorkspaceId,
+): Promise<WorkspaceSeatSummary> {
+  const { data, error } = await client
+    .from('workspace_members')
+    .select('role')
+    .eq('workspace_id', workspaceId);
+  if (error) throw new Error(`getWorkspaceSeatSummary: ${error.message}`);
+  return summarizeSeats((data ?? []).map((r) => (r as { role: WorkspaceRole }).role));
 }
 
 /** Role changes take effect immediately (F4.2); owner moves only via transfer. */
