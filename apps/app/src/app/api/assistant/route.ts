@@ -7,6 +7,10 @@ import {
   assistantRequestSchema,
   buildAssistantSystemPrompt,
   flattenAssistantConversation,
+  isAssistantWriteAction,
+  isInternalAssistantPath,
+  summarizeProposedActions,
+  type AssistantAction,
   type AssistantResult,
 } from '@arther/types';
 import { getSupabaseServer } from '../../../lib/supabase/server';
@@ -14,14 +18,16 @@ import { getSupabaseServer } from '../../../lib/supabase/server';
 export const dynamic = 'force-dynamic';
 
 /**
- * K.1/K.3/K.4/K.7 — Ask Arther chat. Authenticated members only; the conversation
- * is session-scoped (sent up each turn, never stored). Two passes: a cheap
- * structured **planner** decides whether to search the user's content (K.4), then
- * the prose answer is **streamed** token-by-token (K.3). The transport is NDJSON —
- * one `{type:'results'}` line (if any) followed by `{type:'delta'}` lines — so the
- * panel can render the result cards and the live-typed reply together. Grounded in
- * the K.7 knowledge base + the user's live context. Backed by the one ai-gateway
- * (ADR-007).
+ * K.1/K.3/K.4/K.5/K.7 — Ask Arther chat. Authenticated members only; the
+ * conversation is session-scoped (sent up each turn, never stored). Two passes: a
+ * cheap structured **planner** decides whether to search the user's content (K.4)
+ * and which actions to propose (K.5), then the prose answer is **streamed**
+ * token-by-token (K.3). The transport is NDJSON — `{type:'results'}` (search
+ * cards), `{type:'navigate'}` (immediate links), `{type:'proposal'}` (the
+ * write-action confirmation batch), then `{type:'delta'}` lines. This route only
+ * *proposes* writes; nothing mutates until the user confirms via ./execute.
+ * Grounded in the K.7 knowledge base + the user's live context. Backed by the one
+ * ai-gateway (ADR-007).
  */
 export async function POST(request: Request): Promise<Response> {
   const supabase = await getSupabaseServer();
@@ -51,19 +57,23 @@ export async function POST(request: Request): Promise<Response> {
   const workspace = await getActiveWorkspace(supabase).catch(() => null);
   const userTurn = flattenAssistantConversation(parsed.data.messages);
 
-  // Pass 1 — planner: does the user want to find their own content? (Cheap; a
-  // failure just means "don't search" — the answer still streams.)
+  // Pass 1 — planner: does the user want to find their own content, and/or
+  // perform an action? (Cheap; a failure just means "don't search / no action"
+  // — the answer still streams. The planner only *proposes*; nothing here writes.)
   let query: string | null = null;
+  let actions: AssistantAction[] = [];
   try {
     const plan = await gateway.structured({
       schema: assistantPlanSchema,
       system: ASSISTANT_PLANNER_SYSTEM,
       user: userTurn,
-      maxTokens: 128,
+      maxTokens: 256,
     });
     query = plan.search?.query ?? null;
+    actions = plan.actions ?? [];
   } catch {
     query = null;
+    actions = [];
   }
 
   // Pass 1.5 — run the read action (RLS-scoped) and summarize it for the answer.
@@ -78,11 +88,26 @@ export async function POST(request: Request): Promise<Response> {
     }
   }
 
-  // Pass 2 — stream the prose answer over NDJSON, leading with the result cards.
+  // K.5 — partition proposed actions. `navigate` is immediate (a one-tap link in
+  // the panel, in-app paths only); the write actions (`create_*`) are surfaced as
+  // a confirmation card and never run until the user confirms via /execute.
+  const navigates = actions.filter(
+    (a): a is Extract<AssistantAction, { kind: 'navigate' }> =>
+      a.kind === 'navigate' && isInternalAssistantPath(a.path),
+  );
+  const writes = actions.filter(isAssistantWriteAction);
+  const proposalSummary =
+    navigates.length > 0 || writes.length > 0
+      ? summarizeProposedActions([...navigates, ...writes])
+      : undefined;
+
+  // Pass 2 — stream the prose answer over NDJSON, leading with the result cards
+  // and the proposed actions (navigation links + the confirmation batch).
   const system = buildAssistantSystemPrompt({
     context: parsed.data.context,
     role: workspace?.role ?? null,
     searchSummary,
+    proposalSummary,
   });
   const encoder = new TextEncoder();
   const line = (obj: unknown) => encoder.encode(`${JSON.stringify(obj)}\n`);
@@ -90,6 +115,8 @@ export async function POST(request: Request): Promise<Response> {
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       if (results && results.length > 0) controller.enqueue(line({ type: 'results', results }));
+      if (navigates.length > 0) controller.enqueue(line({ type: 'navigate', actions: navigates }));
+      if (writes.length > 0) controller.enqueue(line({ type: 'proposal', actions: writes }));
       try {
         let any = false;
         for await (const delta of gateway.streamText({ system, user: userTurn, maxTokens: 1024 })) {
