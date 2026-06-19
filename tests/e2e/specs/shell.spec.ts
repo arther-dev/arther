@@ -25,7 +25,9 @@ test.describe('app shell frame (Handoff 02)', () => {
 
   test('the Ask Arther panel toggles from the Help button (K.1)', async ({ page }) => {
     await page.goto(`${APP}/specs`);
-    const panel = page.getByRole('complementary', { name: 'Ask Arther' });
+    // A CSS locator (not getByRole): when closed the panel is aria-hidden, so it
+    // is absent from the accessibility tree.
+    const panel = page.locator('aside[aria-label="Ask Arther"]');
     await expect(panel).toHaveAttribute('aria-hidden', 'true');
     await page.getByRole('button', { name: 'Ask Arther (⌘J)' }).click();
     await expect(panel).toHaveAttribute('aria-hidden', 'false');
