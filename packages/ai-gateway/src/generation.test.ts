@@ -110,6 +110,18 @@ describe('generateSection', () => {
     expect(outcome.status).toBe('failed');
     expect(outcome.error).toContain('model unavailable');
   });
+
+  it('does not cache the prefix for a one-off section by default (H.6 cost guardrail)', async () => {
+    let cacheSystem: boolean | undefined;
+    const gateway: Pick<AiGateway, 'structured'> = {
+      structured: (async (req: { cacheSystem?: boolean }) => {
+        cacheSystem = req.cacheSystem;
+        return sectionWith('F1');
+      }) as never,
+    };
+    await generateSection(gateway, plan('S1'), resolve); // default cacheSystem
+    expect(cacheSystem).toBe(false); // a single call can't reuse a cached prefix
+  });
 });
 
 describe('generateDocument', () => {
@@ -165,6 +177,21 @@ describe('generateDocument', () => {
     });
     expect(result.blocks.map((b) => b.type)).toEqual(['section_header', 'callout']);
     expect(result.blocks.find((b) => b.source === 'placeholder')?.placeholderBriefKey).toBe('overview');
+  });
+
+  it('requests prompt caching for every section of a run (H.6 cost guardrail)', async () => {
+    // Caching the byte-stable rules prefix (buildSectionPrompt) is what keeps a
+    // multi-section run's token cost proportionate (architecture §13). Pair with
+    // the byte-stable-prefix test above: stable prefix + cacheSystem=true = a hit.
+    const cacheFlags: (boolean | undefined)[] = [];
+    const gateway: Pick<AiGateway, 'structured'> = {
+      structured: (async (req: { cacheSystem?: boolean }) => {
+        cacheFlags.push(req.cacheSystem);
+        return sectionWith('F1');
+      }) as never,
+    };
+    await generateDocument({ gateway, resolve, sections: [plan('S1'), plan('S2'), plan('S3')] });
+    expect(cacheFlags).toEqual([true, true, true]);
   });
 });
 
