@@ -23,6 +23,16 @@ test.describe('app shell frame (Handoff 02)', () => {
     await expect(page.getByRole('status')).toHaveText('Connected');
   });
 
+  test('the Ask Arther panel toggles from the Help button (K.1)', async ({ page }) => {
+    await page.goto(`${APP}/specs`);
+    const panel = page.getByRole('complementary', { name: 'Ask Arther' });
+    await expect(panel).toHaveAttribute('aria-hidden', 'true');
+    await page.getByRole('button', { name: 'Ask Arther (⌘J)' }).click();
+    await expect(panel).toHaveAttribute('aria-hidden', 'false');
+    await panel.getByRole('button', { name: 'Close' }).click();
+    await expect(panel).toHaveAttribute('aria-hidden', 'true');
+  });
+
   test('the active tab reflects the mode', async ({ page }) => {
     await page.goto(`${APP}/dashboard`);
     await expect(page.locator('.ui-tab-chip--active')).toHaveText('Dashboard');

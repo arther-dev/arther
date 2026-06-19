@@ -12,6 +12,8 @@ export interface TopBarProps {
   notifications?: ReactNode;
   /** Where the ⌘K search control navigates (G4.7); a bare button when unset. */
   searchHref?: string;
+  /** Toggle the Ask Arther assistant panel (⌘J / Help, K.1). */
+  onHelp?: () => void;
   /** Slot for future tab-strip items beyond the active one. */
   children?: ReactNode;
 }
@@ -28,6 +30,7 @@ export function TopBar({
   account,
   notifications,
   searchHref,
+  onHelp,
   children,
 }: TopBarProps) {
   const connectivityLabel =
@@ -64,7 +67,7 @@ export function TopBar({
             <BellIcon />
           </button>
         )}
-        <button type="button" className="ui-icon-btn" aria-label="Ask Arther (⌘J)">
+        <button type="button" className="ui-icon-btn" aria-label="Ask Arther (⌘J)" onClick={onHelp}>
           <HelpIcon />
         </button>
         <span

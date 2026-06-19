@@ -1,4 +1,5 @@
 import { getNotificationFeed, type NotificationFeed } from '@arther/db';
+import { AssistantProvider } from '../../components/AssistantProvider';
 import { ShellTopBar } from '../../components/ShellTopBar';
 import { getSupabaseServer } from '../../lib/supabase/server';
 
@@ -25,8 +26,10 @@ export default async function ShellLayout({ children }: { children: React.ReactN
 
   return (
     <div className="ui-app">
-      <ShellTopBar notifications={feed.items} unreadCount={feed.unreadCount} />
-      {children}
+      <AssistantProvider>
+        <ShellTopBar notifications={feed.items} unreadCount={feed.unreadCount} />
+        {children}
+      </AssistantProvider>
     </div>
   );
 }
