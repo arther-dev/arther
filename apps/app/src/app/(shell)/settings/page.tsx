@@ -5,6 +5,7 @@ import {
   listInvitations,
   listMembers,
 } from '@arther/db';
+import { summarizeSeats } from '@arther/types';
 import { AppShell, EmptyState } from '@arther/ui';
 import { getSupabaseServer } from '../../../lib/supabase/server';
 import {
@@ -114,6 +115,13 @@ export default async function SettingsPage() {
 
         <section className="specs-section">
           <h2 className="specs-section__title">Members</h2>
+          {/* H.4 — seat counts (billing spec §6): Editor seats are paid, Viewer free. */}
+          <p className="specs-grid__meta" data-testid="seat-summary">
+            {(() => {
+              const seats = summarizeSeats(members.map((m) => m.role));
+              return `${seats.editorSeats} Editor ${seats.editorSeats === 1 ? 'seat' : 'seats'} (paid) · ${seats.viewerSeats} Viewer ${seats.viewerSeats === 1 ? 'seat' : 'seats'} (free)`;
+            })()}
+          </p>
           <table className="specs-grid">
             <thead>
               <tr>
