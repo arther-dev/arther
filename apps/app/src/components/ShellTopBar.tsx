@@ -4,6 +4,7 @@ import { usePathname } from 'next/navigation';
 import { TopBar } from '@arther/ui';
 import type { NotificationView } from '@arther/types';
 import { AccountMenu } from './AccountMenu';
+import { useAssistant } from './AssistantContext';
 import { NotificationBell } from './NotificationBell';
 
 /** The active tab = the mode, derived from the route segment (Handoff 02 §3). */
@@ -26,12 +27,14 @@ export function ShellTopBar({
 }) {
   const pathname = usePathname() ?? '/';
   const activeTab = MODE_TITLES.find(([prefix]) => pathname.startsWith(prefix))?.[1] ?? 'Arther';
+  const { toggle } = useAssistant();
   return (
     <TopBar
       activeTab={activeTab}
       account={<AccountMenu />}
       notifications={<NotificationBell items={notifications} unreadCount={unreadCount} />}
       searchHref="/search"
+      onHelp={toggle}
     />
   );
 }
