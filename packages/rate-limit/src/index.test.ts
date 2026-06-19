@@ -43,6 +43,16 @@ describe('MemoryRateLimiter', () => {
     expect(rl.check('generation', 'user-2').success).toBe(true);
   });
 
+  it('enforces the assistant budget per member (H.5)', () => {
+    const c = clock();
+    const rl = new MemoryRateLimiter(RATE_LIMITS, c.now);
+    const { limit } = RATE_LIMITS.assistant; // 20
+    for (let i = 0; i < limit; i++) expect(rl.check('assistant', 'user-1').success).toBe(true);
+    expect(rl.check('assistant', 'user-1').success).toBe(false);
+    // A different member is unaffected.
+    expect(rl.check('assistant', 'user-2').success).toBe(true);
+  });
+
   it('frees up budget once the window slides past the oldest hit', () => {
     const c = clock();
     const rl = new MemoryRateLimiter(RATE_LIMITS, c.now);

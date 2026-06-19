@@ -20,6 +20,7 @@ export type RateLimitName =
   | 'invitation'
   | 'import'
   | 'generation'
+  | 'assistant'
   | 'magic_link_issue'
   | 'magic_link_access'
   | 'portal_track';
@@ -56,6 +57,10 @@ export const RATE_LIMITS: Record<RateLimitName, LimitConfig> = {
   import: { limit: 5, windowSeconds: 60 },
   // Document generation + block regeneration (paid AI calls), keyed by member.
   generation: { limit: 10, windowSeconds: 60 },
+  // K/H.5 — Ask Arther chat + action execution (each turn is a paid AI call),
+  // keyed by member. Generous for honest conversation, tight enough to blunt
+  // an automated client running up token cost.
+  assistant: { limit: 20, windowSeconds: 60 },
   // C9.4 — issuing portal magic links, keyed by the issuing member (anti-spam).
   magic_link_issue: { limit: 30, windowSeconds: 60 },
   // C9.4 — anonymous magic-link exchange at the portal, keyed by client IP
