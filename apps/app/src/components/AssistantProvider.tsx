@@ -12,6 +12,7 @@ import { AskArtherPanel } from './AskArtherPanel';
 export function AssistantProvider({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const toggle = useCallback(() => setOpen((o) => !o), []);
+  const openPanel = useCallback(() => setOpen(true), []);
   const close = useCallback(() => setOpen(false), []);
 
   useEffect(() => {
@@ -28,7 +29,7 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
   }, [toggle]);
 
   return (
-    <AssistantContext.Provider value={{ open, toggle, close }}>
+    <AssistantContext.Provider value={{ open, toggle, openPanel, close }}>
       {children}
       <AskArtherPanel />
     </AssistantContext.Provider>

@@ -26,6 +26,7 @@ import {
 } from '@arther/types';
 import { AppShell, Button, EmptyState, Skeleton } from '@arther/ui';
 import { getSupabaseServer } from '../../../lib/supabase/server';
+import { AssistantNudge } from '../../../components/AssistantNudge';
 import { AddFieldForm } from './AddFieldForm';
 import { BriefPanel } from './BriefPanel';
 import { CoverageReport, type CoverageGroup } from './CoverageReport';
@@ -65,6 +66,7 @@ export default async function SpecsPage({
               Import spreadsheet
             </Link>
           }
+          nudge={<AssistantNudge id="specs-first-run" prompt="how the spec database and documents fit together." />}
         />
       </AppShell>
     );

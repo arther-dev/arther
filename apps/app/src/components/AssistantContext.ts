@@ -5,6 +5,8 @@ import { createContext, useContext } from 'react';
 export interface AssistantContextValue {
   open: boolean;
   toggle: () => void;
+  /** Open the panel (idempotent) — used by the K.9 empty-state nudges. */
+  openPanel: () => void;
   close: () => void;
 }
 
