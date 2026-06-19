@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   ARTHER_ASSISTANT_KNOWLEDGE,
+  ASSISTANT_PLANNER_SYSTEM,
   assistantModuleForPath,
+  assistantPlanSchema,
   assistantReplySchema,
   assistantRequestSchema,
   buildAssistantSystemPrompt,
@@ -37,10 +39,30 @@ describe('buildAssistantSystemPrompt (K.3/K.7)', () => {
     expect(prompt).toContain('a member');
   });
 
-  it('tells the model it can search the user’s content (K.4)', () => {
-    const prompt = buildAssistantSystemPrompt({ context: { module: 'Arther', page: '/' } });
-    expect(prompt.toLowerCase()).toContain('search');
-    expect(prompt).toContain('`search`');
+  it('weaves a search summary into the answer when one is supplied (K.3/K.4)', () => {
+    const plain = buildAssistantSystemPrompt({ context: { module: 'Arther', page: '/' } });
+    expect(plain).toContain('cannot yet create or change data');
+    const withResults = buildAssistantSystemPrompt({
+      context: { module: 'Arther', page: '/' },
+      searchSummary: '- Servo Datasheet (document): the servo drive…',
+    });
+    expect(withResults).toContain('Servo Datasheet');
+    expect(withResults).toContain('cards');
+  });
+});
+
+describe('assistantPlanSchema / planner (K.3)', () => {
+  it('accepts a search decision (a query or null)', () => {
+    expect(assistantPlanSchema.safeParse({ search: { query: 'voltage fields' } }).success).toBe(true);
+    expect(assistantPlanSchema.safeParse({ search: null }).success).toBe(true);
+    expect(assistantPlanSchema.safeParse({ search: { query: '' } }).success).toBe(false);
+    // The planner must always make a decision — `search` is required (not optional).
+    expect(assistantPlanSchema.safeParse({}).success).toBe(false);
+  });
+
+  it('the planner prompt instructs a search-only decision', () => {
+    expect(ASSISTANT_PLANNER_SYSTEM.toLowerCase()).toContain('search');
+    expect(ASSISTANT_PLANNER_SYSTEM.toLowerCase()).toContain('do not answer');
   });
 });
 
