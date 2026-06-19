@@ -66,7 +66,7 @@ export function AddFieldForm({
           ))}
         </select>
       </div>
-      <Button type="submit" size="sm" disabled={pending}>
+      <Button type="submit" size="sm" disabled={pending} data-arther-spotlight="add-field">
         {pending ? 'Adding…' : 'Add field'}
       </Button>
       {state.error ? <p className="ui-field__error">{state.error}</p> : null}

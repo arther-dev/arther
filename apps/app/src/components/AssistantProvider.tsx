@@ -3,17 +3,24 @@
 import { useCallback, useEffect, useState } from 'react';
 import { AssistantContext } from './AssistantContext';
 import { AskArtherPanel } from './AskArtherPanel';
+import { SpotlightOverlay, type SpotlightRequest } from './SpotlightOverlay';
 
 /**
- * K.1 — mounts the Ask Arther panel once for the whole shell and owns its open
- * state + the global ⌘J / Ctrl+J toggle and Escape-to-close. The top bar's Help
- * button calls `toggle` through this context. Session-scoped: nothing persists.
+ * K.1/K.6 — mounts the Ask Arther panel + spotlight overlay once for the whole
+ * shell and owns the panel's open state + the global ⌘J / Ctrl+J toggle and
+ * Escape-to-close. The top bar's Help button calls `toggle` through this context;
+ * the panel calls `requestSpotlight` to highlight a control. Session-scoped.
  */
 export function AssistantProvider({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
+  const [spotlight, setSpotlight] = useState<SpotlightRequest | null>(null);
   const toggle = useCallback(() => setOpen((o) => !o), []);
   const openPanel = useCallback(() => setOpen(true), []);
   const close = useCallback(() => setOpen(false), []);
+  const requestSpotlight = useCallback(
+    (targetId: string) => setSpotlight({ id: targetId, nonce: Date.now() }),
+    [],
+  );
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -29,9 +36,10 @@ export function AssistantProvider({ children }: { children: React.ReactNode }) {
   }, [toggle]);
 
   return (
-    <AssistantContext.Provider value={{ open, toggle, openPanel, close }}>
+    <AssistantContext.Provider value={{ open, toggle, openPanel, close, requestSpotlight }}>
       {children}
       <AskArtherPanel />
+      <SpotlightOverlay request={spotlight} />
     </AssistantContext.Provider>
   );
 }

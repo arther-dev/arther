@@ -7,6 +7,7 @@ import {
   assistantModuleForPath,
   ASSISTANT_RESULT_KIND_LABELS,
   describeAssistantAction,
+  spotlightTargetById,
   type AssistantAction,
   type AssistantExecutedAction,
   type AssistantMessage,
@@ -26,19 +27,23 @@ type UiMessage = AssistantMessage & {
   proposalState?: ProposalState;
   /** K.5 — per-action outcomes once the user confirms the batch. */
   executed?: AssistantExecutedAction[];
+  /** K.6 — an on-screen control this reply points to (highlightable on demand). */
+  spotlight?: string;
 };
 
 /**
- * K.1/K.2/K.3/K.4/K.5 — the Ask Arther panel: a right-edge slide-in that answers
- * questions about Arther, finds the user's content, and takes gated actions. Each
- * turn sends the conversation + the user's current context (module · page) to
- * /api/assistant, which streams an NDJSON response — optional read-action result
- * cards, navigation links, and a write-action confirmation card, then the reply
- * token-by-token. Confirming a write batch POSTs to /api/assistant/execute (which
- * re-checks canDo per action). Session-scoped: the transcript clears on reload.
+ * K.1/K.2/K.3/K.4/K.5/K.6 — the Ask Arther panel: a right-edge slide-in that
+ * answers questions about Arther, finds the user's content, takes gated actions,
+ * and points at on-screen controls. Each turn sends the conversation + the user's
+ * current context (module · page) to /api/assistant, which streams an NDJSON
+ * response — read-action result cards, navigation links, a write-action
+ * confirmation card, the reply token-by-token, then an optional spotlight target.
+ * Confirming a write batch POSTs to /api/assistant/execute (which re-checks canDo
+ * per action); a spotlight highlights the control via the K.6 overlay.
+ * Session-scoped: the transcript clears on reload.
  */
 export function AskArtherPanel() {
-  const { open, close } = useAssistant();
+  const { open, close, requestSpotlight } = useAssistant();
   const pathname = usePathname() ?? '/';
   const [messages, setMessages] = useState<UiMessage[]>([]);
   const [input, setInput] = useState('');
@@ -123,6 +128,7 @@ export function AskArtherPanel() {
           text?: string;
           results?: AssistantResult[];
           actions?: AssistantAction[];
+          target?: string;
         };
         try {
           msg = JSON.parse(t);
@@ -138,6 +144,10 @@ export function AskArtherPanel() {
           patchLast({ navigates: msg.actions });
         } else if (msg.type === 'proposal' && Array.isArray(msg.actions)) {
           patchLast({ proposal: msg.actions, proposalState: 'pending' });
+        } else if (msg.type === 'spotlight' && typeof msg.target === 'string') {
+          // K.6 — fire the highlight now, and keep a re-trigger link on the reply.
+          patchLast({ spotlight: msg.target });
+          requestSpotlight(msg.target);
         }
       };
       for (;;) {
@@ -242,6 +252,18 @@ export function AskArtherPanel() {
                       </Link>
                     ) : null,
                   )}
+                </div>
+              ) : null}
+              {/* K.6 — re-trigger the spotlight for the control this reply points to. */}
+              {m.spotlight ? (
+                <div style={{ marginTop: 6 }}>
+                  <button
+                    type="button"
+                    className="specs-value-button"
+                    onClick={() => requestSpotlight(m.spotlight!)}
+                  >
+                    Show me {spotlightTargetById(m.spotlight)?.label ?? 'where'} →
+                  </button>
                 </div>
               ) : null}
               {/* K.5 — proposed write actions: nothing runs until the user confirms. */}

@@ -18,7 +18,13 @@ export function NewProductForm() {
         placeholder="BLDC Motor X1"
         error={state.error}
       />
-      <Button type="submit" size="sm" variant="secondary" disabled={pending}>
+      <Button
+        type="submit"
+        size="sm"
+        variant="secondary"
+        disabled={pending}
+        data-arther-spotlight="add-product"
+      >
         {pending ? 'Adding…' : 'Add product'}
       </Button>
     </form>

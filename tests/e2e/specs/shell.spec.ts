@@ -35,6 +35,14 @@ test.describe('app shell frame (Handoff 02)', () => {
     await expect(panel).toHaveAttribute('aria-hidden', 'true');
   });
 
+  test('spec controls carry their Ask Arther spotlight tag (K.6)', async ({ page }) => {
+    await page.goto(`${APP}/specs`);
+    // The K.6 registry's `data-arther-spotlight` ids must stay wired to the real
+    // DOM controls, so the spotlight overlay can find them when the assistant
+    // points here. This guards the registry↔DOM contract without needing the LLM.
+    await expect(page.locator('[data-arther-spotlight="add-product"]')).toBeVisible();
+  });
+
   test('the active tab reflects the mode', async ({ page }) => {
     await page.goto(`${APP}/dashboard`);
     await expect(page.locator('.ui-tab-chip--active')).toHaveText('Dashboard');
