@@ -82,25 +82,82 @@ export function isAssistantWriteAction(action: AssistantAction): boolean {
 }
 
 /**
- * K.3/K.4/K.5 — the streaming route's fast first pass: triage one message into
- * (a) whether to search the user's own content and (b) which actions to propose.
- * Returns only decisions (no reply text), so it stays cheap.
+ * K.6 — spotlight: when the answer points the user to a specific on-screen
+ * control, the assistant highlights it with a non-blocking overlay. The set of
+ * highlightable controls is a curated **registry** keyed by a stable
+ * `data-arther-spotlight` id rendered on the real element — the model only ever
+ * picks an id from this list (never a raw selector), and the overlay no-ops if
+ * the element isn't actually on the page, so a stale pick is harmless.
+ */
+export interface SpotlightTarget {
+  /** The `data-arther-spotlight` value on the DOM element. */
+  id: string;
+  /** Human description, used in the planner prompt and the panel's "show me" link. */
+  label: string;
+  /** Route prefix the control lives under, so we only offer on-page targets. */
+  page: string;
+}
+
+export const ASSISTANT_SPOTLIGHT_TARGETS: readonly SpotlightTarget[] = [
+  { id: 'add-product', label: 'the “Add product” button', page: '/specs' },
+  { id: 'add-field', label: 'the “Add field” button', page: '/specs' },
+  { id: 'create-snippet', label: 'the “Create library item” button', page: '/snippets' },
+  { id: 'submit-for-review', label: 'the “Submit for review” button', page: '/documents' },
+  { id: 'publish-document', label: 'the “Publish” button', page: '/documents' },
+  { id: 'settings-document-types', label: 'the “Configure document types” link', page: '/settings' },
+  { id: 'settings-brand-profiles', label: 'the “Brand profiles” link', page: '/settings' },
+];
+
+/** The spotlight targets reachable from the current page (route-prefix match). */
+export function spotlightTargetsForPage(pathname: string): SpotlightTarget[] {
+  return ASSISTANT_SPOTLIGHT_TARGETS.filter(
+    (t) => pathname === t.page || pathname.startsWith(`${t.page}/`),
+  );
+}
+
+/** Look up a target by id (the panel labels its "show me where" link). */
+export function spotlightTargetById(id: string): SpotlightTarget | undefined {
+  return ASSISTANT_SPOTLIGHT_TARGETS.find((t) => t.id === id);
+}
+
+/**
+ * K.3/K.4/K.5/K.6 — the streaming route's fast first pass: triage one message into
+ * (a) whether to search the user's own content, (b) which actions to propose, and
+ * (c) which on-screen control to spotlight. Returns only decisions (no reply
+ * text), so it stays cheap.
  */
 export const assistantPlanSchema = z.object({
   search: z.object({ query: z.string().min(1).max(120) }).nullable(),
   /** K.5 — proposed actions (empty when the user only wants an answer). */
   actions: z.array(assistantActionSchema).max(8).default([]),
+  /** K.6 — a spotlight target id (from the page's AVAILABLE CONTROLS) or null. */
+  spotlight: z.string().max(64).nullable().default(null),
 });
 
 export const ASSISTANT_PLANNER_SYSTEM = [
-  'You triage one user message for the Arther in-app assistant. Decide two things, and nothing else — whether to search the user’s OWN content, and which actions to propose. Do not answer the question.',
+  'You triage one user message for the Arther in-app assistant. Decide what to do, and nothing else — whether to search the user’s OWN content, which actions to propose, and which on-screen control (if any) to spotlight. Do not answer the question.',
   'SEARCH: if the user wants to find, list, locate, or open their own documents, spec fields, or components, set `search.query` to the key search terms (a few keywords, no punctuation). For how-to, conceptual, or general questions, set `search` to null.',
   'ACTIONS: only when the user clearly and explicitly asks for one, add it to `actions` — otherwise return an empty list, and never invent an action the user did not ask for:',
   '- `navigate` — they ask to go to / open / take me to a place: set `path` to the in-app route (e.g. /specs, /specs/library, /specs/variants, /documents, /snippets, /settings, /dashboard) and `label` to a short destination name.',
   '- `create_product` — they ask to create or add a new product: set `name`.',
   '- `create_component` — they ask to create or add a new component: set `name` and `componentType` (assembly, module, or part — null if unspecified).',
   'Propose multiple actions only if the user asked for multiple. Creating data always requires the user to confirm afterwards, so propose only what they actually asked for.',
+  'SPOTLIGHT: if your answer points the user to a specific on-screen control listed under AVAILABLE CONTROLS below, set `spotlight` to that control’s id so the panel can highlight it; otherwise set `spotlight` to null. Never use an id that isn’t listed.',
 ].join('\n');
+
+/** The planner system prompt for a given page — `ASSISTANT_PLANNER_SYSTEM` plus
+ *  the controls available to spotlight here (so the model can only pick on-page
+ *  ids, and we can validate its choice against the same list). */
+export function assistantPlannerSystem(context: AssistantClientContext): string {
+  const targets = spotlightTargetsForPage(context.page);
+  const controls =
+    targets.length > 0
+      ? `AVAILABLE CONTROLS (for \`spotlight\`) on this page:\n${targets
+          .map((t) => `- ${t.id}: ${t.label}`)
+          .join('\n')}`
+      : 'AVAILABLE CONTROLS: none on this page — set `spotlight` to null.';
+  return `${ASSISTANT_PLANNER_SYSTEM}\n\n${controls}`;
+}
 
 /** K.5 — the confirm-and-execute request: the batch the panel sends back after
  *  the user confirms. Re-validated and re-authorized (per action) server-side. */

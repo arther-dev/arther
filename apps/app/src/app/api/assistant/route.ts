@@ -2,13 +2,14 @@ import { NextResponse } from 'next/server';
 import { createAiGateway } from '@arther/ai-gateway';
 import { getActiveWorkspace, searchWorkspace } from '@arther/db';
 import {
-  ASSISTANT_PLANNER_SYSTEM,
+  assistantPlannerSystem,
   assistantPlanSchema,
   assistantRequestSchema,
   buildAssistantSystemPrompt,
   flattenAssistantConversation,
   isAssistantWriteAction,
   isInternalAssistantPath,
+  spotlightTargetsForPage,
   summarizeProposedActions,
   type AssistantAction,
   type AssistantResult,
@@ -20,11 +21,12 @@ export const dynamic = 'force-dynamic';
 /**
  * K.1/K.3/K.4/K.5/K.7 — Ask Arther chat. Authenticated members only; the
  * conversation is session-scoped (sent up each turn, never stored). Two passes: a
- * cheap structured **planner** decides whether to search the user's content (K.4)
- * and which actions to propose (K.5), then the prose answer is **streamed**
- * token-by-token (K.3). The transport is NDJSON — `{type:'results'}` (search
- * cards), `{type:'navigate'}` (immediate links), `{type:'proposal'}` (the
- * write-action confirmation batch), then `{type:'delta'}` lines. This route only
+ * cheap structured **planner** decides whether to search the user's content (K.4),
+ * which actions to propose (K.5), and which on-screen control to spotlight (K.6),
+ * then the prose answer is **streamed** token-by-token (K.3). The transport is
+ * NDJSON — `{type:'results'}` (search cards), `{type:'navigate'}` (immediate
+ * links), `{type:'proposal'}` (the write-action confirmation batch),
+ * `{type:'delta'}` lines, then a trailing `{type:'spotlight'}`. This route only
  * *proposes* writes; nothing mutates until the user confirms via ./execute.
  * Grounded in the K.7 knowledge base + the user's live context. Backed by the one
  * ai-gateway (ADR-007).
@@ -62,18 +64,26 @@ export async function POST(request: Request): Promise<Response> {
   // — the answer still streams. The planner only *proposes*; nothing here writes.)
   let query: string | null = null;
   let actions: AssistantAction[] = [];
+  let spotlight: string | null = null;
   try {
     const plan = await gateway.structured({
       schema: assistantPlanSchema,
-      system: ASSISTANT_PLANNER_SYSTEM,
+      system: assistantPlannerSystem(parsed.data.context),
       user: userTurn,
       maxTokens: 256,
     });
     query = plan.search?.query ?? null;
     actions = plan.actions ?? [];
+    // K.6 — only honour a spotlight id that's actually a control on this page.
+    spotlight =
+      plan.spotlight &&
+      spotlightTargetsForPage(parsed.data.context.page).some((t) => t.id === plan.spotlight)
+        ? plan.spotlight
+        : null;
   } catch {
     query = null;
     actions = [];
+    spotlight = null;
   }
 
   // Pass 1.5 — run the read action (RLS-scoped) and summarize it for the answer.
@@ -127,6 +137,8 @@ export async function POST(request: Request): Promise<Response> {
       } catch {
         controller.enqueue(line({ type: 'delta', text: 'Sorry — I hit a problem answering that. Please try again.' }));
       }
+      // K.6 — fire the spotlight last, so the highlight lands as the reply settles.
+      if (spotlight) controller.enqueue(line({ type: 'spotlight', target: spotlight }));
       controller.close();
     },
   });

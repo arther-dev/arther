@@ -8,6 +8,8 @@ export interface AssistantContextValue {
   /** Open the panel (idempotent) — used by the K.9 empty-state nudges. */
   openPanel: () => void;
   close: () => void;
+  /** K.6 — highlight an on-screen control by its `data-arther-spotlight` id. */
+  requestSpotlight: (targetId: string) => void;
 }
 
 export const AssistantContext = createContext<AssistantContextValue | null>(null);

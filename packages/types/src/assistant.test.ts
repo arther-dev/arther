@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   ARTHER_ASSISTANT_KNOWLEDGE,
   ASSISTANT_PLANNER_SYSTEM,
+  ASSISTANT_SPOTLIGHT_TARGETS,
   assistantActionSchema,
   assistantExecuteRequestSchema,
   assistantModuleForPath,
+  assistantPlannerSystem,
   assistantPlanSchema,
   assistantReplySchema,
   assistantRequestSchema,
@@ -13,6 +15,8 @@ import {
   flattenAssistantConversation,
   isAssistantWriteAction,
   isInternalAssistantPath,
+  spotlightTargetById,
+  spotlightTargetsForPage,
   summarizeProposedActions,
   type AssistantAction,
 } from './assistant';
@@ -154,24 +158,65 @@ describe('assistantPlanSchema / planner (K.3/K.5)', () => {
     expect(assistantPlanSchema.safeParse({}).success).toBe(false);
   });
 
-  it('defaults actions to an empty list and accepts proposed actions (K.5)', () => {
-    // Omitting `actions` is fine — it defaults to [], so old callers stay valid.
+  it('defaults actions + spotlight and accepts proposed actions (K.5/K.6)', () => {
+    // Omitting `actions`/`spotlight` is fine — defaults keep old callers valid.
     const plain = assistantPlanSchema.parse({ search: null });
     expect(plain.actions).toEqual([]);
-    const withActions = assistantPlanSchema.safeParse({
+    expect(plain.spotlight).toBeNull();
+    const full = assistantPlanSchema.safeParse({
       search: null,
       actions: [
         { kind: 'create_product', name: 'X200' },
         { kind: 'navigate', path: '/specs', label: 'Spec database' },
       ],
+      spotlight: 'add-product',
     });
-    expect(withActions.success).toBe(true);
+    expect(full.success).toBe(true);
   });
 
-  it('the planner prompt instructs a search + action decision, not an answer', () => {
+  it('the planner prompt instructs search + action + spotlight, not an answer', () => {
     expect(ASSISTANT_PLANNER_SYSTEM.toLowerCase()).toContain('search');
     expect(ASSISTANT_PLANNER_SYSTEM.toLowerCase()).toContain('do not answer');
     expect(ASSISTANT_PLANNER_SYSTEM.toLowerCase()).toContain('create_product');
+    expect(ASSISTANT_PLANNER_SYSTEM.toLowerCase()).toContain('spotlight');
+  });
+});
+
+describe('assistant spotlight (K.6)', () => {
+  it('exposes a registry of uniquely-identified, page-scoped targets', () => {
+    const ids = ASSISTANT_SPOTLIGHT_TARGETS.map((t) => t.id);
+    expect(new Set(ids).size).toBe(ids.length); // ids are unique
+    for (const t of ASSISTANT_SPOTLIGHT_TARGETS) {
+      expect(t.page.startsWith('/')).toBe(true);
+      expect(t.label.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('offers only the controls reachable from the current page', () => {
+    const specs = spotlightTargetsForPage('/specs').map((t) => t.id);
+    expect(specs).toContain('add-product');
+    expect(specs).toContain('add-field');
+    expect(specs).not.toContain('publish-document');
+    // Dynamic document route matches the /documents prefix.
+    const doc = spotlightTargetsForPage('/documents/abc-123').map((t) => t.id);
+    expect(doc).toContain('submit-for-review');
+    expect(doc).toContain('publish-document');
+    // A page with no registered controls offers none.
+    expect(spotlightTargetsForPage('/dashboard')).toHaveLength(0);
+  });
+
+  it('looks targets up by id', () => {
+    expect(spotlightTargetById('add-product')?.page).toBe('/specs');
+    expect(spotlightTargetById('nope')).toBeUndefined();
+  });
+
+  it('injects the page’s available controls into the planner system prompt', () => {
+    const onSpecs = assistantPlannerSystem({ module: 'Spec database', page: '/specs' });
+    expect(onSpecs).toContain('AVAILABLE CONTROLS');
+    expect(onSpecs).toContain('add-product');
+    expect(onSpecs).not.toContain('publish-document');
+    const onDashboard = assistantPlannerSystem({ module: 'Dashboard', page: '/dashboard' });
+    expect(onDashboard).toContain('none on this page');
   });
 });
 

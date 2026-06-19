@@ -79,6 +79,7 @@ export function DocumentLifecycle({
               className="ui-btn ui-btn--primary"
               disabled={pending}
               onClick={() => setShowBrief(true)}
+              data-arther-spotlight="submit-for-review"
             >
               {DOCUMENT_TRANSITION_LABELS.submit_for_review}
             </button>
@@ -117,6 +118,7 @@ export function DocumentLifecycle({
                 'Publish this document? The approved revision becomes the live snapshot.',
               )
             }
+            data-arther-spotlight="publish-document"
           >
             {DOCUMENT_TRANSITION_LABELS.publish}
           </button>

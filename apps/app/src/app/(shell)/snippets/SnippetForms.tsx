@@ -47,7 +47,7 @@ export function CreateSnippetForm() {
         </p>
       </div>
       {state.error ? <p className="ui-field__error">{state.error}</p> : null}
-      <Button type="submit" size="sm" disabled={pending}>
+      <Button type="submit" size="sm" disabled={pending} data-arther-spotlight="create-snippet">
         {pending ? 'Creating…' : 'Create library item'}
       </Button>
     </form>

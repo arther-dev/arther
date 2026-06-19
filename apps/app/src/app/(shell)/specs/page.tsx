@@ -60,7 +60,7 @@ export default async function SpecsPage({
         <EmptyState
           title="No products yet"
           description="Products and their shared components live here — the system of record your documents are generated from."
-          primaryAction={<Button>Add product</Button>}
+          primaryAction={<Button data-arther-spotlight="add-product">Add product</Button>}
           secondaryAction={
             <Link className="ui-btn ui-btn--ghost" href="/specs/import">
               Import spreadsheet
