@@ -1,10 +1,19 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { assistantModuleForPath, type AssistantMessage } from '@arther/types';
+import {
+  assistantModuleForPath,
+  ASSISTANT_RESULT_KIND_LABELS,
+  type AssistantMessage,
+  type AssistantResponse,
+  type AssistantResult,
+} from '@arther/types';
 import { Button } from '@arther/ui';
 import { useAssistant } from './AssistantContext';
+
+type UiMessage = AssistantMessage & { results?: AssistantResult[] };
 
 /**
  * K.1/K.2/K.3 — the Ask Arther panel: a right-edge slide-in that answers how-to
@@ -16,7 +25,7 @@ import { useAssistant } from './AssistantContext';
 export function AskArtherPanel() {
   const { open, close } = useAssistant();
   const pathname = usePathname() ?? '/';
-  const [messages, setMessages] = useState<AssistantMessage[]>([]);
+  const [messages, setMessages] = useState<UiMessage[]>([]);
   const [input, setInput] = useState('');
   const [pending, setPending] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
@@ -28,7 +37,7 @@ export function AskArtherPanel() {
   async function send() {
     const text = input.trim();
     if (!text || pending) return;
-    const next: AssistantMessage[] = [...messages, { role: 'user', content: text }];
+    const next: UiMessage[] = [...messages, { role: 'user', content: text }];
     setMessages(next);
     setInput('');
     setPending(true);
@@ -37,13 +46,13 @@ export function AskArtherPanel() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          messages: next,
+          messages: next.map((m) => ({ role: m.role, content: m.content })),
           context: { module: assistantModuleForPath(pathname), page: pathname },
         }),
       });
-      const data = (await res.json()) as { reply?: string; error?: string };
+      const data = (await res.json()) as AssistantResponse & { error?: string };
       const reply = data.reply ?? 'Sorry — I couldn’t answer that right now.';
-      setMessages((prev) => [...prev, { role: 'assistant', content: reply }]);
+      setMessages((prev) => [...prev, { role: 'assistant', content: reply, results: data.results }]);
     } catch {
       setMessages((prev) => [
         ...prev,
@@ -86,22 +95,41 @@ export function AskArtherPanel() {
       <div ref={listRef} style={{ flex: 1, overflowY: 'auto', padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
         {messages.length === 0 ? (
           <p className="specs-grid__meta">
-            Hi — I’m Arther. Ask me how to do something here (e.g. “how do variants work?” or “how do I
-            publish a document?”). I know the platform, not your specific data yet.
+            Hi — I’m Arther. Ask me how to do something (e.g. “how do variants work?”), or to find your
+            content (e.g. “find the datasheet for the servo drive” or “show me voltage fields”).
           </p>
         ) : (
           messages.map((m, i) => (
             <div
               key={i}
-              className="specs-release"
-              style={{
-                alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start',
-                maxWidth: '85%',
-                background: m.role === 'user' ? 'var(--surface-accent, #eef2ff)' : undefined,
-                whiteSpace: 'pre-wrap',
-              }}
+              style={{ alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '85%' }}
             >
-              {m.content}
+              <div
+                className="specs-release"
+                style={{
+                  background: m.role === 'user' ? 'var(--surface-accent, #eef2ff)' : undefined,
+                  whiteSpace: 'pre-wrap',
+                }}
+              >
+                {m.content}
+              </div>
+              {m.results && m.results.length > 0 ? (
+                <ul className="specs-form" style={{ listStyle: 'none', padding: 0, marginTop: 6, gap: 4 }}>
+                  {m.results.map((r, j) => (
+                    <li key={j} className="specs-release" style={{ display: 'block' }}>
+                      <Link href={r.href} onClick={close} style={{ display: 'block' }}>
+                        <span className="specs-release__tag">{ASSISTANT_RESULT_KIND_LABELS[r.kind]}</span>{' '}
+                        <strong>{r.title}</strong>
+                        {r.subtitle ? (
+                          <span className="specs-grid__meta" style={{ display: 'block' }}>
+                            {r.subtitle}
+                          </span>
+                        ) : null}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
             </div>
           ))
         )}

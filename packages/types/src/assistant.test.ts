@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ARTHER_ASSISTANT_KNOWLEDGE,
   assistantModuleForPath,
+  assistantReplySchema,
   assistantRequestSchema,
   buildAssistantSystemPrompt,
   flattenAssistantConversation,
@@ -34,6 +35,28 @@ describe('buildAssistantSystemPrompt (K.3/K.7)', () => {
   it('falls back to a generic role', () => {
     const prompt = buildAssistantSystemPrompt({ context: { module: 'Arther', page: '/' } });
     expect(prompt).toContain('a member');
+  });
+
+  it('tells the model it can search the user’s content (K.4)', () => {
+    const prompt = buildAssistantSystemPrompt({ context: { module: 'Arther', page: '/' } });
+    expect(prompt.toLowerCase()).toContain('search');
+    expect(prompt).toContain('`search`');
+  });
+});
+
+describe('assistantReplySchema (K.4)', () => {
+  it('accepts a plain reply and a reply with a search directive', () => {
+    expect(assistantReplySchema.safeParse({ reply: 'Here is how variants work…' }).success).toBe(true);
+    const withSearch = assistantReplySchema.safeParse({
+      reply: 'Here’s what I found:',
+      search: { query: 'servo drive datasheet' },
+    });
+    expect(withSearch.success).toBe(true);
+    expect(assistantReplySchema.safeParse({ reply: 'x', search: null }).success).toBe(true);
+  });
+
+  it('rejects an empty search query', () => {
+    expect(assistantReplySchema.safeParse({ reply: 'x', search: { query: '' } }).success).toBe(false);
   });
 });
 
