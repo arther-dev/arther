@@ -12,6 +12,7 @@ import {
 import { buildFirstRunChecklist, type WorkspaceId } from '@arther/types';
 import { AppShell, Button, EmptyState } from '@arther/ui';
 import { getSupabaseServer } from '../../../lib/supabase/server';
+import { AssistantNudge } from '../../../components/AssistantNudge';
 import { FirstRunChecklist } from './FirstRunChecklist';
 
 /**
@@ -68,6 +69,7 @@ export default async function DashboardPage() {
         description="Section reviews, approvals, and mentions that need your action will appear here."
         primaryAction={<Button>Generate a document</Button>}
         secondaryAction={<Button variant="ghost">Add a product</Button>}
+        nudge={<AssistantNudge id="dashboard-first-run" prompt="how to get started in Arther." />}
       />
     </AppShell>
   );

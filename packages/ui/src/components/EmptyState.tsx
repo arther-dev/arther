@@ -6,14 +6,22 @@ export interface EmptyStateProps {
   description: string;
   primaryAction?: ReactNode;
   secondaryAction?: ReactNode;
+  /** K.9 — a one-time "Ask Arther" nudge slot, rendered below the CTAs. */
+  nudge?: ReactNode;
 }
 
 /**
- * Standardized first-run empty state (Handoff 02 §9): description +
- * primary + secondary/ghost CTA. The one-time assistant nudge arrives with
- * Ask Arther (Phase 4 K.9).
+ * Standardized first-run empty state (Handoff 02 §9): a one-line description +
+ * primary + secondary/ghost CTA, with an optional one-time assistant nudge below
+ * (Phase 4 K.9). The nudge is app-supplied so this stays presentational.
  */
-export function EmptyState({ title, description, primaryAction, secondaryAction }: EmptyStateProps) {
+export function EmptyState({
+  title,
+  description,
+  primaryAction,
+  secondaryAction,
+  nudge,
+}: EmptyStateProps) {
   return (
     <div className="ui-empty-state">
       <h2 className="ui-empty-state__title">{title}</h2>
@@ -24,6 +32,7 @@ export function EmptyState({ title, description, primaryAction, secondaryAction 
           {secondaryAction}
         </div>
       )}
+      {nudge}
     </div>
   );
 }
