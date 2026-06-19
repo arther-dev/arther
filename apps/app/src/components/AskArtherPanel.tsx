@@ -6,20 +6,36 @@ import { usePathname } from 'next/navigation';
 import {
   assistantModuleForPath,
   ASSISTANT_RESULT_KIND_LABELS,
+  describeAssistantAction,
+  type AssistantAction,
+  type AssistantExecutedAction,
   type AssistantMessage,
   type AssistantResult,
 } from '@arther/types';
 import { Button } from '@arther/ui';
 import { useAssistant } from './AssistantContext';
 
-type UiMessage = AssistantMessage & { results?: AssistantResult[] };
+type ProposalState = 'pending' | 'running' | 'done' | 'cancelled';
+
+type UiMessage = AssistantMessage & {
+  results?: AssistantResult[];
+  /** K.5 — immediate navigation suggestions, rendered as one-tap links. */
+  navigates?: AssistantAction[];
+  /** K.5 — proposed write actions awaiting explicit confirmation. */
+  proposal?: AssistantAction[];
+  proposalState?: ProposalState;
+  /** K.5 — per-action outcomes once the user confirms the batch. */
+  executed?: AssistantExecutedAction[];
+};
 
 /**
- * K.1/K.2/K.3/K.4 — the Ask Arther panel: a right-edge slide-in that answers
- * questions about Arther and finds the user's content. Each turn sends the
- * conversation + the user's current context (module · page) to /api/assistant,
- * which streams an NDJSON response — optional read-action result cards then the
- * reply token-by-token. Session-scoped: the transcript clears on reload.
+ * K.1/K.2/K.3/K.4/K.5 — the Ask Arther panel: a right-edge slide-in that answers
+ * questions about Arther, finds the user's content, and takes gated actions. Each
+ * turn sends the conversation + the user's current context (module · page) to
+ * /api/assistant, which streams an NDJSON response — optional read-action result
+ * cards, navigation links, and a write-action confirmation card, then the reply
+ * token-by-token. Confirming a write batch POSTs to /api/assistant/execute (which
+ * re-checks canDo per action). Session-scoped: the transcript clears on reload.
  */
 export function AskArtherPanel() {
   const { open, close } = useAssistant();
@@ -41,6 +57,38 @@ export function AskArtherPanel() {
       copy[copy.length - 1] = { ...copy[copy.length - 1]!, ...patch };
       return copy;
     });
+
+  // Patch a specific message by index (a confirmation can land after later turns).
+  const patchAt = (index: number, patch: Partial<UiMessage>) =>
+    setMessages((prev) => {
+      if (index < 0 || index >= prev.length) return prev;
+      const copy = [...prev];
+      copy[index] = { ...copy[index]!, ...patch };
+      return copy;
+    });
+
+  // K.5 — the user confirmed the proposed write batch: run it through the
+  // execute route (which re-checks canDo per action) and show per-item outcomes.
+  async function confirmProposal(index: number, actions: AssistantAction[]) {
+    patchAt(index, { proposalState: 'running' });
+    const fallback = (error: string): AssistantExecutedAction[] =>
+      actions.map((a) => ({ kind: a.kind, label: describeAssistantAction(a), ok: false, error }));
+    try {
+      const res = await fetch('/api/assistant/execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ actions }),
+      });
+      if (!res.ok) {
+        patchAt(index, { proposalState: 'done', executed: fallback('Couldn’t run that just now.') });
+        return;
+      }
+      const data = (await res.json()) as { results?: AssistantExecutedAction[] };
+      patchAt(index, { proposalState: 'done', executed: data.results ?? fallback('No result.') });
+    } catch {
+      patchAt(index, { proposalState: 'done', executed: fallback('Couldn’t reach the server.') });
+    }
+  }
 
   async function send() {
     const text = input.trim();
@@ -70,7 +118,12 @@ export function AskArtherPanel() {
       const handle = (raw: string) => {
         const t = raw.trim();
         if (!t) return;
-        let msg: { type?: string; text?: string; results?: AssistantResult[] };
+        let msg: {
+          type?: string;
+          text?: string;
+          results?: AssistantResult[];
+          actions?: AssistantAction[];
+        };
         try {
           msg = JSON.parse(t);
         } catch {
@@ -81,6 +134,10 @@ export function AskArtherPanel() {
           patchLast({ content });
         } else if (msg.type === 'results' && Array.isArray(msg.results)) {
           patchLast({ results: msg.results });
+        } else if (msg.type === 'navigate' && Array.isArray(msg.actions)) {
+          patchLast({ navigates: msg.actions });
+        } else if (msg.type === 'proposal' && Array.isArray(msg.actions)) {
+          patchLast({ proposal: msg.actions, proposalState: 'pending' });
         }
       };
       for (;;) {
@@ -140,7 +197,11 @@ export function AskArtherPanel() {
         ) : (
           messages.map((m, i) =>
             // Skip the not-yet-filled streaming placeholder (the "thinking" line covers it).
-            m.role === 'assistant' && !m.content && !(m.results && m.results.length > 0) ? null : (
+            m.role === 'assistant' &&
+            !m.content &&
+            !(m.results && m.results.length > 0) &&
+            !(m.navigates && m.navigates.length > 0) &&
+            !(m.proposal && m.proposal.length > 0) ? null : (
             <div
               key={i}
               style={{ alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '85%' }}
@@ -170,6 +231,69 @@ export function AskArtherPanel() {
                     </li>
                   ))}
                 </ul>
+              ) : null}
+              {/* K.5 — immediate navigation suggestions: one-tap, no confirmation. */}
+              {m.navigates && m.navigates.length > 0 ? (
+                <div className="specs-form--row" style={{ flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
+                  {m.navigates.map((a, j) =>
+                    a.kind === 'navigate' ? (
+                      <Link key={j} href={a.path} onClick={close} className="specs-value-button">
+                        Go to {a.label} →
+                      </Link>
+                    ) : null,
+                  )}
+                </div>
+              ) : null}
+              {/* K.5 — proposed write actions: nothing runs until the user confirms. */}
+              {m.proposal && m.proposal.length > 0 ? (
+                <div
+                  className="specs-release"
+                  style={{ display: 'block', marginTop: 6, borderColor: 'var(--border-strong, #cbd5e1)' }}
+                >
+                  <span className="specs-release__tag">Proposed changes</span>
+                  <ul style={{ margin: '6px 0', paddingLeft: 18 }}>
+                    {m.proposal.map((a, j) => (
+                      <li key={j}>{describeAssistantAction(a)}</li>
+                    ))}
+                  </ul>
+                  {(!m.proposalState || m.proposalState === 'pending') ? (
+                    <div className="specs-form--row" style={{ gap: 6 }}>
+                      <Button size="sm" onClick={() => void confirmProposal(i, m.proposal!)}>
+                        Confirm
+                      </Button>
+                      <button
+                        type="button"
+                        className="specs-value-button"
+                        onClick={() => patchAt(i, { proposalState: 'cancelled' })}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : null}
+                  {m.proposalState === 'running' ? (
+                    <span className="specs-grid__meta">Working…</span>
+                  ) : null}
+                  {m.proposalState === 'cancelled' ? (
+                    <span className="specs-grid__meta">Cancelled — nothing was changed.</span>
+                  ) : null}
+                  {m.proposalState === 'done' && m.executed ? (
+                    <ul style={{ listStyle: 'none', padding: 0, margin: '4px 0 0', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      {m.executed.map((r, j) => (
+                        <li key={j} className="specs-grid__meta">
+                          {r.ok ? '✓ ' : '✕ '}
+                          {r.ok && r.href ? (
+                            <Link href={r.href} onClick={close}>
+                              {r.label}
+                            </Link>
+                          ) : (
+                            r.label
+                          )}
+                          {!r.ok && r.error ? ` — ${r.error}` : ''}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </div>
               ) : null}
             </div>
           ))

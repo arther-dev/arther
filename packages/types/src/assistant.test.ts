@@ -2,12 +2,19 @@ import { describe, expect, it } from 'vitest';
 import {
   ARTHER_ASSISTANT_KNOWLEDGE,
   ASSISTANT_PLANNER_SYSTEM,
+  assistantActionSchema,
+  assistantExecuteRequestSchema,
   assistantModuleForPath,
   assistantPlanSchema,
   assistantReplySchema,
   assistantRequestSchema,
   buildAssistantSystemPrompt,
+  describeAssistantAction,
   flattenAssistantConversation,
+  isAssistantWriteAction,
+  isInternalAssistantPath,
+  summarizeProposedActions,
+  type AssistantAction,
 } from './assistant';
 
 describe('assistantModuleForPath (K.2)', () => {
@@ -41,7 +48,9 @@ describe('buildAssistantSystemPrompt (K.3/K.7)', () => {
 
   it('weaves a search summary into the answer when one is supplied (K.3/K.4)', () => {
     const plain = buildAssistantSystemPrompt({ context: { module: 'Arther', page: '/' } });
-    expect(plain).toContain('cannot yet create or change data');
+    // The capability paragraph is always present (the assistant can now act).
+    expect(plain).toContain('create a product or component');
+    expect(plain).toContain('confirm');
     const withResults = buildAssistantSystemPrompt({
       context: { module: 'Arther', page: '/' },
       searchSummary: '- Servo Datasheet (document): the servo drive…',
@@ -49,9 +58,94 @@ describe('buildAssistantSystemPrompt (K.3/K.7)', () => {
     expect(withResults).toContain('Servo Datasheet');
     expect(withResults).toContain('cards');
   });
+
+  it('weaves a proposal summary into the answer and asks to confirm (K.5)', () => {
+    const withProposal = buildAssistantSystemPrompt({
+      context: { module: 'Spec database', page: '/specs' },
+      role: 'admin',
+      proposalSummary: '- Create product “X200”',
+    });
+    expect(withProposal).toContain('X200');
+    expect(withProposal).toContain('confirm');
+    // A plain prompt carries no proposal paragraph.
+    const plain = buildAssistantSystemPrompt({ context: { module: 'Arther', page: '/' } });
+    expect(plain).not.toContain('proposed these actions');
+  });
 });
 
-describe('assistantPlanSchema / planner (K.3)', () => {
+describe('assistant write actions (K.5)', () => {
+  it('accepts each action kind and rejects malformed ones', () => {
+    expect(
+      assistantActionSchema.safeParse({ kind: 'navigate', path: '/specs', label: 'Spec database' })
+        .success,
+    ).toBe(true);
+    expect(assistantActionSchema.safeParse({ kind: 'create_product', name: 'X200' }).success).toBe(
+      true,
+    );
+    expect(
+      assistantActionSchema.safeParse({ kind: 'create_component', name: 'Servo', componentType: 'module' })
+        .success,
+    ).toBe(true);
+    expect(
+      assistantActionSchema.safeParse({ kind: 'create_component', name: 'Servo', componentType: null })
+        .success,
+    ).toBe(true);
+    // Bad: empty name, unknown kind, bad component type.
+    expect(assistantActionSchema.safeParse({ kind: 'create_product', name: '' }).success).toBe(false);
+    expect(assistantActionSchema.safeParse({ kind: 'delete_everything' }).success).toBe(false);
+    expect(
+      assistantActionSchema.safeParse({ kind: 'create_component', name: 'x', componentType: 'widget' })
+        .success,
+    ).toBe(false);
+  });
+
+  it('classifies navigate as a non-write and create_* as writes', () => {
+    expect(isAssistantWriteAction({ kind: 'navigate', path: '/specs', label: 'Specs' })).toBe(false);
+    expect(isAssistantWriteAction({ kind: 'create_product', name: 'X200' })).toBe(true);
+    expect(
+      isAssistantWriteAction({ kind: 'create_component', name: 'Servo', componentType: null }),
+    ).toBe(true);
+  });
+
+  it('describes and summarizes proposed actions for line items', () => {
+    const actions: AssistantAction[] = [
+      { kind: 'create_product', name: 'X200' },
+      { kind: 'create_component', name: 'Servo', componentType: 'module' },
+      { kind: 'navigate', path: '/settings', label: 'Settings' },
+    ];
+    expect(describeAssistantAction(actions[0]!)).toBe('Create product “X200”');
+    expect(describeAssistantAction(actions[1]!)).toBe('Create module “Servo”');
+    expect(describeAssistantAction({ kind: 'create_component', name: 'Bolt', componentType: null })).toBe(
+      'Create part “Bolt”',
+    );
+    expect(describeAssistantAction(actions[2]!)).toBe('Go to Settings');
+    const summary = summarizeProposedActions(actions);
+    expect(summary).toContain('- Create product “X200”');
+    expect(summary.split('\n')).toHaveLength(3);
+  });
+
+  it('only accepts in-app relative navigation paths', () => {
+    expect(isInternalAssistantPath('/specs')).toBe(true);
+    expect(isInternalAssistantPath('/specs?product=abc&field=def')).toBe(true);
+    expect(isInternalAssistantPath('//evil.com')).toBe(false);
+    expect(isInternalAssistantPath('https://evil.com')).toBe(false);
+    expect(isInternalAssistantPath('javascript:alert(1)')).toBe(false);
+    expect(isInternalAssistantPath('specs')).toBe(false);
+    expect(isInternalAssistantPath('/with space')).toBe(false);
+  });
+
+  it('validates the confirm-and-execute batch', () => {
+    expect(
+      assistantExecuteRequestSchema.safeParse({
+        actions: [{ kind: 'create_product', name: 'X200' }],
+      }).success,
+    ).toBe(true);
+    // An empty batch is rejected (nothing to confirm).
+    expect(assistantExecuteRequestSchema.safeParse({ actions: [] }).success).toBe(false);
+  });
+});
+
+describe('assistantPlanSchema / planner (K.3/K.5)', () => {
   it('accepts a search decision (a query or null)', () => {
     expect(assistantPlanSchema.safeParse({ search: { query: 'voltage fields' } }).success).toBe(true);
     expect(assistantPlanSchema.safeParse({ search: null }).success).toBe(true);
@@ -60,9 +154,24 @@ describe('assistantPlanSchema / planner (K.3)', () => {
     expect(assistantPlanSchema.safeParse({}).success).toBe(false);
   });
 
-  it('the planner prompt instructs a search-only decision', () => {
+  it('defaults actions to an empty list and accepts proposed actions (K.5)', () => {
+    // Omitting `actions` is fine — it defaults to [], so old callers stay valid.
+    const plain = assistantPlanSchema.parse({ search: null });
+    expect(plain.actions).toEqual([]);
+    const withActions = assistantPlanSchema.safeParse({
+      search: null,
+      actions: [
+        { kind: 'create_product', name: 'X200' },
+        { kind: 'navigate', path: '/specs', label: 'Spec database' },
+      ],
+    });
+    expect(withActions.success).toBe(true);
+  });
+
+  it('the planner prompt instructs a search + action decision, not an answer', () => {
     expect(ASSISTANT_PLANNER_SYSTEM.toLowerCase()).toContain('search');
     expect(ASSISTANT_PLANNER_SYSTEM.toLowerCase()).toContain('do not answer');
+    expect(ASSISTANT_PLANNER_SYSTEM.toLowerCase()).toContain('create_product');
   });
 });
 
