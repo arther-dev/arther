@@ -7,7 +7,6 @@ import {
   assistantModuleForPath,
   ASSISTANT_RESULT_KIND_LABELS,
   type AssistantMessage,
-  type AssistantResponse,
   type AssistantResult,
 } from '@arther/types';
 import { Button } from '@arther/ui';
@@ -16,11 +15,11 @@ import { useAssistant } from './AssistantContext';
 type UiMessage = AssistantMessage & { results?: AssistantResult[] };
 
 /**
- * K.1/K.2/K.3 — the Ask Arther panel: a right-edge slide-in that answers how-to
- * questions about Arther. Each turn sends the conversation + the user's current
- * context (module · page) to /api/assistant, which grounds the reply in the launch
- * knowledge base. Session-scoped — the transcript lives here and clears on reload.
- * (Token-by-token streaming and read/write actions are follow-up slices.)
+ * K.1/K.2/K.3/K.4 — the Ask Arther panel: a right-edge slide-in that answers
+ * questions about Arther and finds the user's content. Each turn sends the
+ * conversation + the user's current context (module · page) to /api/assistant,
+ * which streams an NDJSON response — optional read-action result cards then the
+ * reply token-by-token. Session-scoped: the transcript clears on reload.
  */
 export function AskArtherPanel() {
   const { open, close } = useAssistant();
@@ -34,11 +33,20 @@ export function AskArtherPanel() {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
   }, [messages, pending]);
 
+  // Update the trailing assistant message (the streaming placeholder) in place.
+  const patchLast = (patch: Partial<UiMessage>) =>
+    setMessages((prev) => {
+      if (prev.length === 0 || prev[prev.length - 1]!.role !== 'assistant') return prev;
+      const copy = [...prev];
+      copy[copy.length - 1] = { ...copy[copy.length - 1]!, ...patch };
+      return copy;
+    });
+
   async function send() {
     const text = input.trim();
     if (!text || pending) return;
     const next: UiMessage[] = [...messages, { role: 'user', content: text }];
-    setMessages(next);
+    setMessages([...next, { role: 'assistant', content: '' }]); // streaming placeholder
     setInput('');
     setPending(true);
     try {
@@ -50,14 +58,45 @@ export function AskArtherPanel() {
           context: { module: assistantModuleForPath(pathname), page: pathname },
         }),
       });
-      const data = (await res.json()) as AssistantResponse & { error?: string };
-      const reply = data.reply ?? 'Sorry — I couldn’t answer that right now.';
-      setMessages((prev) => [...prev, { role: 'assistant', content: reply, results: data.results }]);
+      if (!res.ok || !res.body) {
+        patchLast({ content: 'Sorry — I couldn’t answer that right now.' });
+        return;
+      }
+      // Read the NDJSON stream: `results` once, then `delta` lines token-by-token.
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let content = '';
+      const handle = (raw: string) => {
+        const t = raw.trim();
+        if (!t) return;
+        let msg: { type?: string; text?: string; results?: AssistantResult[] };
+        try {
+          msg = JSON.parse(t);
+        } catch {
+          return;
+        }
+        if (msg.type === 'delta' && typeof msg.text === 'string') {
+          content += msg.text;
+          patchLast({ content });
+        } else if (msg.type === 'results' && Array.isArray(msg.results)) {
+          patchLast({ results: msg.results });
+        }
+      };
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let nl: number;
+        while ((nl = buffer.indexOf('\n')) >= 0) {
+          handle(buffer.slice(0, nl));
+          buffer = buffer.slice(nl + 1);
+        }
+      }
+      if (buffer.trim()) handle(buffer);
+      if (!content) patchLast({ content: 'Sorry — I couldn’t answer that right now.' });
     } catch {
-      setMessages((prev) => [
-        ...prev,
-        { role: 'assistant', content: 'Sorry — I couldn’t reach the assistant. Please try again.' },
-      ]);
+      patchLast({ content: 'Sorry — I couldn’t reach the assistant. Please try again.' });
     } finally {
       setPending(false);
     }
@@ -99,7 +138,9 @@ export function AskArtherPanel() {
             content (e.g. “find the datasheet for the servo drive” or “show me voltage fields”).
           </p>
         ) : (
-          messages.map((m, i) => (
+          messages.map((m, i) =>
+            // Skip the not-yet-filled streaming placeholder (the "thinking" line covers it).
+            m.role === 'assistant' && !m.content && !(m.results && m.results.length > 0) ? null : (
             <div
               key={i}
               style={{ alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '85%' }}
@@ -133,7 +174,9 @@ export function AskArtherPanel() {
             </div>
           ))
         )}
-        {pending ? <p className="specs-grid__meta">Arther is thinking…</p> : null}
+        {pending && !messages[messages.length - 1]?.content ? (
+          <p className="specs-grid__meta">Arther is thinking…</p>
+        ) : null}
       </div>
 
       <div className="specs-form--row" style={{ gap: 6, padding: 12, borderTop: '1px solid var(--border, #e5e7eb)' }}>

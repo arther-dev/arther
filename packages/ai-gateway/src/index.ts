@@ -63,9 +63,27 @@ export type SystemParam =
   | string
   | Array<{ type: 'text'; text: string; cache_control?: { type: 'ephemeral' } }>;
 
+export interface StreamTextRequest {
+  system: string;
+  user: string;
+  maxTokens?: number;
+}
+
+/** One streamed event, narrowed to the text deltas the gateway forwards. */
+interface StreamEvent {
+  type: string;
+  delta?: { type?: string; text?: string };
+}
+
 export interface AiGateway {
   readonly provisioned: boolean;
   structured<S extends z.ZodType>(request: StructuredRequest<S>): Promise<z.infer<S>>;
+  /**
+   * K.3 — stream a plain-text reply token-by-token (no forced tool, so the model
+   * answers in prose). Yields text deltas. Requires a real API key (the structured
+   * test seam doesn't cover streaming); throws `AiNotProvisionedError` otherwise.
+   */
+  streamText(request: StreamTextRequest): AsyncIterable<string>;
 }
 
 /** One content block from the model — only the fields the gateway reads. */
@@ -130,6 +148,22 @@ export function createAiGateway(options: AiGatewayOptions): AiGateway {
   const provisioned = Boolean(options.apiKey) || Boolean(options.client);
   return {
     provisioned,
+    async *streamText(request: StreamTextRequest) {
+      // Streaming needs the real client (the structured test seam is tool-shaped).
+      if (!options.apiKey) throw new AiNotProvisionedError();
+      const anthropic = new Anthropic({ apiKey: options.apiKey });
+      const stream = anthropic.messages.stream({
+        model,
+        max_tokens: request.maxTokens ?? 1024,
+        system: request.system,
+        messages: [{ role: 'user', content: request.user }],
+      });
+      for await (const event of stream as AsyncIterable<StreamEvent>) {
+        if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta' && event.delta.text) {
+          yield event.delta.text;
+        }
+      }
+    },
     async structured(request) {
       if (!provisioned) throw new AiNotProvisionedError();
       const client: MessagesClient =

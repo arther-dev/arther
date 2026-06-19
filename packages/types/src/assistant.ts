@@ -42,6 +42,21 @@ export const assistantReplySchema = z.object({
   search: z.object({ query: z.string().min(1).max(120) }).nullable().optional(),
 });
 
+/**
+ * K.3/K.4 — the streaming route's fast first pass: triage one message to decide
+ * whether to search the user's content before streaming the prose answer. Returns
+ * only the search decision (no reply text), so it's cheap.
+ */
+export const assistantPlanSchema = z.object({
+  search: z.object({ query: z.string().min(1).max(120) }).nullable(),
+});
+
+export const ASSISTANT_PLANNER_SYSTEM = [
+  'You triage one user message for the Arther in-app assistant. Decide only whether to search the user’s OWN content.',
+  'If the user wants to find, list, locate, or open their own documents, spec fields, or components, set `search.query` to the key search terms (a few keywords, no punctuation). For how-to, conceptual, or general questions, set `search` to null.',
+  'Do not answer the question — only return the search decision.',
+].join('\n');
+
 /** K.4 — a read-action result card the panel renders inline under the reply. */
 export const ASSISTANT_RESULT_KINDS = ['document', 'spec', 'component'] as const;
 export type AssistantResultKind = (typeof ASSISTANT_RESULT_KINDS)[number];
@@ -104,12 +119,17 @@ Roles: owner/admin/member can edit (editors); viewers are read-only.`;
 export function buildAssistantSystemPrompt(input: {
   context: AssistantClientContext;
   role?: string | null;
+  /** K.3 — a compact summary of read-action search hits to weave into the reply. */
+  searchSummary?: string | null;
 }): string {
   const role = input.role ?? 'a member';
+  const actions = input.searchSummary
+    ? `The user asked to find their own content, and a search returned these items (the panel shows them as clickable cards below your reply):\n${input.searchSummary}\nBriefly point the user to them in one or two sentences; if the list is empty, say nothing matched and suggest a different search. You cannot yet create or change data.`
+    : 'You cannot yet create or change data — for those, guide the user to the right surface.';
   return [
     "You are Arther, the in-app assistant for the Arther product-documentation platform. You help users understand and use Arther: answer how-to questions, explain concepts, and orient them. Be authoritative but approachable, and concise — a few sentences or a short list, not an essay.",
     'Ground your answers in the knowledge below. If something isn’t covered, say you’re not sure rather than inventing features.',
-    'You can SEARCH the user’s own content (their documents, spec fields, and components). When the user asks to find, list, locate, or open their own content — not a how-to question — set `search` to a short keyword query (the key terms only, no punctuation) and keep `reply` to a brief framing line such as “Here’s what I found:”. For how-to or conceptual questions, omit `search` and answer from the knowledge. You cannot yet create or change data — for those, guide the user to the right surface.',
+    actions,
     `\nKNOWLEDGE:\n${ARTHER_ASSISTANT_KNOWLEDGE}`,
     `\nCURRENT CONTEXT: the user is a ${role}, in the ${input.context.module} (path ${input.context.page}). Reference this naturally when relevant.`,
   ].join('\n');
