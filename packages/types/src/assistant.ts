@@ -35,8 +35,35 @@ export const assistantRequestSchema = z.object({
 });
 export type AssistantRequest = z.infer<typeof assistantRequestSchema>;
 
-/** The structured reply the gateway returns (single text turn for now). */
-export const assistantReplySchema = z.object({ reply: z.string() });
+/** The structured reply the gateway returns: a text turn, optionally a search. */
+export const assistantReplySchema = z.object({
+  reply: z.string(),
+  /** K.4 — when the user asks to find their own content, the model requests a search. */
+  search: z.object({ query: z.string().min(1).max(120) }).nullable().optional(),
+});
+
+/** K.4 — a read-action result card the panel renders inline under the reply. */
+export const ASSISTANT_RESULT_KINDS = ['document', 'spec', 'component'] as const;
+export type AssistantResultKind = (typeof ASSISTANT_RESULT_KINDS)[number];
+
+export interface AssistantResult {
+  kind: AssistantResultKind;
+  title: string;
+  subtitle: string;
+  href: string;
+}
+
+/** The /api/assistant response the panel consumes. */
+export interface AssistantResponse {
+  reply: string;
+  results?: AssistantResult[];
+}
+
+export const ASSISTANT_RESULT_KIND_LABELS: Record<AssistantResultKind, string> = {
+  document: 'Document',
+  spec: 'Spec field',
+  component: 'Component',
+};
 
 /** Route segment → human module name (K.2), shared by the panel + the prompt. */
 const MODULE_PREFIXES: Array<[prefix: string, name: string]> = [
@@ -81,7 +108,8 @@ export function buildAssistantSystemPrompt(input: {
   const role = input.role ?? 'a member';
   return [
     "You are Arther, the in-app assistant for the Arther product-documentation platform. You help users understand and use Arther: answer how-to questions, explain concepts, and orient them. Be authoritative but approachable, and concise — a few sentences or a short list, not an essay.",
-    'Ground your answers in the knowledge below. If something isn’t covered, say you’re not sure rather than inventing features. You cannot take actions yet (creating or changing data) — guide the user to the right surface instead.',
+    'Ground your answers in the knowledge below. If something isn’t covered, say you’re not sure rather than inventing features.',
+    'You can SEARCH the user’s own content (their documents, spec fields, and components). When the user asks to find, list, locate, or open their own content — not a how-to question — set `search` to a short keyword query (the key terms only, no punctuation) and keep `reply` to a brief framing line such as “Here’s what I found:”. For how-to or conceptual questions, omit `search` and answer from the knowledge. You cannot yet create or change data — for those, guide the user to the right surface.',
     `\nKNOWLEDGE:\n${ARTHER_ASSISTANT_KNOWLEDGE}`,
     `\nCURRENT CONTEXT: the user is a ${role}, in the ${input.context.module} (path ${input.context.page}). Reference this naturally when relevant.`,
   ].join('\n');
