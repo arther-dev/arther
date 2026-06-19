@@ -230,3 +230,37 @@ export async function getWorkspaceHealth(
     staleDocuments: num(r?.stale_documents as number | string),
   };
 }
+
+/**
+ * A — review cycle times (the 4th A.7 health metric): how long documents spend in
+ * review (submit → decision) and the approve/reject split, from member-readable
+ * `analytics_events` (the submit event) + `approval_records` (the decision). The
+ * averages are null when no review has reached a decision yet.
+ */
+export interface ReviewCycleTimes {
+  reviewsMeasured: number;
+  approvals: number;
+  rejections: number;
+  avgHoursToDecision: number | null;
+  medianHoursToDecision: number | null;
+}
+
+export async function getWorkspaceReviewCycleTimes(
+  client: SupabaseClient,
+  workspaceId: WorkspaceId,
+): Promise<ReviewCycleTimes> {
+  const { data, error } = await client.rpc('workspace_review_cycle_times', {
+    p_workspace_id: workspaceId,
+  });
+  if (error) throw new Error(`getWorkspaceReviewCycleTimes: ${error.message}`);
+  const r = (Array.isArray(data) ? data[0] : data) as Record<string, unknown> | undefined;
+  const avg = r?.avg_hours_to_decision;
+  const median = r?.median_hours_to_decision;
+  return {
+    reviewsMeasured: num(r?.reviews_measured as number | string),
+    approvals: num(r?.approvals as number | string),
+    rejections: num(r?.rejections as number | string),
+    avgHoursToDecision: avg == null ? null : Number(avg),
+    medianHoursToDecision: median == null ? null : Number(median),
+  };
+}

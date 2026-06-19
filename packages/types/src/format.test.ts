@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatFieldValue } from './format';
+import { formatFieldValue, formatReviewDuration } from './format';
 import { wouldCreateReferenceCycle } from './reference-graph';
 
 const UNIT = '0d4ee021-92eb-44a5-a1a4-6b04f7e3e159';
@@ -68,5 +68,18 @@ describe('wouldCreateReferenceCycle', () => {
     ];
     expect(wouldCreateReferenceCycle(edges, { from: 'c', to: 'd' })).toBe(false);
     expect(wouldCreateReferenceCycle(edges, { from: 'd', to: 'e' })).toBe(false);
+  });
+});
+
+describe('formatReviewDuration (A — review cycle time)', () => {
+  it('renders minutes, hours, and days; — for unknown', () => {
+    expect(formatReviewDuration(null)).toBe('—');
+    expect(formatReviewDuration(-1)).toBe('—');
+    expect(formatReviewDuration(0.5)).toBe('30 min');
+    expect(formatReviewDuration(0.01)).toBe('1 min'); // floors to ≥1 min
+    expect(formatReviewDuration(2)).toBe('2h');
+    expect(formatReviewDuration(2.5)).toBe('2.5h');
+    expect(formatReviewDuration(24)).toBe('1d');
+    expect(formatReviewDuration(30)).toBe('1d 6h');
   });
 });

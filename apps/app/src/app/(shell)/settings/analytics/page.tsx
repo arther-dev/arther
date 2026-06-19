@@ -4,8 +4,10 @@ import {
   getTopSearches,
   getWorkspaceDocumentConsumption,
   getWorkspaceHealth,
+  getWorkspaceReviewCycleTimes,
   getZeroResultSearches,
 } from '@arther/db';
+import { formatReviewDuration } from '@arther/types';
 import { AppShell, EmptyState } from '@arther/ui';
 import { getSupabaseServer } from '../../../../lib/supabase/server';
 
@@ -60,11 +62,12 @@ export default async function WorkspaceAnalyticsPage() {
     );
   }
 
-  const [documents, topSearches, zeroResults, health] = await Promise.all([
+  const [documents, topSearches, zeroResults, health, reviewTimes] = await Promise.all([
     getWorkspaceDocumentConsumption(supabase, workspace.id),
     getTopSearches(supabase, workspace.id),
     getZeroResultSearches(supabase, workspace.id),
     getWorkspaceHealth(supabase, workspace.id),
+    getWorkspaceReviewCycleTimes(supabase, workspace.id),
   ]);
 
   return (
@@ -107,10 +110,23 @@ export default async function WorkspaceAnalyticsPage() {
               </dd>
               <span className="specs-grid__meta">references behind the current field version</span>
             </div>
+            <div>
+              <dt className="specs-grid__meta">Avg. time in review</dt>
+              <dd style={{ margin: 0, fontSize: 22, fontWeight: 650 }}>
+                {formatReviewDuration(reviewTimes.avgHoursToDecision)}
+              </dd>
+              <span className="specs-grid__meta">
+                {reviewTimes.reviewsMeasured > 0
+                  ? `median ${formatReviewDuration(reviewTimes.medianHoursToDecision)} · ${reviewTimes.reviewsMeasured.toLocaleString()} decision${
+                      reviewTimes.reviewsMeasured === 1 ? '' : 's'
+                    }`
+                  : 'no completed reviews yet'}
+              </span>
+            </div>
           </dl>
           <p className="specs-grid__meta">
-            Operational health across generation, review, and spec tracking. (Review cycle times
-            arrive in a follow-up.)
+            Operational health across generation, review, and spec tracking. Review time is measured
+            from a document entering review to its approval or rejection.
           </p>
         </section>
 
