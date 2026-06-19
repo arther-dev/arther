@@ -68,11 +68,12 @@ afterAll(async () => {
 
 describe('workspace_review_cycle_times (0027)', () => {
   it('pairs a submit event with the decision and measures the duration', async () => {
-    // Entered review 6 hours before the approval.
-    await owner`
+    // Entered review 6 hours before the approval. Events are service-role writes
+    // (analytics_events has no authenticated INSERT policy).
+    await admin`
       insert into public.analytics_events (workspace_id, document_id, event_type, actor_user_id, payload, occurred_at)
       values (${ws}, ${documentId}, 'document_state_changed', ${ownerId},
-              ${owner.json({ action: 'submit_for_review', from: 'draft', to: 'review' })},
+              ${admin.json({ action: 'submit_for_review', from: 'draft', to: 'review' })},
               now() - interval '6 hours')
     `;
     await owner`
@@ -89,11 +90,11 @@ describe('workspace_review_cycle_times (0027)', () => {
   });
 
   it('counts a rejection and ignores a decision with no preceding submit event', async () => {
-    // A rejection 2 hours after a fresh submit → measured.
-    await owner`
+    // A rejection 2 hours after a fresh submit → measured. (Service-role event write.)
+    await admin`
       insert into public.analytics_events (workspace_id, document_id, event_type, actor_user_id, payload, occurred_at)
       values (${ws}, ${documentId}, 'document_state_changed', ${ownerId},
-              ${owner.json({ action: 'submit_for_review', from: 'draft', to: 'review' })},
+              ${admin.json({ action: 'submit_for_review', from: 'draft', to: 'review' })},
               now() - interval '2 hours')
     `;
     await owner`
