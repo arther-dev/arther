@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createAiGateway } from '@arther/ai-gateway';
+import { rateLimit } from '@arther/rate-limit';
 import { getActiveWorkspace, searchWorkspace } from '@arther/db';
 import {
   assistantPlannerSystem,
@@ -39,6 +40,15 @@ export async function POST(request: Request): Promise<Response> {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Not signed in.' }, { status: 401 });
+
+  // H.5 — every turn fires paid model calls; throttle per member (a friendly
+  // NDJSON notice so the panel shows the reason rather than a generic error).
+  const throttle = await rateLimit('assistant', user.id);
+  if (!throttle.success) {
+    return ndjsonNotice(
+      `You’re sending messages faster than I can keep up — give it ${throttle.retryAfterSeconds}s and try again.`,
+    );
+  }
 
   let body: unknown;
   try {

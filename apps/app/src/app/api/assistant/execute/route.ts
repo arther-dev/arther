@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createCanDo, type CanDo } from '@arther/authz';
+import { rateLimit } from '@arther/rate-limit';
 import {
   createComponent,
   createProduct,
@@ -44,6 +45,16 @@ export async function POST(request: Request): Promise<Response> {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Not signed in.' }, { status: 401 });
+
+  // H.5 — share the assistant per-member budget (defense in depth; the writes
+  // are also canDo-gated below).
+  const throttle = await rateLimit('assistant', user.id);
+  if (!throttle.success) {
+    return NextResponse.json(
+      { error: `Too many requests — try again in ${throttle.retryAfterSeconds}s.` },
+      { status: 429 },
+    );
+  }
 
   let body: unknown;
   try {
