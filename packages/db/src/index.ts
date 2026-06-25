@@ -151,6 +151,7 @@ export {
 export { recordAuditEvent, type AuditEvent } from './audit';
 export {
   archiveDocumentSnapshots,
+  archiveVariantSnapshots,
   listSnapshotsForDocument,
   publishDocument,
   restoreLatestSnapshot,
@@ -159,15 +160,20 @@ export {
 export {
   getGatedPortalDocument,
   getPortalDocument,
+  getPortalVariantDocument,
   getPortalWorkspace,
+  listDocumentPublishedVariants,
   listPortalPublishedDocuments,
   listSitemapEntries,
+  listVariantSitemapEntries,
   resolvePortalDocumentRef,
   searchPortalDocuments,
+  type DocumentVariantIndex,
   type PortalDocument,
   type PortalDocumentListing,
   type PortalDocumentRef,
   type PortalSearchHit,
+  type PortalVariantListing,
   type PortalWorkspace,
   type SitemapEntry,
 } from './portal';

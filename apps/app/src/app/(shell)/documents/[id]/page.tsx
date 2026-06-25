@@ -41,6 +41,7 @@ import { DocumentLifecycle } from './DocumentLifecycle';
 import { DuplicateDocumentButton } from './DuplicateDocumentButton';
 import { SnippetEmbedsPanel } from './SnippetEmbedsPanel';
 import { ApprovalPanel, type PanelRole } from './ApprovalPanel';
+import { VariantPublishPanel } from './VariantPublishPanel';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -173,8 +174,15 @@ export default async function DocumentPage({
   // visibility (live vs. unpublished/archived), decoupled from the state machine.
   const snapshots =
     state === 'published' ? await listSnapshotsForDocument(supabase, tree.document.id) : [];
-  const snapshot = snapshots.find((s) => !s.archived_at) ?? null;
-  const latestSnapshot = snapshots[0] ?? null;
+  // V.9 — base portal visibility is the no-variant publication line; a variant's
+  // snapshot must never stand in for the base.
+  const baseSnapshots = snapshots.filter((s) => s.variant_id == null);
+  const snapshot = baseSnapshots.find((s) => !s.archived_at) ?? null;
+  const latestSnapshot = baseSnapshots[0] ?? null;
+  // V.9 — variants with a live (non-archived) portal snapshot, for the publish panel.
+  const publishedVariantIds = new Set(
+    snapshots.filter((s) => s.variant_id != null && !s.archived_at).map((s) => s.variant_id as string),
+  );
   const portalVisibility: 'live' | 'unpublished' | null =
     state !== 'published'
       ? null
@@ -385,6 +393,22 @@ export default async function DocumentPage({
             access={accessMode}
             allowlist={accessAllowlist}
             links={magicLinks}
+          />
+        ) : null}
+        {canManage && portalVisibility === 'live' && variants.length > 0 ? (
+          <VariantPublishPanel
+            documentId={tree.document.id}
+            workspaceSlug={workspace.slug}
+            productId={tree.document.product_id}
+            documentSlug={tree.document.slug}
+            portalBase={process.env.PORTAL_BASE_URL ?? null}
+            variants={variants.map((v) => ({
+              id: v.id,
+              name: v.name,
+              slug: v.slug,
+              isDefault: v.isDefault,
+              published: publishedVariantIds.has(v.id),
+            }))}
           />
         ) : null}
         {consumption ? (

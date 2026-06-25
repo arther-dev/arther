@@ -30,7 +30,14 @@ export async function POST(request: Request): Promise<Response> {
     if (!(await rateLimit('portal_track', ip)).success) return noContent();
 
     const body = (await request.json().catch(() => null)) as
-      | { type?: unknown; workspace?: unknown; product?: unknown; document?: unknown; version?: unknown }
+      | {
+          type?: unknown;
+          workspace?: unknown;
+          product?: unknown;
+          document?: unknown;
+          version?: unknown;
+          variant?: unknown;
+        }
       | null;
     if (!body || body.type !== 'document_viewed') return noContent();
 
@@ -38,6 +45,9 @@ export async function POST(request: Request): Promise<Response> {
     const product = body.product;
     const document = body.document;
     const version = typeof body.version === 'string' ? body.version : undefined;
+    // V.9 — a per-variant page beacon carries the variant slug; it must resolve to
+    // a real public variant publication or the beacon records nothing.
+    const variant = typeof body.variant === 'string' ? body.variant : undefined;
     if (typeof workspace !== 'string' || typeof document !== 'string' || typeof product !== 'string') {
       return noContent();
     }
@@ -48,6 +58,7 @@ export async function POST(request: Request): Promise<Response> {
       productId: product,
       documentSlug: document,
       version,
+      variantSlug: variant,
     });
     if (!ref) return noContent();
 
@@ -59,7 +70,7 @@ export async function POST(request: Request): Promise<Response> {
         eventType: 'document_viewed',
         documentId: ref.documentId,
         sessionId,
-        payload: { version: ref.version },
+        payload: variant ? { version: ref.version, variant } : { version: ref.version },
       },
     );
   } catch {

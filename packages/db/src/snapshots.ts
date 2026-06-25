@@ -4,6 +4,7 @@ import type {
   DocumentRevisionId,
   PublishedSnapshotId,
   UserId,
+  VariantId,
 } from '@arther/types';
 import { rpcError } from './errors';
 import { scopedServiceQuery, type WorkspaceScope } from './guard';
@@ -19,6 +20,8 @@ import { scopedServiceQuery, type WorkspaceScope } from './guard';
 export interface PublishedSnapshotRow {
   id: PublishedSnapshotId;
   document_id: DocumentId;
+  /** V.9 — null for the base publication; a variant id for a per-variant page. */
+  variant_id: VariantId | null;
   version: string;
   pdf_ready: boolean;
   archived_at: string | null;
@@ -29,7 +32,7 @@ export interface PublishedSnapshotRow {
 }
 
 const SNAPSHOT_COLUMNS =
-  'id, document_id, version, pdf_ready, archived_at, published_at, published_by, access_config';
+  'id, document_id, variant_id, version, pdf_ready, archived_at, published_at, published_by, access_config';
 
 export async function publishDocument(
   service: SupabaseClient,
@@ -42,6 +45,12 @@ export async function publishDocument(
     /** The frozen spec-field resolution map the renderer reads (no live lookups). */
     resolutionManifest: unknown;
     searchText: string;
+    /**
+     * V.9 — set for a per-variant publication: freezes the variant's
+     * delta-resolved block tree as an independent portal page (variant_id stamped,
+     * versioned per variant line). null/omitted = the base document publication.
+     */
+    variantId?: VariantId | null;
   },
 ): Promise<PublishedSnapshotId> {
   return scopedServiceQuery(scope, async () => {
@@ -51,6 +60,7 @@ export async function publishDocument(
       p_block_tree: input.blockTree,
       p_resolution_manifest: input.resolutionManifest,
       p_search_text: input.searchText,
+      p_variant_id: input.variantId ?? null,
     });
     if (error) throw rpcError('publishDocument', error);
     return data as PublishedSnapshotId;
@@ -90,6 +100,29 @@ export async function archiveDocumentSnapshots(
     .is('archived_at', null)
     .select('id');
   if (error) throw new Error(`archiveDocumentSnapshots: ${error.message}`);
+  return (data ?? []).length;
+}
+
+/**
+ * V.9 — unpublish a single variant: archive that variant's live snapshots only,
+ * leaving the base publication and sibling variants untouched (spec §4.5,
+ * "publishing variant A does not publish variant B" — the inverse holds too).
+ * Same caller-JWT RLS (owner/admin) + freeze-guard (archived_* permitted) + audit
+ * path as `archiveDocumentSnapshots`. Returns how many were archived (0 = the
+ * variant wasn't live).
+ */
+export async function archiveVariantSnapshots(
+  client: SupabaseClient,
+  input: { documentId: DocumentId; variantId: VariantId; userId: UserId },
+): Promise<number> {
+  const { data, error } = await client
+    .from('published_snapshots')
+    .update({ archived_at: new Date().toISOString(), archived_by: input.userId })
+    .eq('document_id', input.documentId)
+    .eq('variant_id', input.variantId)
+    .is('archived_at', null)
+    .select('id');
+  if (error) throw new Error(`archiveVariantSnapshots: ${error.message}`);
   return (data ?? []).length;
 }
 
