@@ -46,8 +46,11 @@ import {
   type UserId,
   type WorkspaceId,
 } from '@arther/types';
+import type { GenerateVariantsPayload } from '@arther/jobs';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getSupabaseServer } from '../../../../lib/supabase/server';
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export interface GenerateFormState {
   error?: string;
@@ -93,6 +96,24 @@ const schema = z.object({
 });
 
 /**
+ * V.5 — hand the variant-set generation to the Trigger.dev durable runner. The
+ * SDK is imported lazily and only used when `TRIGGER_SECRET_KEY` is present, so
+ * keyless envs (CI/local) keep the run `queued` (degrades honestly) and never
+ * pull the SDK at module load. Returns whether the task was actually enqueued.
+ */
+async function triggerVariantGeneration(payload: GenerateVariantsPayload): Promise<boolean> {
+  if (!process.env.TRIGGER_SECRET_KEY) return false;
+  try {
+    const { tasks } = await import('@trigger.dev/sdk');
+    await tasks.trigger('generate-variants', payload);
+    return true;
+  } catch (e) {
+    console.error('[trigger] generate-variants failed', e);
+    return false;
+  }
+}
+
+/**
  * G2 — confirm pre-flight and generate. Authorizes `doc.generate`, creates the
  * run (service client, G1.4), then runs the generator inline when the gateway is
  * provisioned: per section it injects the mapped fields + brief + brand, asks
@@ -136,6 +157,51 @@ export async function createGenerationRunAction(
   const productId = parsed.data.productId as ProductId;
   const brandProfileId = parsed.data.brandProfileId || undefined;
   const scope = { workspaceId: workspace.id };
+  const sectionScaffold = type.sections.map((section) => ({
+    name: section.name,
+    documentTypeSectionId: section.id,
+    displayOrder: section.display_order,
+  }));
+
+  // V.5 — generate-per-variant + merge. When the author selected one or more
+  // variants, fan out a generation per variant and merge deterministically into
+  // ONE variant-aware document, on Trigger.dev's durable runner.
+  const variantIds = formData.getAll('variantIds').map(String).filter((v) => UUID_RE.test(v));
+  if (variantIds.length > 0) {
+    let variantRunId: string;
+    try {
+      const service = createServiceClient();
+      const { run } = await createGenerationRun(service, scope, {
+        productId,
+        documentTypeId: parsed.data.documentTypeId as DocumentTypeId,
+        brandProfileId,
+        kind: 'variant_set',
+        sections: sectionScaffold,
+        requestedBy: user.id as UserId,
+      });
+      variantRunId = run.id;
+      const triggered = await triggerVariantGeneration({
+        runId: run.id,
+        workspaceId: workspace.id,
+        productId,
+        documentTypeId: parsed.data.documentTypeId,
+        brandProfileId: brandProfileId ?? null,
+        variantIds,
+        requestedBy: user.id,
+      });
+      // A triggered run flips to `running` so the status surface polls it; without
+      // `TRIGGER_SECRET_KEY` it stays `queued` and degrades honestly (like the
+      // gateway-absent inline path).
+      if (triggered) {
+        await setGenerationRunStatus(service, scope, run.id as GenerationRunId, { status: 'running' });
+      }
+    } catch {
+      return { error: 'Could not start the variant generation.' };
+    }
+    redirect(
+      `/specs/generate?product=${parsed.data.productId}&type=${parsed.data.documentTypeId}&run=${variantRunId}`,
+    );
+  }
 
   let runId: string;
   try {
@@ -145,11 +211,7 @@ export async function createGenerationRunAction(
       documentTypeId: parsed.data.documentTypeId as DocumentTypeId,
       brandProfileId,
       kind: 'document',
-      sections: type.sections.map((section) => ({
-        name: section.name,
-        documentTypeSectionId: section.id,
-        displayOrder: section.display_order,
-      })),
+      sections: sectionScaffold,
       requestedBy: user.id as UserId,
     });
     runId = run.id;

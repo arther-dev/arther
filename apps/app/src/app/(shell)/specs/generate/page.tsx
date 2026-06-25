@@ -7,6 +7,7 @@ import {
   listDocumentTypes,
   listPreflightFields,
   listProducts,
+  listVariants,
 } from '@arther/db';
 import {
   computeGenerationReadiness,
@@ -119,10 +120,11 @@ export default async function GeneratePage({
 
   let preflight = null;
   if (selectedType) {
-    const [detail, fields, brands] = await Promise.all([
+    const [detail, fields, brands, variants] = await Promise.all([
       getDocumentType(supabase, selectedType.id as DocumentTypeId),
       listPreflightFields(supabase, selected.id),
       listBrandProfiles(supabase, workspace.id),
+      listVariants(supabase, selected.id as ProductId),
     ]);
     const readiness = computeGenerationReadiness(
       detail?.sections.map((s) => ({ name: s.name, categories: s.spec_field_categories })) ?? [],
@@ -174,6 +176,7 @@ export default async function GeneratePage({
           productId={selected.id}
           documentTypeId={selectedType.id}
           brands={brands.map((b) => ({ id: b.id, name: b.name, isDefault: b.is_workspace_default }))}
+          variants={variants.map((v) => ({ id: v.id, name: v.name, isDefault: v.isDefault }))}
         />
       </section>
     );
