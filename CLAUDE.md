@@ -10,6 +10,15 @@ Working agreements for agent sessions in this repo.
 
 ## Autonomous task routine
 
+> **Trip mode (owner away).** The full hands-off loop — a **QA** agent that finds bugs and
+> files issues, a **PM** agent that triages/prioritizes and writes a daily digest, and a
+> **builder** that ships fixes — is documented in [`Development/Autonomous/`](Development/Autonomous/README.md).
+> While the owner is away the merge policy is **full self-merge on green CI** (no required
+> human review), guarded by the `Guardrails` CI check
+> ([`Development/Autonomous/guardrails.md`](Development/Autonomous/guardrails.md)). That
+> **supersedes** the required-review auto-merge procedure described below, which is the mode
+> to use when a human approver is available. The dedup discipline below applies in both modes.
+
 An hourly routine picks and builds the "next unblocked task." **Every run is a fresh,
 ephemeral clone of `main` with no memory of earlier runs.** The only state shared between
 runs is what is committed to `main` plus what GitHub shows (open PRs and `claude/*`

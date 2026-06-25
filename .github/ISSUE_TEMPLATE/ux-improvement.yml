@@ -1,0 +1,36 @@
+name: "UX / polish improvement"
+description: "A UI/UX or polish improvement proposed by the PM agent or a human."
+title: "[UX] <short summary>"
+labels: ["ux"]
+body:
+  - type: input
+    id: surface
+    attributes:
+      label: Surface / route
+      placeholder: "app /dashboard"
+    validations:
+      required: true
+  - type: textarea
+    id: observation
+    attributes:
+      label: Observation
+      description: What feels off, inconsistent, or below the design bar today. Reference the visual spec in Development/Handoff where relevant.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: Concrete, scoped change. Small enough to ship in one PR.
+    validations:
+      required: true
+  - type: dropdown
+    id: impact
+    attributes:
+      label: Impact
+      options:
+        - "High — on a core flow, many users hit it"
+        - "Medium — noticeable, secondary flow"
+        - "Low — nice to have"
+    validations:
+      required: true

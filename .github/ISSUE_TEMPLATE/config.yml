@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Autonomous loop runbooks
+    url: https://github.com/arther-dev/arther/tree/main/Development/Autonomous
+    about: How the QA, PM, and Builder agents operate while the owner is away.
