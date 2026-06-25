@@ -1,0 +1,51 @@
+name: "QA bug"
+description: "A defect found by the autonomous QA agent or a human while testing Arther."
+title: "[QA] <short summary>"
+labels: ["qa-bug"]
+body:
+  - type: input
+    id: surface
+    attributes:
+      label: Surface / route
+      description: Which app + route, e.g. `app /specs/import` or `portal /acme/<product>/<doc>`.
+      placeholder: "app /documents/[id]/edit"
+    validations:
+      required: true
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      options:
+        - "S1 — broken / data loss / 500 / blocks a core flow"
+        - "S2 — feature works wrong or partially"
+        - "S3 — visual / a11y / polish"
+        - "S4 — nit"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Exact, numbered steps. Assume a fresh seeded account.
+      placeholder: |
+        1. Log in as the seeded QA user
+        2. Go to /specs/generate
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected vs actual
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Screenshot link/path, console error, Sentry issue, network response.
+  - type: textarea
+    id: fix-sketch
+    attributes:
+      label: Suggested fix (optional)
+      description: If the QA agent has a hypothesis, note the file/area and approach.

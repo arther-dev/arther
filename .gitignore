@@ -18,6 +18,12 @@ playwright-report/
 test-results/
 blob-report/
 
+# screenshot visual-QA pass (Development/Autonomous)
+screenshots-output/
+screenshots-report/
+screenshots-trace/
+**/screens/.auth/
+
 # misc
 .DS_Store
 *.log

@@ -1,0 +1,37 @@
+name: "Feature proposal (small)"
+description: "A small, self-contained feature addition proposed by the PM agent."
+title: "[FEAT] <short summary>"
+labels: ["feature-small"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / user need
+      description: What user problem does this solve? Tie it to a real flow you exercised end-to-end.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed feature
+      description: Scoped so it ships in a single PR with an E2E spec. If it needs schema/auth/billing changes, say so — those are guardrailed and need human approval.
+    validations:
+      required: true
+  - type: checkboxes
+    id: scope-check
+    attributes:
+      label: Scope guardrails
+      options:
+        - label: "Shippable in one PR (no multi-PR epic)"
+          required: true
+        - label: "No new database migration (if it needs one, this is human-gated — leave unchecked and add the `needs-human` label)"
+        - label: "No auth / billing / RLS changes"
+    validations:
+      required: false
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: How the builder agent will know it's done, and what E2E spec proves it.
+    validations:
+      required: true
