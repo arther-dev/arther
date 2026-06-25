@@ -14,9 +14,13 @@
     "db:up": "bash scripts/db-up.sh",
     "db:down": "bash scripts/db-down.sh",
     "db:migrate": "bash scripts/db-migrate.sh",
+    "db:seed": "bash scripts/db-seed.sh",
+    "db:reset": "bash scripts/db-down.sh && bash scripts/db-up.sh && bash scripts/db-migrate.sh && bash scripts/db-seed.sh",
     "test:db": "pnpm --filter @arther/db-tests test:db",
     "test:e2e": "pnpm --filter @arther/e2e test:e2e",
-    "check:drift": "bash scripts/check-migration-drift.sh"
+    "test:screens": "pnpm --filter @arther/e2e test:screens",
+    "check:drift": "bash scripts/check-migration-drift.sh",
+    "check:guardrails": "bash scripts/check-protected-paths.sh"
   },
   "devDependencies": {
     "turbo": "^2.5.0",

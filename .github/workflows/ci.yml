@@ -102,3 +102,26 @@ jobs:
         run: bash scripts/db-migrate.sh
       - name: Smoke probes + second-user RLS probe (F8.1)
         run: pnpm test:db
+      # Validate the autonomous-loop seed applies cleanly on top of migrations
+      # (Development/Autonomous/staging.md). Runs AFTER the probes so it can't
+      # pollute their fixtures; a broken seed fails CI and can never self-merge.
+      - name: Validate seed
+        run: bash scripts/db-seed.sh
+
+  # Guardrail for the full-self-merge-on-green-CI loop: with no human reviewer,
+  # changes to schema/auth/RLS/billing/CI must FAIL unless the owner added the
+  # `human-approved` label. See Development/Autonomous/guardrails.md.
+  guardrails:
+    name: Guardrails
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check protected paths
+        env:
+          BASE_REF: origin/${{ github.base_ref }}
+          GUARDRAIL_OVERRIDE: ${{ contains(github.event.pull_request.labels.*.name, 'human-approved') && '1' || '0' }}
+        run: bash scripts/check-protected-paths.sh
