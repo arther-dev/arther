@@ -8,9 +8,19 @@
   },
   "scripts": {
     "lint": "eslint src",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "deploy": "trigger.dev deploy"
+  },
+  "dependencies": {
+    "@arther/ai-gateway": "workspace:*",
+    "@arther/db": "workspace:*",
+    "@arther/types": "workspace:*",
+    "@trigger.dev/sdk": "^4.4.6"
   },
   "devDependencies": {
-    "typescript": "^5.8.0"
+    "@trigger.dev/build": "^4.4.6",
+    "typescript": "^5.8.0",
+    "vitest": "^3.1.0"
   }
 }

@@ -1,14 +1,16 @@
 /**
- * Stub (Phase 2 G1.2). Trigger.dev durable tasks live here (ADR-006):
- * generation, import, propagation, PDF, notification dispatch, crons.
- * Gets its own trigger.config.ts when Trigger.dev is provisioned; apps import
- * task types only — never task implementations (IMPLEMENTATION_PLAN.md §7.7).
+ * @arther/jobs — Trigger.dev durable tasks (ADR-006). Task IMPLEMENTATIONS live
+ * in `./src/tasks` and run on Trigger.dev's compute; this barrel exposes only the
+ * pure helpers and the task TYPES (payload/result), so apps import types + trigger
+ * tasks by id (`tasks.trigger('generate-variants', payload)`) without pulling task
+ * runtime — or the Trigger.dev SDK — into their bundle (IMPLEMENTATION_PLAN.md §7.7).
  *
- * Pending cron to wire here (F8.7): purge-deleted-workspaces — a daily schedule
- * that calls the service-role `purge_deleted_workspaces()` RPC (migration 0016),
- * which hard-deletes workspaces past their 14-day grace under
- * session_replication_role = replica. Until this scheduler lands it can run via
- * Supabase pg_cron (`select cron.schedule('purge-deleted-workspaces',
- * '0 3 * * *', $$select public.purge_deleted_workspaces()$$);`).
+ * Tasks: generate-variants (V.5). Pending: generate-document, propagate-spec-change,
+ * dispatch-notifications, publish-pdf, and the F8.7 purge-deleted-workspaces cron.
  */
-export type JobsPlaceholder = never;
+export {
+  variantPromptFields,
+  variantResolverEntries,
+  type UnitSymbol,
+} from './variant-generation';
+export type { GenerateVariantsPayload, GenerateVariantsResult } from './tasks/generate-variants';
