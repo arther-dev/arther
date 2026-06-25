@@ -5,6 +5,7 @@ import { createCanDo, type Action } from '@arther/authz';
 import {
   archiveDocumentSnapshots,
   archiveVariantSnapshots,
+  countOpenBlockingMergeConflicts,
   createDocumentRevision,
   createServiceClient,
   DbRuleError,
@@ -348,6 +349,19 @@ export async function publishDocumentAction(documentId: string): Promise<Lifecyc
   });
   if (!preflight.canPublish) {
     return { ok: false, error: preflight.blocking.join(' ') };
+  }
+
+  // V.6 — a human-edited block in an unresolved merge conflict blocks publication
+  // (Path B, spec §4.8). AI-generated conflicts are non-blocking and don't gate.
+  const blockingConflicts = await countOpenBlockingMergeConflicts(
+    auth.supabase,
+    documentId as DocumentId,
+  );
+  if (blockingConflicts > 0) {
+    return {
+      ok: false,
+      error: `Resolve ${blockingConflicts} blocking merge conflict${blockingConflicts === 1 ? '' : 's'} before publishing.`,
+    };
   }
 
   try {

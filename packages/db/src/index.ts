@@ -150,6 +150,14 @@ export {
 } from './edit-authz';
 export { recordAuditEvent, type AuditEvent } from './audit';
 export {
+  countOpenBlockingMergeConflicts,
+  listMergeConflicts,
+  recordMergeConflicts,
+  resolveMergeConflict,
+  type MergeConflictRow,
+  type NewMergeConflict,
+} from './merge-conflicts';
+export {
   archiveDocumentSnapshots,
   archiveVariantSnapshots,
   listSnapshotsForDocument,

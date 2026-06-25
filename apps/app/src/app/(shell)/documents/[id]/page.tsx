@@ -11,6 +11,7 @@ import {
   listDocumentMagicLinks,
   listDocumentSnippetEmbeds,
   listMembers,
+  listMergeConflicts,
   listSnapshotsForDocument,
   listStaleBriefReferencesForDocument,
   listStaleReferencesForDocument,
@@ -42,6 +43,7 @@ import { DuplicateDocumentButton } from './DuplicateDocumentButton';
 import { SnippetEmbedsPanel } from './SnippetEmbedsPanel';
 import { ApprovalPanel, type PanelRole } from './ApprovalPanel';
 import { VariantPublishPanel } from './VariantPublishPanel';
+import { MergeConflictsPanel, type MergeConflictView } from './MergeConflictsPanel';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -242,6 +244,27 @@ export default async function DocumentPage({
   // resolves every spec token (including those inside embedded snippets) against
   // the variant's resolved spec (§3.6). The product's variants drive the picker.
   const variants = await listVariants(supabase, tree.document.product_id);
+
+  // V.6 — open merge conflicts from variant generation, resolved to renderable
+  // per-variant versions (block content + variant name from the already-loaded tree
+  // + variants). Shown to editors below.
+  const variantNameById = new Map(variants.map((v) => [v.id as string, v.name]));
+  const blockContentById = new Map(tree.blocks.map((b) => [b.id as string, b.content]));
+  const openConflicts =
+    workspace.role !== 'viewer'
+      ? await listMergeConflicts(supabase, tree.document.id, { status: 'open' })
+      : [];
+  const mergeConflictViews: MergeConflictView[] = openConflicts.map((c) => ({
+    id: c.id,
+    sectionName: c.sectionName,
+    blocking: c.blocking,
+    versions: c.versions.map((v) => ({
+      variantId: v.variantId,
+      variantName: variantNameById.get(v.variantId) ?? 'Variant',
+      content: blockContentById.get(v.blockId) ?? null,
+    })),
+  }));
+
   const selectedVariantId =
     variantParam && variantIdSchema.safeParse(variantParam).success
       ? variants.find((v) => v.id === variantParam)?.id
@@ -379,6 +402,13 @@ export default async function DocumentPage({
               <Link href={`/documents/${tree.document.id}/compare`}>Compare variants →</Link>
             ) : null}
           </p>
+        ) : null}
+        {mergeConflictViews.length > 0 ? (
+          <MergeConflictsPanel
+            documentId={tree.document.id}
+            conflicts={mergeConflictViews}
+            editorHref={`/documents/${tree.document.id}/edit`}
+          />
         ) : null}
         {canManage ? (
           <DocumentLifecycle
