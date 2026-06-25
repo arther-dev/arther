@@ -207,3 +207,37 @@ describe('immutability + isolation', () => {
     expect(hidden).toHaveLength(0);
   });
 });
+
+describe('base/variant publication independence', () => {
+  it('archiving the base line (variant_id IS NULL) leaves variant snapshots live', async () => {
+    // Mirror archiveDocumentSnapshots' base-scoped WHERE.
+    const archived = await admin`
+      update public.published_snapshots set archived_at = now()
+      where document_id = ${documentId} and variant_id is null and archived_at is null
+      returning id`;
+    expect(archived.length).toBeGreaterThan(0);
+    const variantLive = await admin`
+      select count(*)::int as n from public.published_snapshots
+      where document_id = ${documentId} and variant_id = ${variantEu} and archived_at is null`;
+    expect(variantLive[0]!.n).toBeGreaterThan(0); // a variant page is untouched by base unpublish
+    // Restore the base line back so later assertions hold.
+    await admin`
+      update public.published_snapshots set archived_at = null
+      where document_id = ${documentId} and variant_id is null`;
+  });
+});
+
+describe('variant deletion is RESTRICTed by publication history (V.9, finding 1)', () => {
+  it('refuses to hard-delete a variant that has ever published (FK restrict, not a freeze-guard error)', async () => {
+    const msg = await expectDenied(
+      () => admin`delete from public.product_variants where id = ${variantEu}`,
+    );
+    expect(msg).toMatch(/foreign key|still referenced|restrict/i);
+    expect(msg).not.toMatch(/frozen/i); // the old SET NULL behaviour aborted with the freeze guard
+  });
+
+  it('allows hard-deleting a never-published variant', async () => {
+    const deleted = await admin`delete from public.product_variants where id = ${otherVariant} returning id`;
+    expect(deleted).toHaveLength(1);
+  });
+});

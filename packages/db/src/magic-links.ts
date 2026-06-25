@@ -8,6 +8,7 @@ import {
   type MagicLinkStatus,
   type MagicLinkType,
   type UserId,
+  type VariantId,
   type WorkspaceId,
 } from '@arther/types';
 
@@ -134,11 +135,21 @@ export async function logMagicLinkAccess(
  * (emails + domains) is stored alongside. Owner/admin only (RLS
  * `snapshots_admin_update`); the freeze guard permits `access_config` and the
  * audit trigger logs the change. Returns how many snapshots were updated
- * (0 = the document isn't published).
+ * (0 = the line isn't published).
+ *
+ * V.9 — scoped to ONE publication line: the base document (`variantId` omitted →
+ * `variant_id IS NULL`) or a specific variant. So changing the base document's
+ * access tier never silently re-gates independently-published variant pages, and
+ * a variant inherits/keeps its own tier (set at publish time).
  */
 export async function setDocumentAccess(
   client: SupabaseClient,
-  input: { documentId: DocumentId; access: DocumentAccessMode; allowlist?: DocumentAllowlist },
+  input: {
+    documentId: DocumentId;
+    access: DocumentAccessMode;
+    allowlist?: DocumentAllowlist;
+    variantId?: VariantId | null;
+  },
 ): Promise<number> {
   const accessConfig: Record<string, unknown> = { access: input.access };
   if (input.access === 'allowlist') {
@@ -147,12 +158,13 @@ export async function setDocumentAccess(
       domains: input.allowlist?.domains ?? [],
     };
   }
-  const { data, error } = await client
+  let query = client
     .from('published_snapshots')
     .update({ access_config: accessConfig })
     .eq('document_id', input.documentId)
-    .is('archived_at', null)
-    .select('id');
+    .is('archived_at', null);
+  query = input.variantId ? query.eq('variant_id', input.variantId) : query.is('variant_id', null);
+  const { data, error } = await query.select('id');
   if (error) throw new Error(`setDocumentAccess: ${error.message}`);
   return (data ?? []).length;
 }

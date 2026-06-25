@@ -610,6 +610,19 @@ export async function publishVariantAction(
         variantId: variantId as VariantId,
       },
     );
+    // C7 — a variant page must not be MORE public than its base: if the base
+    // document is gated (link/allowlist), inherit that tier onto the freshly
+    // published variant snapshot (which otherwise defaults to public). The base
+    // access governs the base line only; variants carry their own tier from here.
+    const baseAccess = await loadLiveAccess(auth.supabase, documentId);
+    if (baseAccess && baseAccess.access !== 'public') {
+      await setDocumentAccess(auth.supabase, {
+        documentId: documentId as DocumentId,
+        access: baseAccess.access,
+        allowlist: baseAccess.allowlist,
+        variantId: variantId as VariantId,
+      });
+    }
     revalidateDocument(documentId);
     await revalidatePortal([`portal:${auth.workspaceSlug}`]);
     return { ok: true, state: tree.revision.state };
@@ -690,7 +703,8 @@ async function loadLiveAccess(
   documentId: string,
 ): Promise<{ access: DocumentAccessMode; allowlist: DocumentAllowlist } | null> {
   const snapshots = await listSnapshotsForDocument(supabase, documentId as DocumentId);
-  const live = snapshots.find((s) => !s.archived_at);
+  // V.9 — base access governs the base magic-link UI; never read a variant line.
+  const live = snapshots.find((s) => s.variant_id == null && !s.archived_at);
   if (!live) return null;
   return {
     access: parseDocumentAccess(live.access_config),

@@ -357,6 +357,7 @@ export async function getGatedPortalDocument(
     .from('published_snapshots')
     .select('version, block_tree, resolution_manifest')
     .eq('document_id', documentId)
+    .is('variant_id', null) // V.9 — magic links are issued per base document; the gated read serves the base line.
     .is('archived_at', null)
     .order('published_at', { ascending: false })
     .limit(1);

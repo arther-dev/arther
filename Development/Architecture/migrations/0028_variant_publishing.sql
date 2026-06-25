@@ -34,6 +34,22 @@ create index published_snapshots_variant_idx
   on public.published_snapshots (variant_id)
   where variant_id is not null;
 
+-- --- A published variant is frozen history; its variant can't be hard-deleted --
+-- 0010 wired snapshots_variant_fk as ON DELETE SET NULL. Before V.9 no snapshot
+-- referenced a variant, so that was inert; now a variant publication does. SET
+-- NULL is wrong here on two counts: the 0008 freeze guard rejects any change to a
+-- snapshot's variant_id (so the cascade would abort the delete with a confusing
+-- "content is frozen" error), and even if it didn't, NULL-ing variant_id would
+-- orphan the snapshot as an indistinguishable base row. Switch to RESTRICT: a
+-- variant that has ever published can't be hard-deleted — the app refuses with a
+-- clear message (unpublish/keep its pages), consistent with the snapshots-are-
+-- never-deleted invariant. (The workspace purge runs under
+-- session_replication_role = replica, which disables this, so purge still works.)
+alter table public.published_snapshots drop constraint snapshots_variant_fk;
+alter table public.published_snapshots
+  add constraint snapshots_variant_fk
+  foreign key (variant_id) references public.product_variants(id) on delete restrict;
+
 -- --- publish_document(): stamp variant_id, sequence versions per variant line -
 -- Re-created with a new trailing p_variant_id (default null keeps the existing
 -- base-publish call site unchanged). The old 5-arg overload is dropped so there
@@ -96,6 +112,13 @@ begin
   end if;
 
   select product_id into v_product from public.documents where id = v_doc;
+
+  -- Serialize concurrent publishes on the SAME (document, variant) line so the
+  -- read-then-insert version computation can't race two callers to the same
+  -- version (the partial unique index would otherwise reject the loser with a raw
+  -- duplicate-key error). Transaction-scoped; per line, so unrelated publishes
+  -- don't contend.
+  perform pg_advisory_xact_lock(hashtextextended(v_doc::text || ':' || coalesce(p_variant_id::text, ''), 0));
 
   -- Next semantic version: monotonic major per (document, variant line). The base
   -- line (variant_id IS NULL) and each variant line sequence independently.

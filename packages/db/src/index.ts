@@ -155,6 +155,7 @@ export {
   listSnapshotsForDocument,
   publishDocument,
   restoreLatestSnapshot,
+  variantHasSnapshots,
   type PublishedSnapshotRow,
 } from './snapshots';
 export {
