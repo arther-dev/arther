@@ -14,14 +14,24 @@ export function ViewBeacon({
   product,
   document,
   version,
+  variant,
 }: {
   workspace: string;
   product: string;
   document: string;
   version?: string;
+  /** V.9 — the variant slug for a per-variant page; omitted on the base page. */
+  variant?: string;
 }) {
   useEffect(() => {
-    const payload = JSON.stringify({ type: 'document_viewed', workspace, product, document, version });
+    const payload = JSON.stringify({
+      type: 'document_viewed',
+      workspace,
+      product,
+      document,
+      version,
+      variant,
+    });
     try {
       if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
         navigator.sendBeacon('/api/track', new Blob([payload], { type: 'application/json' }));
@@ -36,7 +46,7 @@ export function ViewBeacon({
     } catch {
       // analytics are best-effort
     }
-  }, [workspace, product, document, version]);
+  }, [workspace, product, document, version, variant]);
 
   return null;
 }

@@ -116,4 +116,35 @@ test.describe('public portal (C6)', () => {
     await page.goto(`${PORTAL}/acme/search?q=x`);
     await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', /noindex/);
   });
+
+  // V.9 — per-variant canonical pages + the variant switcher/picker.
+  test('a per-variant URL server-renders without crashing (no JS)', async ({ browser }) => {
+    const context = await browser.newContext({ javaScriptEnabled: false });
+    const page = await context.newPage();
+    const res = await page.goto(`${PORTAL}/acme/${UUID}/install-guide/var/eu`);
+    expect(res?.status()).toBeLessThan(400);
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+    await context.close();
+  });
+
+  test('a per-variant URL carries its own canonical link (V.9 / C9.3)', async ({ page }) => {
+    await page.goto(`${PORTAL}/acme/${UUID}/install-guide/var/eu`);
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
+      'href',
+      /\/acme\/.+\/install-guide\/var\/eu$/,
+    );
+  });
+
+  test('the analytics beacon accepts a variant coordinate and still 204s (V.9)', async ({ request }) => {
+    const ok = await request.post(`${PORTAL}/api/track`, {
+      data: {
+        type: 'document_viewed',
+        workspace: 'acme',
+        product: UUID,
+        document: 'install-guide',
+        variant: 'eu',
+      },
+    });
+    expect(ok.status()).toBe(204);
+  });
 });

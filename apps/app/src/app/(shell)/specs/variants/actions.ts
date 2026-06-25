@@ -13,6 +13,7 @@ import {
   removeVariantDelta,
   renameVariant,
   setVariantDefault,
+  variantHasSnapshots,
 } from '@arther/db';
 import {
   createVariantSchema,
@@ -113,6 +114,17 @@ export async function deleteVariantAction(variantId: string): Promise<VariantAct
 
   const variant = await getVariant(auth.supabase, vid.data);
   if (!variant) return { ok: false, error: 'Variant not found.' };
+  // V.9 — a variant that has ever published is permanent portal history (the
+  // snapshots_variant_fk is ON DELETE RESTRICT). Refuse the delete with a clear
+  // message rather than letting the FK raise. Its pages can be unpublished from
+  // the document instead.
+  if (await variantHasSnapshots(auth.supabase, vid.data)) {
+    return {
+      ok: false,
+      error:
+        'This variant has been published to the portal — its publication history is permanent, so it can’t be deleted. Unpublish its pages from the document instead.',
+    };
+  }
   try {
     await deleteVariant(auth.supabase, vid.data);
   } catch {

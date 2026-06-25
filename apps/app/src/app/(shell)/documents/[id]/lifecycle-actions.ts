@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { createCanDo, type Action } from '@arther/authz';
 import {
   archiveDocumentSnapshots,
+  archiveVariantSnapshots,
   createDocumentRevision,
   createServiceClient,
   DbRuleError,
@@ -13,10 +14,12 @@ import {
   getActiveWorkspace,
   getDocument,
   getRevision,
+  getVariant,
   issueMagicLink,
   listApprovalRoles,
   listProducts,
   listRevisionCommenterIds,
+  loadBlockVariantScopes,
   membershipUserIds,
   listSnapshotsForDocument,
   loadDocumentTree,
@@ -24,6 +27,7 @@ import {
   publishDocument,
   recordAnalyticsEvent,
   resolveSpecFields,
+  resolveSpecFieldsForVariant,
   restoreLatestSnapshot,
   revokeMagicLink,
   setDocumentAccess,
@@ -32,10 +36,12 @@ import {
 import { generateMagicToken, hashMagicToken } from '@arther/config/magic-link';
 import { rateLimit } from '@arther/rate-limit';
 import {
+  applyTokenReplacements,
   blockPlainText,
   canManageDocumentLifecycle,
   computePublishPreflight,
   DOCUMENT_ACCESS_MODES,
+  isBlockVisibleForVariant,
   isEmailAllowed,
   normalizeDomains,
   normalizeEmails,
@@ -49,6 +55,7 @@ import {
   type DocumentRevisionId,
   type ProductId,
   type UserId,
+  type VariantId,
   type WorkspaceId,
 } from '@arther/types';
 import { getSupabaseServer } from '../../../../lib/supabase/server';
@@ -514,6 +521,141 @@ export async function restoreToPortalAction(documentId: string): Promise<Lifecyc
   }
 }
 
+/**
+ * V.9 — publish ONE variant's portal page. A variant shares the base document's
+ * source, so we freeze the same approved/published revision *resolved for the
+ * variant*: drop blocks scoped out of it (V.4), expand snippets, then rewrite
+ * every inline spec token to the variant's resolved value (R.7) and freeze the
+ * variant's spec-field manifest. The snapshot is stamped with `variant_id` and
+ * versioned on its own line (migration 0028). The base publication and sibling
+ * variants are untouched (spec §4.5). Owner/admin (`doc.publish`) + service-role
+ * RPC, exactly like the base publish.
+ */
+export async function publishVariantAction(
+  documentId: string,
+  variantId: string,
+): Promise<LifecycleResult> {
+  if (!UUID_RE.test(variantId)) return { ok: false, error: 'Invalid variant.' };
+  const auth = await authorize(documentId, 'publish');
+  if ('error' in auth) return { ok: false, error: auth.error };
+
+  const tree = await loadDocumentTree(auth.supabase, documentId as DocumentId);
+  if (!tree) return { ok: false, error: 'Document not found.' };
+  // A variant is an additional page over a live document; the base must have
+  // cleared approval (the RPC enforces this too, defence in depth).
+  if (tree.revision.state !== 'approved' && tree.revision.state !== 'published') {
+    return { ok: false, error: 'Publish the base document before publishing a variant.' };
+  }
+
+  // The variant must belong to this document's product.
+  const variant = await getVariant(auth.supabase, variantId as VariantId);
+  if (!variant || variant.productId !== tree.document.product_id) {
+    return { ok: false, error: 'That variant isn’t part of this product.' };
+  }
+
+  try {
+    // R.7 — the variant's resolved spec: the frozen manifest + per-field inline
+    // token replacements + the components present (for V.4 visibility).
+    const resolved = await resolveSpecFieldsForVariant(
+      auth.supabase,
+      variantId as VariantId,
+      auth.workspaceId,
+    );
+    if (!resolved) return { ok: false, error: 'Could not resolve the variant’s spec.' };
+
+    // V.4 — drop blocks this variant doesn't show (DERIVED whose component is gone,
+    // MANUAL not listing it).
+    const scopes = await loadBlockVariantScopes(
+      auth.supabase,
+      tree.blocks.map((b) => b.id),
+    );
+    const componentIds = new Set(resolved.componentIds);
+    const visible = tree.blocks.filter((b) =>
+      isBlockVisibleForVariant(scopes.get(b.id), {
+        variantId: resolved.variant.id,
+        componentIds,
+      }),
+    );
+
+    // C4.1 — the same placeholder/empty pre-flight as the base, over the visible set.
+    const preflight = computePublishPreflight({
+      blocks: visible.map((b) => ({ source: b.source, content: b.content })),
+    });
+    if (!preflight.canPublish) {
+      return { ok: false, error: preflight.blocking.join(' ') };
+    }
+
+    // R.2 — expand snippets, then rewrite every inline token to the variant's value
+    // so the frozen snapshot matches the in-app "preview as variant".
+    const expanded = await expandSnippetsForPublish(
+      auth.supabase,
+      documentId as DocumentId,
+      visible.map((b) => ({ id: b.id as string, content: b.content })),
+    );
+    const blockTree = expanded.map((c) => applyTokenReplacements(c, resolved.replacements));
+    const searchText = blockTree
+      .map((c) => blockPlainText(c))
+      .filter((t) => t.trim().length > 0)
+      .join('\n');
+
+    await publishDocument(
+      createServiceClient(),
+      { workspaceId: auth.workspaceId },
+      {
+        revisionId: tree.revision.id,
+        publishedBy: auth.userId,
+        blockTree,
+        resolutionManifest: resolved.resolution,
+        searchText,
+        variantId: variantId as VariantId,
+      },
+    );
+    // C7 — a variant page must not be MORE public than its base: if the base
+    // document is gated (link/allowlist), inherit that tier onto the freshly
+    // published variant snapshot (which otherwise defaults to public). The base
+    // access governs the base line only; variants carry their own tier from here.
+    const baseAccess = await loadLiveAccess(auth.supabase, documentId);
+    if (baseAccess && baseAccess.access !== 'public') {
+      await setDocumentAccess(auth.supabase, {
+        documentId: documentId as DocumentId,
+        access: baseAccess.access,
+        allowlist: baseAccess.allowlist,
+        variantId: variantId as VariantId,
+      });
+    }
+    revalidateDocument(documentId);
+    await revalidatePortal([`portal:${auth.workspaceSlug}`]);
+    return { ok: true, state: tree.revision.state };
+  } catch (err) {
+    if (err instanceof DbRuleError) return { ok: false, error: err.message };
+    return { ok: false, error: 'Could not publish the variant.' };
+  }
+}
+
+/** V.9 — take ONE variant's page off the portal (archive its live snapshots). */
+export async function unpublishVariantAction(
+  documentId: string,
+  variantId: string,
+): Promise<LifecycleResult> {
+  if (!UUID_RE.test(variantId)) return { ok: false, error: 'Invalid variant.' };
+  const auth = await authorize(documentId, 'publish');
+  if ('error' in auth) return { ok: false, error: auth.error };
+
+  try {
+    const archived = await archiveVariantSnapshots(auth.supabase, {
+      documentId: documentId as DocumentId,
+      variantId: variantId as VariantId,
+      userId: auth.userId,
+    });
+    if (archived === 0) return { ok: false, error: 'This variant isn’t live on the portal.' };
+    revalidateDocument(documentId);
+    await revalidatePortal([`portal:${auth.workspaceSlug}`]);
+    return { ok: true, state: 'published' };
+  } catch {
+    return { ok: false, error: 'Could not unpublish the variant.' };
+  }
+}
+
 /** Published → Draft: fork a new working copy from the published snapshot (C0.2). */
 export async function createRevisionAction(documentId: string): Promise<LifecycleResult> {
   const auth = await authorize(documentId, 'create_revision');
@@ -561,7 +703,8 @@ async function loadLiveAccess(
   documentId: string,
 ): Promise<{ access: DocumentAccessMode; allowlist: DocumentAllowlist } | null> {
   const snapshots = await listSnapshotsForDocument(supabase, documentId as DocumentId);
-  const live = snapshots.find((s) => !s.archived_at);
+  // V.9 — base access governs the base magic-link UI; never read a variant line.
+  const live = snapshots.find((s) => s.variant_id == null && !s.archived_at);
   if (!live) return null;
   return {
     access: parseDocumentAccess(live.access_config),

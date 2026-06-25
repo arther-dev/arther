@@ -116,6 +116,52 @@ summary:focus-visible,
   background: #f6f6f6;
 }
 
+/* V.9 — the persistent variant switcher / picker. */
+.portal-variants {
+  margin: 20px 0 8px;
+  padding: 12px 0;
+  border-top: 1px solid #f0f0f0;
+  border-bottom: 1px solid #f0f0f0;
+}
+.portal-variants__label {
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #5a5a62;
+  margin: 0 0 8px;
+}
+.portal-variants__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.portal-variants__item {
+  display: inline-block;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid #e0e0e4;
+  color: inherit;
+  text-decoration: none;
+  font-size: 14px;
+}
+.portal-variants__item:hover {
+  background: #f6f6f6;
+}
+.portal-variants__item[data-current] {
+  background: #1a1a1f;
+  border-color: #1a1a1f;
+  color: #fff;
+}
+.portal-variants__default {
+  color: #8a8a92;
+}
+.portal-variants__item[data-current] .portal-variants__default {
+  color: #c8c8d0;
+}
+
 /* The rendered snapshot — a clean reading column. */
 .br-document {
   font-size: 16px;
