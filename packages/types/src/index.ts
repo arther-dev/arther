@@ -40,4 +40,5 @@ export * from './onboarding';
 export * from './variant';
 export * from './variant-resolution';
 export * from './variant-merge';
+export * from './variant-merge-conflict';
 export * from './assistant';

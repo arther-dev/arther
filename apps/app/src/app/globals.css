@@ -788,3 +788,18 @@ body {
   gap: var(--space-2xs);
   font-variant-numeric: tabular-nums;
 }
+
+/* V.6 — merge-conflict review: per-variant versions side by side. */
+.merge-conflict__versions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-s, 12px);
+  margin: var(--space-2xs, 6px) 0;
+}
+.merge-conflict__version {
+  flex: 1 1 240px;
+  min-width: 0;
+  padding: var(--space-s, 12px);
+  border: 1px solid var(--border, #e0e0e4);
+  border-radius: 8px;
+}

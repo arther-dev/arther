@@ -16,9 +16,11 @@ import {
   listUnits,
   loadDocumentTree,
   loadResolvedVariantSpec,
+  recordMergeConflicts,
   setBlockVariantScope,
   setGenerationRunStatus,
   setGenerationSectionStatus,
+  type NewMergeConflict,
 } from '@arther/db';
 import {
   mergeVariantGenerations,
@@ -160,7 +162,9 @@ export const generateVariantsTask = task({
       // blocks load in array order, so merged index → committed block id maps cleanly.
       const tree = await loadDocumentTree(service, documentId);
       const committed = tree?.blocks ?? [];
+      const committedIdByBlock = new Map<object, string>();
       for (let i = 0; i < merge.blocks.length && i < committed.length; i += 1) {
+        committedIdByBlock.set(merge.blocks[i]!.block, committed[i]!.id as string);
         const scopeDecision = merge.blocks[i]!.scope;
         if (scopeDecision.mode === 'MANUAL') {
           await setBlockVariantScope(service, {
@@ -173,6 +177,38 @@ export const generateVariantsTask = task({
         }
       }
 
+      // V.6 — persist the unlinked-prose conflicts the merge couldn't resolve.
+      // Freshly generated content was never hand-edited, so these are Path A
+      // (non-blocking) review items; the author resolves them at their own pace.
+      const conflictRecords: NewMergeConflict[] = merge.conflicts.map((c) => ({
+        documentId,
+        generationRunId: runId,
+        sectionName: c.sectionName,
+        position: c.position,
+        versions: c.versions
+          .map((v) => ({ variantId: v.variantId, blockId: committedIdByBlock.get(v.block) ?? '' }))
+          .filter((v) => v.blockId !== ''),
+        blocking: false, // Path A — freshly generated prose was never hand-edited.
+        createdBy: payload.requestedBy as UserId,
+      }));
+      // Never let a conflict whose blocks didn't map (the merged tree and the
+      // committed tree should align 1:1, but guard it) vanish silently.
+      const droppedConflicts = conflictRecords.filter(
+        (c, i) => c.versions.length < merge.conflicts[i]!.versions.length,
+      ).length;
+      if (droppedConflicts > 0) {
+        console.warn(
+          `[generate-variants] ${droppedConflicts} merge conflict(s) had unmappable blocks and were partially/fully dropped for run ${runId}`,
+        );
+      }
+      // Best-effort, like the analytics + reference hooks: the document is already
+      // committed, so a conflict-ledger write failure must not fail the run.
+      try {
+        await recordMergeConflicts(service, scope, conflictRecords.filter((c) => c.versions.length > 0));
+      } catch (e) {
+        console.error('[generate-variants] recordMergeConflicts failed', e);
+      }
+
       // Tidy the run's section rows (created by the app for display) so the
       // status surface reads complete.
       const runData = await getGenerationRun(service, runId);
@@ -182,13 +218,15 @@ export const generateVariantsTask = task({
         });
       }
 
-      const status = merge.conflicts.length > 0 ? 'partial' : 'succeeded';
+      // Conflicts are the merge's expected, non-blocking output (tracked in the
+      // ledger), not a generation failure — a clean run with prose divergence is
+      // `succeeded`, not `partial`.
       await setGenerationRunStatus(service, scope, runId, {
-        status,
+        status: 'succeeded',
         inputTokens: usage.input,
         outputTokens: usage.output,
       });
-      return { documentId, status, summary: merge.summary };
+      return { documentId, status: 'succeeded', summary: merge.summary };
     } catch (err) {
       await setGenerationRunStatus(service, scope, runId, {
         status: 'failed',
