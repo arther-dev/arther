@@ -6,6 +6,47 @@ executed by hand, or by an agent session that has the Supabase / Vercel / Sentry
 connectors attached. Closing all three closes milestone **M1**'s infrastructure gate
 (IMPLEMENTATION_PLAN.md §4/§6).
 
+## ⚠️ Status — 2026-06-25 (provisioning audit; variants epic V.1–V.9 shipped)
+
+The code is feature-complete through the Product Variants epic, but a connector audit found
+the remote databases are **behind the repo's migrations** and several runtime keys are unset.
+Action items, highest-impact first:
+
+1. **CRITICAL — apply migrations 0016–0029 to dev + prod.** Both projects' schemas sit cleanly
+   at **0015** (`import_commit`); migrations 0016–0029 were never applied. Missing from both:
+   generation-commit (0018), **the entire publish pipeline `publish_document` (0021)**, approvals
+   (0019/0020), fork-document-type (0017), consumption/health analytics (0024–0027), variant
+   publishing (0028), and merge conflicts (0029). The deployed apps will fail on publish,
+   variants, and generation-commit until this is fixed. Both DBs are effectively empty (prod: 2
+   test workspaces, 0 documents/products/snapshots; dev: empty), so a clean re-migrate is safe.
+   **Wrinkle:** the prod/dev `schema_migrations` tracking uses different timestamps
+   (`20260611…`) than the repo's canonical files (`20260608…`), so `supabase db push` won't
+   reconcile cleanly — prefer **`supabase link --project-ref <ref>` + `supabase db reset --linked`**
+   per project (re-applies 0001–0029 from the repo, resyncs tracking; safe given no real data),
+   or apply 0016–0029 directly via the MCP connector.
+2. **Trigger.dev task deploy** (V.5/V.6): set `ANTHROPIC_API_KEY`, `SUPABASE_URL`,
+   `SUPABASE_SERVICE_ROLE_KEY`, **and `SUPABASE_ANON_KEY`** in the Trigger.dev *project* env
+   (the typed env loader validates all three Supabase vars, so the ANON key is required even
+   though the task only uses the service key), then `pnpm --filter @arther/jobs deploy`. Vercel's
+   `TRIGGER_SECRET_KEY` only lets the app *enqueue* — the worker runs on Trigger.dev's compute.
+3. **`ANTHROPIC_API_KEY`** in Vercel `arther-app` (Preview + Production) — gates all AI
+   (generation, import, assistant, variants). Confirm it's on both environments.
+4. **`RESEND_API_KEY`** (+ verified domain) in Vercel — email (invites, review reminders,
+   notifications) is wired but sends nothing without it. **`CRON_SECRET`** in Vercel — the
+   review-reminders cron returns 503 without it.
+5. **`workspace-logos`** public Storage bucket (dev + prod) — public read + workspace-editor
+   write on the `{workspace_id}/` prefix (mirror the `spec-imports` policies). Until then the
+   Settings logo upload degrades.
+6. **Before real traffic:** `UPSTASH_REDIS_REST_URL`/`_TOKEN` (durable rate limiting; in-memory
+   fallback is per-instance), and the portal secrets `PORTAL_SESSION_SECRET` (magic-link access)
+   + `PORTAL_REVALIDATE_SECRET`/`PORTAL_REVALIDATE_URL` (instant on-publish cache bust).
+7. **PITR — now UNBLOCKED (Supabase Pro).** No longer plan-blocked; just enable Point-in-Time
+   Recovery on the prod project (Database → Backups) before importing real data. (Supersedes the
+   "Blocked on plan" note in §F0.2 step 4 below.)
+8. **Launch gate (before external/EU users):** publish/link `/privacy` + `/terms` (routes now
+   scaffolded — swap in legal copy), `SENTRY_AUTH_TOKEN` on Vercel Preview, a cookie-consent
+   banner (EU decision), and custom domains off `*.vercel.app`.
+
 ## Status — executed 2026-06-11 (agent session, MCP connectors)
 
 Everything reachable through the Supabase / Sentry connectors is done; the rest needs
