@@ -7,6 +7,9 @@ This is a fresh clone with no memory. Treat the open issues + Sentry as your onl
 
 ## 0. Orient (always, in order)
 
+0. **Kill switch — check first.** If an open issue titled `PAUSE-LOOP` exists, or the file
+   `Development/Autonomous/STOP` is present on `main`, **STOP**: end the run now and do nothing
+   else. (See [README — Emergency stop](./README.md#emergency-stop-kill-switch).)
 1. Read `IMPLEMENTATION_PLAN.md` §10 to know what shipped recently (regressions cluster there).
 2. List **open issues** so you don't refile: `label:qa-bug` and `label:visual`. Build a mental
    set of (surface + symptom) you've already reported.

@@ -49,6 +49,20 @@ small, single-PR features. They may **not** make schema, auth, RLS, or billing c
 the owner — those paths are hard-blocked by the `Guardrails` CI check (see
 [guardrails.md](./guardrails.md)).
 
+## Emergency stop (kill switch)
+
+**Every role checks for a pause signal as step 0 and exits immediately if it's set.** To pause
+the whole loop from your phone, do either:
+
+- **Open an issue titled exactly `PAUSE-LOOP`** (any body), or
+- **Commit an empty file `Development/Autonomous/STOP` to `main`.**
+
+While either exists, every QA/PM/Builder run no-ops and ends. Remove the file / close the issue
+to resume. ⚠️ **This only stops the *next* scheduled run** — a run already in flight finishes. To
+halt a runaway *immediately*, also disable the schedule/trigger in the Claude Code web UI (the
+platform-native stop is the owner's responsibility; the flag is the in-band convenience). See
+[GO-LIVE.md](./GO-LIVE.md) for where that control lives.
+
 ## How to wire the schedules (one-time, from the web/app UI)
 
 These runbooks are the *instructions*; the *schedule* is configured in Claude Code on the web
@@ -68,15 +82,19 @@ cleaner and cheaper.
 
 ## Before you leave — go-live checklist
 
-See [staging.md](./staging.md) for the secrets/seed steps. In short:
+**→ [GO-LIVE.md](./GO-LIVE.md) is the copy-paste, phone-friendly version (label commands, exact
+branch-protection settings, staging, scheduler, spend cap, kill switch).** Recovery if a bad
+change lands: [rollback.md](./rollback.md). Secrets/seed detail: [staging.md](./staging.md). In short:
 
-- [ ] Seeded staging app reachable by the agents, with a known test user (see `staging.md`).
-- [ ] Repo: "Allow auto-merge" on; the three CI checks + `Guardrails` required on `main`
-      (branch protection). Self-merge needs the checks to be *required* so a red check blocks it.
-- [ ] GitHub labels created (run the snippet in `staging.md`, or they're created already).
-- [ ] The pinned **daily digest** issue exists (PM updates it; link it on your phone).
-- [ ] Sentry alerts visible to the QA agent (DSN already wired per `PROVISIONING.md`).
-- [ ] A spend cap / budget you're comfortable leaving running for 3 weeks.
+- [ ] **Create the 11 labels** + tag/pin digest issue #146 (BLOCKER — nothing works without them).
+- [ ] **Branch protection + auto-merge** — require the 4 checks (incl. `Guardrails`), review OFF
+      (BLOCKER — without it the builder's direct-merge bypasses the guardrail).
+- [ ] **Staging Supabase + a real (GoTrue) QA user + backups** (BLOCKER — local shim can't log in).
+- [ ] **Staging deploy + `ARTHER_*` secrets** (BLOCKER).
+- [ ] **Durable scheduler** — 3 web triggers (BLOCKER; the in-session cron expires in 7 days).
+- [ ] **Hard spend cap + CI-minutes budget** (BLOCKER).
+- [ ] Confirm the real-time **kill switch** (disable-trigger control) + the in-band `PAUSE-LOOP`/`STOP` flag.
+- [ ] Sentry visible to the QA agent (DSN already wired per `PROVISIONING.md`; QA polls it).
 
 ## Phone check-in
 
