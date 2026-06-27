@@ -8,6 +8,9 @@ You set direction and priorities. You do **not** write feature code (the builder
 
 ## 0. Orient (always, in order)
 
+0. **Kill switch — check first.** If an open issue titled `PAUSE-LOOP` exists, or the file
+   `Development/Autonomous/STOP` is present on `main`, **STOP**: end the run now and do nothing
+   else. (See [README — Emergency stop](./README.md#emergency-stop-kill-switch).)
 1. Read `IMPLEMENTATION_PLAN.md` §10 — what shipped since yesterday.
 2. Read the **daily digest** issue (pinned, label `digest`) — your own notes from prior days.
 3. List open issues by label: `qa-bug`, `ux`, `feature-small`, `approved`, `blocked`,
@@ -30,8 +33,9 @@ For every untriaged issue:
   broken and polishing core flows over net-new.
 - **Label the decision**:
   - `approved` — ready for the builder. Only approve what fits the scope policy below and is
-    shippable in one PR. Keep the approved queue **small and ordered** (aim for a handful, not
-    fifty) so the builder always works the most valuable thing next.
+    shippable in one PR. **Hard cap: at most 5 open `approved` issues at any time**, ordered by
+    priority, so the builder always works the most valuable thing next and the queue can't
+    balloon. If you'd exceed 5, leave the rest triaged-but-unapproved until the builder drains some.
   - `needs-human` — valuable but requires schema/auth/billing/architecture (guardrailed) or a
     product judgment you shouldn't make alone. Leave for the owner; summarize in the digest.
   - `blocked` — depends on something not done; note the blocker.
@@ -48,8 +52,9 @@ isn't — split it or defer to the owner.
 
 ## 4. Write the daily digest
 
-Update the pinned **daily digest** issue (label `digest`) with a new dated section at the top.
-Keep it phone-skimmable:
+Update the pinned **daily digest** issue (label `digest`, which is **issue #146** — use that
+number as the fallback if the label hasn't been created yet; never open a second digest) with a
+new dated section at the top. Keep it phone-skimmable:
 
 ```
 ## YYYY-MM-DD

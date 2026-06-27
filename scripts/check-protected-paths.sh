@@ -27,7 +27,12 @@ if [ -z "${CHANGED}" ]; then
 fi
 
 # Protected path patterns (POSIX extended regex, matched against each path).
-PROTECTED='^supabase/migrations/|^Development/Architecture/migrations/|^scripts/sql/|^scripts/db-.*\.sh$|^packages/authz/|^packages/db/|/middleware\.ts$|^\.github/workflows/|[Bb]illing|[Pp]ayment|[Ss]tripe|[Ss]ubscription'
+# Money/middleware terms are SCOPED so they don't false-positive on ordinary UI
+# components (e.g. SubscriptionBanner.tsx, PaymentBadge.tsx are presentation, NOT
+# logic): money terms match only logic files (.ts/.sql) or a same-named directory,
+# and middleware matches only the app/portal edge-session files (apps/*/.../middleware.ts),
+# not any stray middleware.ts. The structural dirs below are always protected.
+PROTECTED='^supabase/migrations/|^Development/Architecture/migrations/|^scripts/sql/|^scripts/db-.*\.sh$|^packages/authz/|^packages/db/|(^|/)apps/[^/]+/(.*/)?middleware\.ts$|^\.github/workflows/|(^|/)(billing|payments?|stripe|subscriptions?)/|(^|/)[Bb]illing[^/]*\.(ts|sql)$|(^|/)[Pp]ayments?[^/]*\.(ts|sql)$|(^|/)[Ss]tripe[^/]*\.(ts|sql)$|(^|/)[Ss]ubscriptions?[^/]*\.(ts|sql)$'
 
 HITS="$(printf '%s\n' "${CHANGED}" | grep -E "${PROTECTED}" || true)"
 

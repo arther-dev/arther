@@ -10,6 +10,9 @@ procedure in `CLAUDE.md` (which assumed a human approver) — for this trip the 
 
 ## 0. Dedup first (non-negotiable — this is why duplicate-PR storms happen)
 
+0. **Kill switch — check first.** If an open issue titled `PAUSE-LOOP` exists, or the file
+   `Development/Autonomous/STOP` is present on `main`, **STOP**: end the run now and do nothing
+   else. (See [README — Emergency stop](./README.md#emergency-stop-kill-switch).)
 1. Read `IMPLEMENTATION_PLAN.md` §10 (what shipped).
 2. **List open PRs and `claude/*` branches.** If one already implements — even partially — the
    task you'd pick, **extend that PR/branch**; do not open a parallel copy.
@@ -50,6 +53,12 @@ One task per run. Don't start a second.
 
 The merge gate is **all CI checks green** — there is no human approval step this trip.
 
+0. **Refuse to merge into an unprotected trunk.** Before merging, confirm `main` actually
+   *requires* the four checks (incl. `Guardrails`). If the PR shows as immediately
+   mergeable/`clean` with **no required checks**, branch protection is missing — do **not** merge.
+   A direct merge there would bypass the `Guardrails` gate entirely (it's a PR check, not a
+   branch rule), letting an unreviewed guardrailed change reach `main`. Stop and add
+   "branch protection missing on `main`" to the daily digest's "Needs you" for the owner.
 1. Wait for CI. Don't merge while checks are `pending`/`unstable`.
 2. When **every** check is green (`Lint · typecheck · test · build`,
    `Playwright E2E (app + portal)`, `Migrations · smoke · RLS probe`, **and `Guardrails`**),
@@ -57,7 +66,10 @@ The merge gate is **all CI checks green** — there is no human approval step th
    auto-merge achieves the same thing — use whichever the repo accepts.
 3. If a check is **red**: diagnose and fix it (go back to step 2 of "Build it"). Do not merge red.
    Do not disable, weaken, or skip a check to get green — editing `.github/workflows/**` is itself
-   guardrailed and will fail the `Guardrails` check.
+   guardrailed and will fail the `Guardrails` check. **Cap: at most 3 fix-attempts (pushes) per
+   PR.** If it's still red after 3, stop thrashing: relabel the issue `blocked`, open a
+   `needs-human` issue with the failing job log (note if it looks flaky — passes on a bare
+   re-run with no related diff), comment on the PR, and move on. Never merge to "escape" red CI.
 4. After merge: append a row to `IMPLEMENTATION_PLAN.md` §10 (this is documentation; the dedup
    mechanism is steps 0 + merge-to-main, not this row). Closing the linked issue happens
    automatically via "Closes #".

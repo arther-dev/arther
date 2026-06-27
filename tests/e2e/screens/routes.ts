@@ -36,6 +36,7 @@ export const routes: RouteDef[] = [
   { name: 'app-specs-import', path: '/specs/import', app: 'app', auth: true },
   { name: 'app-specs-library', path: '/specs/library', app: 'app', auth: true },
   { name: 'app-specs-releases', path: '/specs/releases', app: 'app', auth: true },
+  { name: 'app-specs-variants', path: '/specs/variants', app: 'app', auth: true },
   { name: 'app-snippets', path: '/snippets', app: 'app', auth: true },
   { name: 'app-search', path: '/search', app: 'app', auth: true },
   { name: 'app-settings', path: '/settings', app: 'app', auth: true },

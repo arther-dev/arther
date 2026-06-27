@@ -21,9 +21,23 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
     await page.getByLabel('Email').fill(email);
     await page.getByLabel('Password').fill(password);
     await page.getByRole('button', { name: 'Log in' }).click();
-    // Best-effort: landing in the shell confirms auth; don't hard-fail the whole
-    // run if the redirect target differs — the captured shots will reveal it.
-    await page.waitForURL('**/dashboard', { timeout: 30_000 }).catch(() => {});
+    // Fail LOUD if login didn't take. Swallowing this would silently capture
+    // logged-out screenshots for the entire trip and look like passing QA.
+    try {
+      await page.waitForURL('**/dashboard', { timeout: 30_000 });
+    } catch {
+      const at = page.url();
+      const authError = await page
+        .locator('.auth-error')
+        .textContent()
+        .catch(() => null);
+      throw new Error(
+        `QA login failed: never reached the dashboard (stuck at ${at}). ` +
+          (authError ? `Auth error: "${authError}". ` : '') +
+          'Check ARTHER_QA_EMAIL/PASSWORD and that the target uses real GoTrue auth — ' +
+          'the local Postgres auth shim cannot log in (see Development/Autonomous/staging.md).',
+      );
+    }
     await page.context().storageState({ path: STORAGE_STATE });
   } finally {
     await browser.close();
