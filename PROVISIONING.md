@@ -15,7 +15,18 @@ connectors attached. Closing all three closes milestone **M1**'s infrastructure 
 > policies mirroring `spec-imports`. The timestamp wrinkle in item 1 is unchanged — the original
 > 0001–0015 tracking rows still carry `20260611…` versions, so a one-time `supabase db reset
 > --linked` per project is still worth doing eventually to make `supabase db push` clean again,
-> but it is **not** required for the apps to work. Items 2–4 and 6–8 remain owner actions.
+> but it is **not** required for the apps to work.
+>
+> **Update — 2026-06-27 (owner, dashboard).** Tier-1/2 keys largely set by the owner:
+> `ANTHROPIC_API_KEY`, the Trigger.dev task deploy, `RESEND_API_KEY` + `RESEND_FROM`,
+> `UPSTASH_REDIS_REST_URL`/`_TOKEN`, and `PORTAL_REVALIDATE_URL` + `PORTAL_REVALIDATE_SECRET`
+> are all reported done (see per-item status below). **Still pending (owner):**
+> `PORTAL_SESSION_SECRET` (item 6), `CRON_SECRET` (item 4), item 7 (PITR — deferred), and
+> item 8 (launch gate). Env-var changes only take effect on the **next deployment**, and
+> `PORTAL_REVALIDATE_SECRET` must carry the **same value on both** `arther-app` and
+> `arther-portal`. None of these are auto-verifiable from the agent env (the Vercel MCP exposes
+> no env-value read; outbound probes to the deployments are blocked) — verify by exercising
+> each (invite email, publish→portal refresh, in-app generation).
 
 1. **~~CRITICAL — apply migrations 0016–0029 to dev + prod.~~ DONE (2026-06-27, via MCP).** Both
    projects' schemas had sat cleanly at **0015** (`import_commit`); migrations 0016–0029 were
@@ -28,23 +39,37 @@ connectors attached. Closing all three closes milestone **M1**'s infrastructure 
    still won't reconcile cleanly — a one-time `supabase link --project-ref <ref>` + `supabase db
    reset --linked` per project would resync tracking (safe given no real data), but is optional
    now that the schema is correct.
-2. **Trigger.dev task deploy** (V.5/V.6): set `ANTHROPIC_API_KEY`, `SUPABASE_URL`,
-   `SUPABASE_SERVICE_ROLE_KEY`, **and `SUPABASE_ANON_KEY`** in the Trigger.dev *project* env
-   (the typed env loader validates all three Supabase vars, so the ANON key is required even
-   though the task only uses the service key), then `pnpm --filter @arther/jobs deploy`. Vercel's
-   `TRIGGER_SECRET_KEY` only lets the app *enqueue* — the worker runs on Trigger.dev's compute.
-3. **`ANTHROPIC_API_KEY`** in Vercel `arther-app` (Preview + Production) — gates all AI
-   (generation, import, assistant, variants). Confirm it's on both environments.
-4. **`RESEND_API_KEY`** (+ verified domain) in Vercel — email (invites, review reminders,
-   notifications) is wired but sends nothing without it. **`CRON_SECRET`** in Vercel — the
-   review-reminders cron returns 503 without it.
+2. **~~Trigger.dev task deploy~~ DONE (owner, 2026-06-27).** (V.5/V.6): `ANTHROPIC_API_KEY`,
+   `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, **and `SUPABASE_ANON_KEY`** set in the
+   Trigger.dev *project* env (the typed env loader validates all three Supabase vars, so the ANON
+   key is required even though the task only uses the service key), then
+   `pnpm --filter @arther/jobs deploy`. Vercel's `TRIGGER_SECRET_KEY` only lets the app *enqueue*
+   — the worker runs on Trigger.dev's compute. **Verify:** the Trigger.dev dashboard lists
+   `generate-variants` + `purge-deleted-workspaces`; a variant generation in-app produces a Run.
+3. **~~`ANTHROPIC_API_KEY` in Vercel `arther-app`~~ DONE (owner).** Gates all AI (generation,
+   import, assistant, variants). Confirm it's on **both** Preview and Production. **Verify:** run
+   an in-app draft generation.
+4. **Email + cron:** **~~`RESEND_API_KEY`~~ DONE (owner, 2026-06-27)** + `RESEND_FROM` set
+   (sending domain must be verified in Resend) — email (invites, review reminders, notifications).
+   **Verify:** send a workspace invite. **STILL PENDING — `CRON_SECRET`** in Vercel `arther-app`:
+   the review-reminders cron returns 503 without it (Vercel auto-sends it as the cron's
+   `Authorization: Bearer`). Generate with `openssl rand -hex 32`.
 5. **~~`workspace-logos` public Storage bucket (dev + prod).~~ DONE (2026-06-27, via MCP).**
    Created public (5 MB limit) on dev + prod with public-read + workspace-editor write on the
    `{workspace_id}/` prefix (`workspace_logos_public_read` + editor insert/update/delete,
    mirroring the `spec-imports` policy shape). Settings logo upload no longer degrades.
-6. **Before real traffic:** `UPSTASH_REDIS_REST_URL`/`_TOKEN` (durable rate limiting; in-memory
-   fallback is per-instance), and the portal secrets `PORTAL_SESSION_SECRET` (magic-link access)
-   + `PORTAL_REVALIDATE_SECRET`/`PORTAL_REVALIDATE_URL` (instant on-publish cache bust).
+6. **Before real traffic — partially done (owner, 2026-06-27):**
+   - ☒ `UPSTASH_REDIS_REST_URL`/`_TOKEN` set on `arther-app` (durable rate limiting; the
+     in-memory fallback is per-instance, so this matters once there's >1 instance).
+   - ☒ `PORTAL_REVALIDATE_URL` (on `arther-app` →
+     `https://arther-portal-arther-s-projects.vercel.app/api/revalidate`) +
+     `PORTAL_REVALIDATE_SECRET` (instant on-publish cache bust). **The secret must be the SAME
+     value on BOTH `arther-app` and `arther-portal`** — the app signs, the portal verifies; if
+     it's on only one, publish-time revalidation 401s. Update the URL when a custom portal domain
+     lands (item 8). **Verify:** publish a doc → its portal page refreshes immediately.
+   - ☐ **STILL PENDING — `PORTAL_SESSION_SECRET`** on `arther-portal` (a *different* secret from
+     `PORTAL_REVALIDATE_SECRET`): signs magic-link reader sessions; gated/private portal docs
+     return "disabled" until it's set. `openssl rand -hex 32`.
 7. **PITR — DEFERRED to post-launch (owner decision 2026-06-27).** No longer plan-blocked
    (Supabase Pro), but intentionally **not enabled yet** — it carries an add-on cost and there
    are no users/real data to protect. **Post-launch action:** before onboarding the first real
