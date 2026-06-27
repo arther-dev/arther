@@ -45,9 +45,11 @@ connectors attached. Closing all three closes milestone **M1**'s infrastructure 
 6. **Before real traffic:** `UPSTASH_REDIS_REST_URL`/`_TOKEN` (durable rate limiting; in-memory
    fallback is per-instance), and the portal secrets `PORTAL_SESSION_SECRET` (magic-link access)
    + `PORTAL_REVALIDATE_SECRET`/`PORTAL_REVALIDATE_URL` (instant on-publish cache bust).
-7. **PITR — now UNBLOCKED (Supabase Pro).** No longer plan-blocked; just enable Point-in-Time
-   Recovery on the prod project (Database → Backups) before importing real data. (Supersedes the
-   "Blocked on plan" note in §F0.2 step 4 below.)
+7. **PITR — DEFERRED to post-launch (owner decision 2026-06-27).** No longer plan-blocked
+   (Supabase Pro), but intentionally **not enabled yet** — it carries an add-on cost and there
+   are no users/real data to protect. **Post-launch action:** before onboarding the first real
+   customer / importing real data, enable Point-in-Time Recovery on the prod project
+   (Database → Backups). (Supersedes the "Blocked on plan" note in §F0.2 step 4 below.)
 8. **Launch gate (before external/EU users):** publish/link `/privacy` + `/terms` (routes now
    scaffolded — swap in legal copy), `SENTRY_AUTH_TOKEN` on Vercel Preview, a cookie-consent
    banner (EU decision), and custom domains off `*.vercel.app`.
