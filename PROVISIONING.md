@@ -8,22 +8,26 @@ connectors attached. Closing all three closes milestone **M1**'s infrastructure 
 
 ## ⚠️ Status — 2026-06-25 (provisioning audit; variants epic V.1–V.9 shipped)
 
-The code is feature-complete through the Product Variants epic, but a connector audit found
-the remote databases are **behind the repo's migrations** and several runtime keys are unset.
-Action items, highest-impact first:
+> **Update — 2026-06-27 (resolved via MCP).** Items **1** and **5** below are **done**:
+> migrations 0016–0029 were applied to **dev + prod** via the Supabase connector (both now
+> report all 29 migrations; `apply_migration` recorded each under a `20260627…` version), and
+> the **`workspace-logos`** public bucket was created on both with public-read + editor-write
+> policies mirroring `spec-imports`. The timestamp wrinkle in item 1 is unchanged — the original
+> 0001–0015 tracking rows still carry `20260611…` versions, so a one-time `supabase db reset
+> --linked` per project is still worth doing eventually to make `supabase db push` clean again,
+> but it is **not** required for the apps to work. Items 2–4 and 6–8 remain owner actions.
 
-1. **CRITICAL — apply migrations 0016–0029 to dev + prod.** Both projects' schemas sit cleanly
-   at **0015** (`import_commit`); migrations 0016–0029 were never applied. Missing from both:
-   generation-commit (0018), **the entire publish pipeline `publish_document` (0021)**, approvals
-   (0019/0020), fork-document-type (0017), consumption/health analytics (0024–0027), variant
-   publishing (0028), and merge conflicts (0029). The deployed apps will fail on publish,
-   variants, and generation-commit until this is fixed. Both DBs are effectively empty (prod: 2
-   test workspaces, 0 documents/products/snapshots; dev: empty), so a clean re-migrate is safe.
-   **Wrinkle:** the prod/dev `schema_migrations` tracking uses different timestamps
-   (`20260611…`) than the repo's canonical files (`20260608…`), so `supabase db push` won't
-   reconcile cleanly — prefer **`supabase link --project-ref <ref>` + `supabase db reset --linked`**
-   per project (re-applies 0001–0029 from the repo, resyncs tracking; safe given no real data),
-   or apply 0016–0029 directly via the MCP connector.
+1. **~~CRITICAL — apply migrations 0016–0029 to dev + prod.~~ DONE (2026-06-27, via MCP).** Both
+   projects' schemas had sat cleanly at **0015** (`import_commit`); migrations 0016–0029 were
+   never applied — generation-commit (0018), **the publish pipeline `publish_document` (0021)**,
+   approvals (0019/0020), fork-document-type (0017), consumption/health analytics (0024–0027),
+   variant publishing (0028), and merge conflicts (0029). All 14 are now applied to dev + prod
+   (verified: 29 migrations each). Both DBs were effectively empty (prod: 2 test workspaces, 0
+   content; dev: empty), so the apply was safe. **Remaining wrinkle:** the 0001–0015 tracking
+   rows use `20260611…` timestamps vs the repo's canonical `20260608…`, so `supabase db push`
+   still won't reconcile cleanly — a one-time `supabase link --project-ref <ref>` + `supabase db
+   reset --linked` per project would resync tracking (safe given no real data), but is optional
+   now that the schema is correct.
 2. **Trigger.dev task deploy** (V.5/V.6): set `ANTHROPIC_API_KEY`, `SUPABASE_URL`,
    `SUPABASE_SERVICE_ROLE_KEY`, **and `SUPABASE_ANON_KEY`** in the Trigger.dev *project* env
    (the typed env loader validates all three Supabase vars, so the ANON key is required even
@@ -34,9 +38,10 @@ Action items, highest-impact first:
 4. **`RESEND_API_KEY`** (+ verified domain) in Vercel — email (invites, review reminders,
    notifications) is wired but sends nothing without it. **`CRON_SECRET`** in Vercel — the
    review-reminders cron returns 503 without it.
-5. **`workspace-logos`** public Storage bucket (dev + prod) — public read + workspace-editor
-   write on the `{workspace_id}/` prefix (mirror the `spec-imports` policies). Until then the
-   Settings logo upload degrades.
+5. **~~`workspace-logos` public Storage bucket (dev + prod).~~ DONE (2026-06-27, via MCP).**
+   Created public (5 MB limit) on dev + prod with public-read + workspace-editor write on the
+   `{workspace_id}/` prefix (`workspace_logos_public_read` + editor insert/update/delete,
+   mirroring the `spec-imports` policy shape). Settings logo upload no longer degrades.
 6. **Before real traffic:** `UPSTASH_REDIS_REST_URL`/`_TOKEN` (durable rate limiting; in-memory
    fallback is per-instance), and the portal secrets `PORTAL_SESSION_SECRET` (magic-link access)
    + `PORTAL_REVALIDATE_SECRET`/`PORTAL_REVALIDATE_URL` (instant on-publish cache bust).
@@ -191,12 +196,11 @@ site, ADR-007), the `@arther/spec-import` pipeline, migration 0015, and the
 Code side shipped 2026-06-16 (G-batch): owner/admin upload at `/settings`, stored
 as the workspace's `logo_url`. Status:
 
-- ☐ **Manual:** create a **public** Storage bucket named **`workspace-logos`** on dev
-  + prod (Supabase dashboard → Storage, "Public bucket"), with an editor/admin-write
-  policy on the `{workspace_id}/…` prefix and public read. Until it exists the upload
-  degrades honestly ("the 'workspace-logos' storage bucket may not exist yet") — no
-  crash, and the rest of Settings is unaffected. Public-read so the stored
-  `getPublicUrl` renders the logo without a signed URL.
+- ☒ **Done (2026-06-27, via MCP):** the **public** `workspace-logos` bucket (5 MB limit)
+  exists on dev + prod, with public read (`workspace_logos_public_read`) and workspace-editor
+  write (insert/update/delete gated on `private.is_workspace_editor` over the
+  `{workspace_id}/…` prefix), mirroring the `spec-imports` policy shape. The Settings logo
+  upload now stores and renders via `getPublicUrl` without a signed URL.
 
 ## After provisioning
 
