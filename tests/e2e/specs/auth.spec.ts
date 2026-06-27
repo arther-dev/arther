@@ -47,7 +47,7 @@ test.describe('auth surfaces (outside the shell)', () => {
     await expect(page.getByRole('heading', { name: 'Create your account' })).toBeVisible();
     await expect(page.getByLabel('Name')).toBeVisible();
     await expect(page.getByText('At least 8 characters.')).toBeVisible();
-    await expect(page.getByText(/terms of service/)).toBeVisible();
+    await expect(page.getByRole('link', { name: /terms of service/i })).toBeVisible();
   });
 
   test('forgot password confirms without account enumeration', async ({ page }) => {
