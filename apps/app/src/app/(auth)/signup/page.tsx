@@ -17,7 +17,8 @@ export default function SignupPage() {
         <Link href="/login">Log in</Link>
       </div>
       <p className="auth-footnote">
-        By signing up you agree to the terms of service and privacy policy.
+        By signing up you agree to the <Link href="/terms">Terms of Service</Link> and{' '}
+        <Link href="/privacy">Privacy Policy</Link>.
       </p>
     </>
   );

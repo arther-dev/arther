@@ -5,8 +5,9 @@
  * tasks by id (`tasks.trigger('generate-variants', payload)`) without pulling task
  * runtime — or the Trigger.dev SDK — into their bundle (IMPLEMENTATION_PLAN.md §7.7).
  *
- * Tasks: generate-variants (V.5). Pending: generate-document, propagate-spec-change,
- * dispatch-notifications, publish-pdf, and the F8.7 purge-deleted-workspaces cron.
+ * Tasks: generate-variants (V.5), purge-deleted-workspaces (F8.7 daily cron).
+ * Pending: generate-document, propagate-spec-change, dispatch-notifications,
+ * publish-pdf.
  */
 export {
   variantPromptFields,
