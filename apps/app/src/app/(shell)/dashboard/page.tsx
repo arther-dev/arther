@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
@@ -10,7 +11,7 @@ import {
   listProducts,
 } from '@arther/db';
 import { buildFirstRunChecklist, type WorkspaceId } from '@arther/types';
-import { AppShell, Button, EmptyState } from '@arther/ui';
+import { AppShell, EmptyState } from '@arther/ui';
 import { getSupabaseServer } from '../../../lib/supabase/server';
 import { AssistantNudge } from '../../../components/AssistantNudge';
 import { FirstRunChecklist } from './FirstRunChecklist';
@@ -67,8 +68,16 @@ export default async function DashboardPage() {
       <EmptyState
         title="You're all caught up"
         description="Section reviews, approvals, and mentions that need your action will appear here."
-        primaryAction={<Button>Generate a document</Button>}
-        secondaryAction={<Button variant="ghost">Add a product</Button>}
+        primaryAction={
+          <Link className="ui-btn ui-btn--primary" href="/specs/generate">
+            Generate a document
+          </Link>
+        }
+        secondaryAction={
+          <Link className="ui-btn ui-btn--ghost" href="/specs">
+            Add a product
+          </Link>
+        }
         nudge={<AssistantNudge id="dashboard-first-run" prompt="how to get started in Arther." />}
       />
     </AppShell>
