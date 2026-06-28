@@ -11,11 +11,20 @@ import { RichText } from './RichText';
 
 /**
  * G4.4 — the one read-only renderer for the block tree. Editor preview, portal
- * SSR, and PDF all render through this (degradation contracts wire in at C5/C6).
- * Prose, safety, containers, data (spec_table + chart, with a `resolved` field
- * map), media (image/video/gif/hotspot_image), and the toc all render fully;
- * only `snippet` (Content Reuse, Phase 4) stays a labelled placeholder.
+ * SSR, and PDF all render through this. Prose, safety, containers, data
+ * (spec_table + chart, with a `resolved` field map), media (image/video/gif/
+ * hotspot_image), and the toc all render fully; only `snippet` (Content Reuse,
+ * Phase 4) stays a labelled placeholder.
+ *
+ * C5.2 — the print degradation contract (ADR-008: the PDF is this same SSR HTML
+ * printed through headless Chrome). In `print` mode the blocks that only make
+ * sense interactively degrade to static, paper-friendly equivalents: a `video`
+ * becomes its poster frame + the source URL (controls can't play on paper), and
+ * an `accordion` renders every section expanded (nothing is hidden behind a
+ * collapsed `<details>` in a printout). Every other block already prints as-is.
  */
+export type BlockRenderMode = 'web' | 'print';
+
 export interface BlockRendererProps {
   blocks: BlockContent[];
   /**
@@ -24,6 +33,8 @@ export interface BlockRendererProps {
    * degrades those blocks to a labelled placeholder.
    */
   resolved?: SpecFieldResolution;
+  /** Web (default) or the C5.2 print degradation profile (the PDF source). */
+  mode?: BlockRenderMode;
 }
 
 /** A heading in the document, for the toc and the heading anchors it links to. */
@@ -49,12 +60,12 @@ function collectTocHeadings(blocks: BlockContent[]): TocHeading[] {
   return headings;
 }
 
-export function BlockRenderer({ blocks, resolved }: BlockRendererProps) {
+export function BlockRenderer({ blocks, resolved, mode = 'web' }: BlockRendererProps) {
   const headings = collectTocHeadings(blocks);
   return (
-    <div className="br-doc">
+    <div className={mode === 'print' ? 'br-doc br-doc--print' : 'br-doc'}>
       {blocks.map((content, i) => (
-        <Block key={i} content={content} resolved={resolved} index={i} headings={headings} />
+        <Block key={i} content={content} resolved={resolved} index={i} headings={headings} mode={mode} />
       ))}
     </div>
   );
@@ -193,12 +204,14 @@ function Block({
   resolved,
   index,
   headings = [],
+  mode = 'web',
 }: {
   content: BlockContent;
   resolved?: SpecFieldResolution;
   /** Top-level position — the toc anchor target for headings (omitted when nested). */
   index?: number;
   headings?: TocHeading[];
+  mode?: BlockRenderMode;
 }): ReactNode {
   const anchorId = index === undefined ? undefined : anchorFor(index);
   switch (content.type) {
@@ -246,7 +259,7 @@ function Block({
           {content.title ? <strong className="br-safety__title">{content.title}</strong> : null}
           <div className="br-safety__body">
             {content.children.map((child, i) => (
-              <Block key={i} content={child} resolved={resolved} />
+              <Block key={i} content={child} resolved={resolved} mode={mode} />
             ))}
           </div>
         </aside>
@@ -270,10 +283,12 @@ function Block({
       return (
         <div className="br-accordion">
           {content.sections.map((section) => (
-            <details key={section.id} open={section.default_open}>
+            // C5.2 — print expands every section so nothing hides behind a
+            // collapsed <details> in the PDF.
+            <details key={section.id} open={mode === 'print' ? true : section.default_open}>
               <summary>{section.title}</summary>
               {section.children.map((child, i) => (
-                <Block key={i} content={child} resolved={resolved} />
+                <Block key={i} content={child} resolved={resolved} mode={mode} />
               ))}
             </details>
           ))}
@@ -286,7 +301,7 @@ function Block({
             <li key={step.id}>
               <h3 className="br-wizard__title">{step.title}</h3>
               {step.children.map((child, i) => (
-                <Block key={i} content={child} resolved={resolved} />
+                <Block key={i} content={child} resolved={resolved} mode={mode} />
               ))}
             </li>
           ))}
@@ -299,6 +314,21 @@ function Block({
     case 'toc':
       return <Toc content={content} headings={headings} />;
     case 'video':
+      // C5.2 — a video can't play on paper: print degrades to the poster frame
+      // (when present) plus the source URL, so the PDF shows a still + a link.
+      if (mode === 'print') {
+        return (
+          <figure className="br-figure br-video--print">
+            {content.thumbnail_url ? (
+              <img src={content.thumbnail_url} alt={content.caption ? '' : 'Video'} />
+            ) : null}
+            <figcaption>
+              {content.caption ? <RichText content={content.caption} /> : null}
+              <span className="br-video__url">Video: {content.url}</span>
+            </figcaption>
+          </figure>
+        );
+      }
       return (
         <figure className="br-figure">
           <video className="br-video" src={content.url} poster={content.thumbnail_url} controls>

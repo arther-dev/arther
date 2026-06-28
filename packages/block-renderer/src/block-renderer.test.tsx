@@ -311,3 +311,57 @@ describe('BlockRenderer', () => {
     expect(out).toContain('Mount the drive');
   });
 });
+
+describe('BlockRenderer print degradation (C5.2)', () => {
+  const printHtml = (...blocks: BlockContent[]) =>
+    renderToStaticMarkup(<BlockRenderer blocks={blocks} mode="print" />);
+
+  it('degrades a video to its poster frame + source URL (no <video> on paper)', () => {
+    const block: BlockContent = {
+      type: 'video',
+      url: 'https://cdn.example.com/clip.mp4',
+      thumbnail_url: 'https://cdn.example.com/poster.jpg',
+      caption: rich(text('Assembly walkthrough')),
+      autoplay: false,
+    };
+    const out = printHtml(block);
+    expect(out).not.toContain('<video');
+    expect(out).toContain('poster.jpg');
+    expect(out).toContain('Video: https://cdn.example.com/clip.mp4');
+    expect(out).toContain('Assembly walkthrough');
+  });
+
+  it('still renders an interactive <video controls> in web mode', () => {
+    const block: BlockContent = {
+      type: 'video',
+      url: 'https://cdn.example.com/clip.mp4',
+      thumbnail_url: 'https://cdn.example.com/poster.jpg',
+      autoplay: false,
+    };
+    expect(renderToStaticMarkup(<BlockRenderer blocks={[block]} />)).toContain('<video');
+  });
+
+  it('expands every accordion section in print so nothing is hidden', () => {
+    const block: BlockContent = {
+      type: 'accordion',
+      sections: [
+        {
+          id: 's1',
+          title: 'Collapsed by default',
+          display_order: 0,
+          default_open: false,
+          children: [{ type: 'paragraph', content: rich(text('Hidden on the web')) }],
+        },
+      ],
+    };
+    const out = printHtml(block);
+    expect(out).toContain('<details open');
+    expect(out).toContain('Hidden on the web');
+    // Web mode keeps it collapsed.
+    expect(renderToStaticMarkup(<BlockRenderer blocks={[block]} />)).not.toContain('<details open');
+  });
+
+  it('tags the print document root for the @media print stylesheet', () => {
+    expect(printHtml({ type: 'divider' })).toContain('br-doc--print');
+  });
+});
