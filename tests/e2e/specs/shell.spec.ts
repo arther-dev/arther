@@ -9,6 +9,18 @@ test.describe('app shell frame (Handoff 02)', () => {
     await expect(page.getByRole('heading', { name: "You're all caught up" })).toBeVisible();
   });
 
+  test('the dashboard empty-state CTAs link into the spec flow', async ({ page }) => {
+    await page.goto(`${APP}/dashboard`);
+    await expect(page.getByRole('link', { name: 'Generate a document' })).toHaveAttribute(
+      'href',
+      '/specs/generate',
+    );
+    await expect(page.getByRole('link', { name: 'Add a product' })).toHaveAttribute(
+      'href',
+      '/specs',
+    );
+  });
+
   test('top bar carries the named utility cluster (a11y contract §11.2)', async ({ page }) => {
     await page.goto(`${APP}/dashboard`);
     await expect(page.getByRole('button', { name: 'Switch module' })).toBeVisible();
