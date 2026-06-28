@@ -37,6 +37,7 @@ export * from './combobox';
 export * from './list-move';
 export * from './library';
 export * from './onboarding';
+export * from './dashboard';
 export * from './variant';
 export * from './variant-resolution';
 export * from './variant-merge';
