@@ -35,6 +35,19 @@ test.describe('public portal (C6)', () => {
     await context.close();
   });
 
+  test('the print source (PDF render target) server-renders without crashing (no JS)', async ({
+    browser,
+  }) => {
+    // C5.1 — the Trigger.dev render-pdf task prints this URL through Chrome; it must
+    // be fully server-rendered (no JS) and never 500, even unprovisioned.
+    const context = await browser.newContext({ javaScriptEnabled: false });
+    const page = await context.newPage();
+    const res = await page.goto(`${PORTAL}/acme/${UUID}/install-guide/print`);
+    expect(res?.status()).toBeLessThan(400);
+    await expect(page.getByRole('main')).toBeVisible();
+    await context.close();
+  });
+
   test('portal search is a server-rendered GET form (C6.4)', async ({ browser }) => {
     // Shareable + works without JS: the form GETs ?q and the page renders results.
     const context = await browser.newContext({ javaScriptEnabled: false });
