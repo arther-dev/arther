@@ -325,6 +325,7 @@ export {
   type BatchPropagationSummary,
   type PropagationSummary,
 } from './propagation';
+export { listActionItems, setActionItemStatus, type ActionItemRow } from './action-items';
 export {
   assertWorkspaceScope,
   MissingWorkspaceScopeError,
