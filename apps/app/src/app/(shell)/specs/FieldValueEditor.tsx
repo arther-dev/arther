@@ -1,8 +1,13 @@
 'use client';
 
-import { useActionState, useState } from 'react';
+import { useActionState, useRef, useState } from 'react';
 import type { OverrideRow, SpecFieldRow, UnitRow } from '@arther/db';
-import { describeFieldChangeImpact, listImpactedDocuments } from '@arther/types';
+import {
+  convertUnitAmount,
+  convertUnitDelta,
+  describeFieldChangeImpact,
+  listImpactedDocuments,
+} from '@arther/types';
 import { Button } from '@arther/ui';
 import {
   clearOverrideAction,
@@ -21,7 +26,8 @@ export interface ComponentOption {
  * Inline per-type value editors (F6.3) for the scalar family: scalar, range,
  * toleranced, boolean, enum, multi_enum. Table (mini-spreadsheet) and
  * reference (component picker) are their own slices. Stored values are always
- * in the chosen unit; display conversion follows with the unit-registry work.
+ * in the chosen unit; switching the unit converts the numbers being edited
+ * through the registry (F6 acceptance, §3.6).
  *
  * The same inputs serve two write paths (F6.4): Edit — the component's global
  * value, every product sees it — and Override — this product only, stored on
@@ -41,6 +47,44 @@ function TypeInputs({
   idPrefix: string;
 }) {
   const v = current;
+  const initialUnitId = ((v?.unit_id as string | undefined) ?? field.unit_id ?? '') as string;
+  const fromUnitRef = useRef(initialUnitId);
+
+  // F6 — switching the unit converts the value in the form. The inputs are
+  // uncontrolled (the DOM is the draft state), so rewrite them in place from
+  // the previously selected unit to the picked one. A cross-dimension pick
+  // (or a unit missing a usable factor) converts nothing and just relabels,
+  // preserving the escape hatch for fixing a wrong-dimension unit.
+  const convertDraftInputs = (nextUnitId: string) => {
+    const from = units.find((u) => u.id === fromUnitRef.current);
+    fromUnitRef.current = nextUnitId;
+    const to = units.find((u) => u.id === nextUnitId);
+    if (!from || !to || from.id === to.id) return;
+    const rewrite = (name: string, delta = false) => {
+      const el = document.getElementById(
+        `${idPrefix}-${name}-${field.id}`,
+      ) as HTMLInputElement | null;
+      if (!el || el.value.trim() === '') return;
+      const amount = Number(el.value);
+      if (!Number.isFinite(amount)) return;
+      const converted = delta ? convertUnitDelta(amount, from, to) : convertUnitAmount(amount, from, to);
+      if (converted !== null) el.value = String(converted);
+    };
+    if (field.type === 'scalar') rewrite('value');
+    if (field.type === 'range') {
+      rewrite('min');
+      rewrite('max');
+    }
+    if (field.type === 'toleranced') {
+      rewrite('nominal');
+      const toleranceType = document.getElementById(
+        `${idPrefix}-ttype-${field.id}`,
+      ) as HTMLSelectElement | null;
+      // A percentage tolerance is relative — only absolute tolerances convert.
+      if (toleranceType?.value === 'absolute') rewrite('tolerance', true);
+    }
+  };
+
   const unitSelect = (defaultUnit?: string) => (
     <>
       <label className="ui-field__label" htmlFor={`${idPrefix}-unit-${field.id}`}>
@@ -51,6 +95,7 @@ function TypeInputs({
         name="unitId"
         className="ui-field__input"
         defaultValue={defaultUnit ?? field.unit_id ?? ''}
+        onChange={(e) => convertDraftInputs(e.target.value)}
       >
         <option value="" disabled>
           Unit…
