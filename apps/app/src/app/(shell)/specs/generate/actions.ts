@@ -2,7 +2,6 @@
 
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
-import { createCanDo } from '@arther/authz';
 import { rateLimit } from '@arther/rate-limit';
 import {
   buildFieldResolver,
@@ -19,7 +18,6 @@ import {
   commitGeneration,
   createGenerationRun,
   createServiceClient,
-  getActiveWorkspace,
   getBrandProfile,
   getDocumentType,
   getEntityBrief,
@@ -27,7 +25,6 @@ import {
   listUnits,
   loadDocumentTree,
   loadGenerationFields,
-  membershipLookupFor,
   recordAnalyticsEvent,
   setGenerationRunStatus,
   setGenerationSectionStatus,
@@ -48,6 +45,7 @@ import {
 } from '@arther/types';
 import type { GenerateVariantsPayload } from '@arther/jobs';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { authorizeAction } from '../../../../lib/authorize';
 import { getSupabaseServer } from '../../../../lib/supabase/server';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -128,22 +126,15 @@ export async function createGenerationRunAction(
   const parsed = schema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { error: 'Pick a product and a Document Type.' };
 
-  const supabase = await getSupabaseServer();
-  if (!supabase) return { error: 'Not configured in this environment yet.' };
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: 'Not signed in.' };
-  const workspace = await getActiveWorkspace(supabase);
-  if (!workspace) return { error: 'No workspace yet — create one first.' };
-
-  const canDo = createCanDo(membershipLookupFor(supabase));
-  if (!(await canDo({ id: user.id as UserId }, 'doc.generate', { workspaceId: workspace.id }))) {
-    return { error: 'Viewers can’t generate documents — ask for an Editor seat.' };
-  }
+  const auth = await authorizeAction(
+    'doc.generate',
+    'Viewers can’t generate documents — ask for an Editor seat.',
+  );
+  if ('error' in auth) return { error: auth.error };
+  const { supabase, userId, workspace } = auth;
 
   // G8.5 — cap generations per member; each run is a multi-section paid AI call.
-  const throttle = await rateLimit('generation', user.id);
+  const throttle = await rateLimit('generation', userId);
   if (!throttle.success) {
     return { error: `Too many generations in a short window — wait ${throttle.retryAfterSeconds}s and retry.` };
   }
@@ -177,7 +168,7 @@ export async function createGenerationRunAction(
         brandProfileId,
         kind: 'variant_set',
         sections: sectionScaffold,
-        requestedBy: user.id as UserId,
+        requestedBy: userId,
       });
       variantRunId = run.id;
       const triggered = await triggerVariantGeneration({
@@ -187,7 +178,7 @@ export async function createGenerationRunAction(
         documentTypeId: parsed.data.documentTypeId,
         brandProfileId: brandProfileId ?? null,
         variantIds,
-        requestedBy: user.id,
+        requestedBy: userId,
       });
       // A triggered run flips to `running` so the status surface polls it; without
       // `TRIGGER_SECRET_KEY` it stays `queued` and degrades honestly (like the
@@ -212,7 +203,7 @@ export async function createGenerationRunAction(
       brandProfileId,
       kind: 'document',
       sections: sectionScaffold,
-      requestedBy: user.id as UserId,
+      requestedBy: userId,
     });
     runId = run.id;
 
@@ -237,7 +228,7 @@ export async function createGenerationRunAction(
         type,
         productId,
         brandProfileId: brandProfileId as BrandProfileId | undefined,
-        requestedBy: user.id as UserId,
+        requestedBy: userId,
       });
     }
   } catch (err) {

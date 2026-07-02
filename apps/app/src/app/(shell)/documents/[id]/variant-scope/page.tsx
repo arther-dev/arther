@@ -6,6 +6,7 @@ import {
   loadBlockVariantScopes,
   loadDocumentTree,
 } from '@arther/db';
+import { roleAllows } from '@arther/authz';
 import { blockAnchorLabel, type DocumentId } from '@arther/types';
 import { AppShell, EmptyState } from '@arther/ui';
 import { getSupabaseServer } from '../../../../../lib/supabase/server';
@@ -46,7 +47,7 @@ export default async function VariantScopePage({ params }: { params: Promise<{ i
     );
   }
 
-  if (workspace.role === 'viewer') {
+  if (!roleAllows(workspace.role, 'doc.write')) {
     return (
       <AppShell>
         <EmptyState title="Variant scope" description="Viewers can’t change which blocks a variant shows." />

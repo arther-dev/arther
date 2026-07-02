@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { roleAllows } from '@arther/authz';
 import {
   getActiveWorkspace,
   getPendingWorkspaceDeletion,
@@ -39,10 +40,12 @@ export default async function SettingsPage() {
     );
   }
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  const workspace = await getActiveWorkspace(supabase);
+  const [
+    {
+      data: { user },
+    },
+    workspace,
+  ] = await Promise.all([supabase.auth.getUser(), getActiveWorkspace(supabase)]);
   if (!workspace || !user) {
     // A soft-deleted workspace is RLS-hidden, so getActiveWorkspace returns null
     // even for its owner — the restore window (F8.7) is the one place it resurfaces.
@@ -56,7 +59,7 @@ export default async function SettingsPage() {
               workspaceId={pending.id}
               name={pending.name}
               purgeAfter={pending.purge_after}
-              canRestore={pending.role === 'owner'}
+              canRestore={roleAllows(pending.role, 'workspace.delete')}
             />
           </div>
         </AppShell>
@@ -77,7 +80,7 @@ export default async function SettingsPage() {
     );
   }
 
-  const canManage = workspace.role === 'owner' || workspace.role === 'admin';
+  const canManage = roleAllows(workspace.role, 'workspace.manage');
   const [members, invitations] = await Promise.all([
     listMembers(supabase, workspace.id),
     canManage ? listInvitations(supabase, workspace.id) : Promise.resolve([]),
@@ -145,7 +148,7 @@ export default async function SettingsPage() {
                       member={m}
                       isSelf={m.user_id === user.id}
                       canManage={canManage}
-                      isOwnerViewing={workspace.role === 'owner'}
+                      isOwnerViewing={roleAllows(workspace.role, 'workspace.transfer')}
                     />
                   </td>
                 </tr>
@@ -235,7 +238,7 @@ export default async function SettingsPage() {
           </section>
         ) : null}
 
-        {workspace.role === 'owner' ? (
+        {roleAllows(workspace.role, 'workspace.delete') ? (
           <section className="specs-section">
             <h2 className="specs-section__title">Danger zone</h2>
             <p className="specs-grid__meta">

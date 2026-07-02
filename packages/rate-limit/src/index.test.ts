@@ -1,11 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  isRateLimitProvisioned,
-  MemoryRateLimiter,
-  rateLimit,
-  RATE_LIMITS,
-  type RateLimitName,
-} from './index';
+import { MemoryRateLimiter, rateLimit, RATE_LIMITS, type RateLimitName } from './index';
 
 /** A controllable clock so window expiry is deterministic, not wall-time. */
 function clock(start = 1_000_000) {
@@ -84,12 +78,8 @@ describe('MemoryRateLimiter', () => {
 });
 
 describe('rateLimit (integration, unprovisioned)', () => {
-  it('reports Upstash unprovisioned without the REST keys', () => {
-    expect(process.env.UPSTASH_REDIS_REST_URL).toBeFalsy();
-    expect(isRateLimitProvisioned()).toBe(false);
-  });
-
   it('falls back to the in-memory limiter and enforces the budget', async () => {
+    expect(process.env.UPSTASH_REDIS_REST_URL).toBeFalsy();
     const id = `vitest-${Math.random().toString(36).slice(2)}`;
     for (let i = 0; i < RATE_LIMITS.invitation.limit; i++) {
       expect((await rateLimit('invitation', id)).success).toBe(true);

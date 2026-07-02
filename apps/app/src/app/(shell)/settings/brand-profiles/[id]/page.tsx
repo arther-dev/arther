@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { roleAllows } from '@arther/authz';
 import { getActiveWorkspace, getBrandProfile } from '@arther/db';
 import { brandProfileIdSchema } from '@arther/types';
 import { AppShell, EmptyState } from '@arther/ui';
@@ -31,7 +32,7 @@ export default async function BrandProfileEditorPage({
   }
 
   const workspace = await getActiveWorkspace(supabase);
-  const canManage = workspace?.role === 'owner' || workspace?.role === 'admin';
+  const canManage = workspace ? roleAllows(workspace.role, 'workspace.manage') : false;
   const profile = parsedId.success && canManage ? await getBrandProfile(supabase, parsedId.data) : null;
 
   if (!profile) {

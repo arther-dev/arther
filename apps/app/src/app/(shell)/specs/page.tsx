@@ -183,8 +183,12 @@ export default async function SpecsPage({
     : { covered: 0, total: 0 };
 
   // G0.6: brief data is only needed on the Product Brief tab.
-  const brief = briefTab ? await getEntityBrief(supabase, 'product', selected.id) : null;
-  const briefUsage = briefTab ? await listBriefKeyUsage(supabase, workspace.id) : [];
+  const [brief, briefUsage] = briefTab
+    ? await Promise.all([
+        getEntityBrief(supabase, 'product', selected.id),
+        listBriefKeyUsage(supabase, workspace.id),
+      ])
+    : [null, []];
   const briefEditorIds = (brief?.fragments.map((f) => f.updated_by).filter(Boolean) ??
     []) as UserId[];
   const briefEditors = await listUsersByIds(supabase, briefEditorIds);

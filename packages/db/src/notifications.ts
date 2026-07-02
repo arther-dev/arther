@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { sendEmail } from '@arther/config';
 import {
   isImmediateEmailEvent,
   isNotificationEventType,
@@ -112,8 +113,7 @@ async function sendNotificationEmails(
   eventType: NotificationEventType,
   payload: NotificationPayload,
 ): Promise<void> {
-  const resendKey = process.env.RESEND_API_KEY;
-  if (!resendKey || recipientUserIds.length === 0) return;
+  if (!process.env.RESEND_API_KEY || recipientUserIds.length === 0) return;
 
   const { data: users, error } = await service
     .from('users')
@@ -125,19 +125,11 @@ async function sendNotificationEmails(
     payload,
     process.env.APP_URL ?? '',
   );
-  const from = process.env.RESEND_FROM ?? 'Arther <onboarding@resend.dev>';
-  for (const row of (users ?? []) as Array<{ email: string | null }>) {
-    if (!row.email) continue;
-    try {
-      await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ from, to: [row.email], subject, text, html }),
-      });
-    } catch {
-      // ignore — email is best-effort
-    }
-  }
+  await Promise.all(
+    ((users ?? []) as Array<{ email: string | null }>)
+      .filter((row) => row.email)
+      .map((row) => sendEmail({ to: row.email!, subject, text, html })),
+  );
 }
 
 export interface StoredNotificationPreference {
@@ -204,17 +196,22 @@ export async function getNotificationFeed(
   options: { limit?: number } = {},
 ): Promise<NotificationFeed> {
   const limit = options.limit ?? 20;
-  const { data, error } = await client
-    .from('notifications')
-    .select('id, event_type, payload, read_at, created_at')
-    .order('created_at', { ascending: false })
-    .limit(limit);
+  // Independent reads on every shell render — fire them together.
+  const [
+    { data, error },
+    { count, error: countErr },
+  ] = await Promise.all([
+    client
+      .from('notifications')
+      .select('id, event_type, payload, read_at, created_at')
+      .order('created_at', { ascending: false })
+      .limit(limit),
+    client
+      .from('notifications')
+      .select('id', { count: 'exact', head: true })
+      .is('read_at', null),
+  ]);
   if (error) throw new Error(`getNotificationFeed: ${error.message}`);
-
-  const { count, error: countErr } = await client
-    .from('notifications')
-    .select('id', { count: 'exact', head: true })
-    .is('read_at', null);
   if (countErr) throw new Error(`getNotificationFeed.count: ${countErr.message}`);
 
   const items: NotificationView[] = [];

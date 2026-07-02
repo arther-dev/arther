@@ -8,7 +8,6 @@ export {
   type ParsedWorkbook,
 } from './parse';
 export {
-  fieldTypeOfRawValue,
   interpretationNoteSchema,
   interpretedComponentSchema,
   interpretedFieldSchema,

@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { roleAllows } from '@arther/authz';
 import { getActiveWorkspace, listLibraryItems } from '@arther/db';
 import { libraryItemTypeLabel } from '@arther/types';
 import { AppShell, EmptyState } from '@arther/ui';
@@ -42,7 +43,7 @@ export default async function SnippetsPage() {
     );
   }
 
-  if (workspace.role === 'viewer') {
+  if (!roleAllows(workspace.role, 'doc.write')) {
     return (
       <AppShell>
         <EmptyState

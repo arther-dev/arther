@@ -1,11 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import {
-  summarizeSeats,
-  type UserId,
-  type WorkspaceId,
-  type WorkspaceRole,
-  type WorkspaceSeatSummary,
-} from '@arther/types';
+import type { UserId, WorkspaceId, WorkspaceRole } from '@arther/types';
+import { rpcError } from './errors';
 
 /**
  * Workspace-admin repository (F4): members, invitations, ownership — thin,
@@ -56,22 +51,21 @@ export async function listMembers(
   });
 }
 
-/**
- * H.4 — current Editor/Viewer seat counts for the workspace (billing spec §6
- * "seat count tracking"). RLS-scoped to members; the seat tier follows the role
- * (owner/admin/member = paid Editor, viewer = free), so this is computed, not
- * stored. The role→seat transition timestamp lives on each member's `updated_at`.
- */
-export async function getWorkspaceSeatSummary(
+/** True when the email already belongs to a member — the narrow invite pre-check. */
+export async function isMemberEmail(
   client: SupabaseClient,
   workspaceId: WorkspaceId,
-): Promise<WorkspaceSeatSummary> {
+  email: string,
+): Promise<boolean> {
   const { data, error } = await client
     .from('workspace_members')
-    .select('role')
-    .eq('workspace_id', workspaceId);
-  if (error) throw new Error(`getWorkspaceSeatSummary: ${error.message}`);
-  return summarizeSeats((data ?? []).map((r) => (r as { role: WorkspaceRole }).role));
+    .select('id, users!workspace_members_user_id_fkey!inner(email)')
+    .eq('workspace_id', workspaceId)
+    .eq('users.email', email) // citext ⇒ case-insensitive
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(`isMemberEmail: ${error.message}`);
+  return data !== null;
 }
 
 /** Role changes take effect immediately (F4.2); owner moves only via transfer. */
@@ -83,13 +77,13 @@ export async function updateMemberRole(
     .from('workspace_members')
     .update({ role: input.role, updated_by: input.updatedBy })
     .eq('id', input.memberId);
-  if (error) throw new Error(`updateMemberRole: ${error.message}`);
+  if (error) throw rpcError('updateMemberRole', error);
 }
 
 /** The 0014 trigger blocks removing the owner until ownership is transferred. */
 export async function removeMember(client: SupabaseClient, memberId: string): Promise<void> {
   const { error } = await client.from('workspace_members').delete().eq('id', memberId);
-  if (error) throw new Error(`removeMember: ${error.message}`);
+  if (error) throw rpcError('removeMember', error);
 }
 
 /** Atomic owner→admin + member→owner + workspaces.owner_id (0014 RPC). */
@@ -101,7 +95,7 @@ export async function transferOwnership(
     p_workspace_id: input.workspaceId,
     p_new_owner: input.newOwnerUserId,
   });
-  if (error) throw new Error(`transferOwnership: ${error.message}`);
+  if (error) throw rpcError('transferOwnership', error);
 }
 
 export async function updateWorkspaceName(
@@ -205,7 +199,7 @@ export async function acceptInvitation(
   const { data, error } = await client.rpc('accept_workspace_invitation', {
     p_invitation_id: invitationId,
   });
-  if (error) throw new Error(`acceptInvitation: ${error.message}`);
+  if (error) throw rpcError('acceptInvitation', error);
   return data as WorkspaceId;
 }
 
@@ -223,7 +217,7 @@ export async function requestWorkspaceDeletion(
   const { error } = await client.rpc('request_workspace_deletion', {
     p_workspace_id: workspaceId,
   });
-  if (error) throw new Error(`requestWorkspaceDeletion: ${error.message}`);
+  if (error) throw rpcError('requestWorkspaceDeletion', error);
 }
 
 /** Owner-only (0002 RPC); restores a workspace still inside its grace window. */
@@ -234,7 +228,7 @@ export async function cancelWorkspaceDeletion(
   const { error } = await client.rpc('cancel_workspace_deletion', {
     p_workspace_id: workspaceId,
   });
-  if (error) throw new Error(`cancelWorkspaceDeletion: ${error.message}`);
+  if (error) throw rpcError('cancelWorkspaceDeletion', error);
 }
 
 export interface PendingWorkspaceDeletion {

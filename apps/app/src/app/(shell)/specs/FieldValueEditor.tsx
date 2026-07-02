@@ -2,11 +2,7 @@
 
 import { useActionState, useState } from 'react';
 import type { OverrideRow, SpecFieldRow, UnitRow } from '@arther/db';
-import {
-  describeFieldChangeImpact,
-  isOverridableFieldType,
-  listImpactedDocuments,
-} from '@arther/types';
+import { describeFieldChangeImpact, listImpactedDocuments } from '@arther/types';
 import { Button } from '@arther/ui';
 import {
   clearOverrideAction,
@@ -337,8 +333,6 @@ export function OverrideEditor({
     clearOverrideAction,
     {},
   );
-
-  if (!isOverridableFieldType(field.type)) return null;
 
   if (!editing) {
     return (

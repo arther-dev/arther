@@ -71,11 +71,6 @@ export const RATE_LIMITS: Record<RateLimitName, LimitConfig> = {
   portal_track: { limit: 60, windowSeconds: 60 },
 };
 
-/** Both REST keys present ⇒ Upstash is the shared store; otherwise in-memory. */
-export function isRateLimitProvisioned(): boolean {
-  return Boolean(process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN);
-}
-
 function retryAfter(reset: number, now: number): number {
   return Math.max(1, Math.ceil((reset - now) / 1000));
 }
@@ -87,16 +82,31 @@ function retryAfter(reset: number, now: number): number {
  */
 export class MemoryRateLimiter {
   private readonly hits = new Map<string, number[]>();
+  private checksSinceSweep = 0;
 
   constructor(
     private readonly config: Record<RateLimitName, LimitConfig> = RATE_LIMITS,
     private readonly now: () => number = Date.now,
   ) {}
 
+  /** Drop keys idle past their window so the map can't grow unbounded. */
+  private sweep(t: number): void {
+    for (const [key, stamps] of this.hits) {
+      const name = key.slice(0, key.indexOf(':')) as RateLimitName;
+      const windowMs = (this.config[name]?.windowSeconds ?? 60) * 1000;
+      const newest = stamps[stamps.length - 1];
+      if (newest === undefined || newest <= t - windowMs) this.hits.delete(key);
+    }
+  }
+
   check(name: RateLimitName, identifier: string): RateLimitResult {
     const c = this.config[name];
     const windowMs = c.windowSeconds * 1000;
     const t = this.now();
+    if (++this.checksSinceSweep >= 1000) {
+      this.checksSinceSweep = 0;
+      this.sweep(t);
+    }
     const key = `${name}:${identifier}`;
     const recent = (this.hits.get(key) ?? []).filter((ts) => ts > t - windowMs);
 

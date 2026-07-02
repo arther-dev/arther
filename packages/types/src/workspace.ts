@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { invitationIdSchema, membershipIdSchema, userIdSchema, workspaceIdSchema } from './ids';
 
 /** Workspace roles (migration 0002: workspace_members.role). */
 export const workspaceRoleSchema = z.enum(['owner', 'admin', 'member', 'viewer']);
@@ -18,11 +17,6 @@ export type SeatTier = z.infer<typeof seatTierSchema>;
 export function seatTierForRole(role: WorkspaceRole): SeatTier {
   return role === 'viewer' ? 'viewer' : 'editor';
 }
-
-export const SEAT_TIER_LABELS: Record<SeatTier, string> = {
-  editor: 'Editor',
-  viewer: 'Viewer',
-};
 
 /** Current seat counts for a workspace — what the billing admin UI tracks (§6). */
 export interface WorkspaceSeatSummary {
@@ -64,39 +58,3 @@ export function slugifyWorkspaceName(name: string): string {
     .slice(0, 63)
     .replace(/-+$/g, '');
 }
-
-export const workspaceSchema = z.object({
-  id: workspaceIdSchema,
-  name: z.string().min(1),
-  slug: workspaceSlugSchema,
-  logo_url: z.string().url().nullable(),
-  owner_id: userIdSchema,
-  deleted_at: z.coerce.date().nullable(),
-  purge_after: z.coerce.date().nullable(),
-  created_at: z.coerce.date(),
-  updated_at: z.coerce.date(),
-});
-export type Workspace = z.infer<typeof workspaceSchema>;
-
-export const workspaceMemberSchema = z.object({
-  id: membershipIdSchema,
-  workspace_id: workspaceIdSchema,
-  user_id: userIdSchema,
-  role: workspaceRoleSchema,
-  joined_at: z.coerce.date(),
-  updated_at: z.coerce.date(),
-});
-export type WorkspaceMember = z.infer<typeof workspaceMemberSchema>;
-
-export const workspaceInvitationSchema = z.object({
-  id: invitationIdSchema,
-  workspace_id: workspaceIdSchema,
-  email: z.string().email(),
-  role: invitableRoleSchema,
-  invited_by: userIdSchema,
-  invited_at: z.coerce.date(),
-  expires_at: z.coerce.date(),
-  accepted_at: z.coerce.date().nullable(),
-  revoked_at: z.coerce.date().nullable(),
-});
-export type WorkspaceInvitation = z.infer<typeof workspaceInvitationSchema>;

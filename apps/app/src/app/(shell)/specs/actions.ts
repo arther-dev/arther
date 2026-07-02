@@ -3,7 +3,6 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
-import { createCanDo } from '@arther/authz';
 import {
   addComponentToProduct,
   addFieldComment,
@@ -18,12 +17,10 @@ import {
   deleteRelease,
   dispatchNotification,
   flagSnippetsForFieldChange,
-  getActiveWorkspace,
   getFieldChangeImpact,
   clearPlaceholder,
   listPlaceholdersForFragment,
   listReferenceEdges,
-  membershipLookupFor,
   moveSpecFieldOrder,
   propagateFieldChange,
   recordAnalyticsEvent,
@@ -47,9 +44,8 @@ import {
   type ReleaseId,
   type SpecFieldId,
   type UnitId,
-  type UserId,
 } from '@arther/types';
-import { getSupabaseServer } from '../../../lib/supabase/server';
+import { authorizeAction } from '../../../lib/authorize';
 import { regenerateBlockAction } from '../documents/[id]/edit/actions';
 
 export interface SpecsFormState {
@@ -68,27 +64,11 @@ export interface SpecsFormState {
 }
 
 /**
- * Every mutation routes through canDo (guardrail 1) with RLS behind it
- * (defence in depth) — the single-call-site rule the F3 acceptance greps for.
  * 'spec.write' is editor-gated; 'comment.write' is every member's right
  * (viewers comment — billing/collaboration specs), mirrored by the 0003 RLS.
  */
 async function authorize(action: 'spec.write' | 'comment.write' = 'spec.write') {
-  const supabase = await getSupabaseServer();
-  if (!supabase) return { error: 'Not configured in this environment yet.' as const };
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: 'Not signed in.' as const };
-  const workspace = await getActiveWorkspace(supabase);
-  if (!workspace) return { error: 'No workspace yet — create one first.' as const };
-
-  const canDo = createCanDo(membershipLookupFor(supabase));
-  const allowed = await canDo({ id: user.id as UserId }, action, {
-    workspaceId: workspace.id,
-  });
-  if (!allowed) return { error: 'Viewers can’t edit specs — ask for an Editor seat.' as const };
-  return { supabase, userId: user.id as UserId, workspace };
+  return authorizeAction(action, 'Viewers can’t edit specs — ask for an Editor seat.');
 }
 
 const productSchema = z.object({ name: requiredText('Name the product.') });
@@ -283,13 +263,15 @@ export async function updateFieldValueAction(
     return { error: e instanceof z.ZodError ? e.issues[0]!.message : 'Could not save the value.' };
   }
 
+  const service = createServiceClient();
+
   // G6.2 two-speed propagation: cascade the new value into every citing document's
   // working copy and flag affected prose. Best-effort — the value is already
   // committed, and staleness still reads correctly from the advanced version, so a
   // propagation hiccup must not fail the save. Moves to the durable runner with G1.2.
   try {
     await propagateFieldChange(
-      createServiceClient(),
+      service,
       { workspaceId: auth.workspace.id },
       { fieldId: head.data.fieldId as SpecFieldId, changedBy: auth.userId },
     );
@@ -301,7 +283,6 @@ export async function updateFieldValueAction(
   // is flagged for its owner (and the indicator surfaces on every embedding doc).
   // Best-effort, like propagation; the value is already committed.
   try {
-    const service = createServiceClient();
     const flagged = await flagSnippetsForFieldChange(service, {
       workspaceId: auth.workspace.id,
       fieldId: head.data.fieldId as SpecFieldId,
@@ -323,7 +304,7 @@ export async function updateFieldValueAction(
   // G8.2 — metering hook (best-effort; never fails the save).
   try {
     await recordAnalyticsEvent(
-      createServiceClient(),
+      service,
       { workspaceId: auth.workspace.id },
       {
         eventType: 'spec_field_updated',

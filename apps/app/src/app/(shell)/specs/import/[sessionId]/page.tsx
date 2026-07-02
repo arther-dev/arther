@@ -115,15 +115,14 @@ export default async function ImportSessionPage({
     : 'structure';
 
   const decisions = parseDecisions(session);
-  const { plan } = await recomputePlan(supabase, workspace.id, session, decisions);
-  const units = await listUnits(supabase, workspace.id);
+  const [{ plan }, units] = await Promise.all([
+    recomputePlan(supabase, workspace.id, session, decisions),
+    listUnits(supabase, workspace.id),
+  ]);
   const normalized = session.interpreted_structure.normalized;
   const warnings = session.interpreted_structure.warnings;
-  const target = session.target_product_id
-    ? plan.mutations.some((m) => m.kind === 'create_product')
-      ? null
-      : 'existing'
-    : null;
+  const isReimport =
+    Boolean(session.target_product_id) && !plan.mutations.some((m) => m.kind === 'create_product');
 
   const byKey = new Map(plan.mutations.map((m) => [m.key, m] as const));
 
@@ -132,7 +131,7 @@ export default async function ImportSessionPage({
       <ImportStepper current={step} sessionId={session.id} />
       <header className="specs-form--row">
         <h1 className="specs-title">
-          {target ? 'Re-import' : 'Import'}: {filename}
+          {isReimport ? 'Re-import' : 'Import'}: {filename}
         </h1>
         <DiscardButton sessionId={session.id} />
       </header>

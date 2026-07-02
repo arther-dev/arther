@@ -1,12 +1,9 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { createCanDo } from '@arther/authz';
 import {
   createQualityStandard,
   deleteQualityStandard,
-  getActiveWorkspace,
-  membershipLookupFor,
   updateQualityStandard,
 } from '@arther/db';
 import {
@@ -15,9 +12,8 @@ import {
   qualityStandardIdSchema,
   type QualityStandardForm,
   type QualityStandardId,
-  type UserId,
 } from '@arther/types';
-import { getSupabaseServer } from '../../../../lib/supabase/server';
+import { authorizeAction } from '../../../../lib/authorize';
 
 export interface QualityStandardFormState {
   error?: string;
@@ -28,21 +24,7 @@ export interface QualityStandardFormState {
 
 /** Quality Standards are owner/admin (canDo 'workspace.manage', matching the 0004 RLS). */
 async function authorizeManage() {
-  const supabase = await getSupabaseServer();
-  if (!supabase) return { error: 'Not configured in this environment yet.' as const };
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: 'Not signed in.' as const };
-  const workspace = await getActiveWorkspace(supabase);
-  if (!workspace) return { error: 'No workspace yet — create one first.' as const };
-
-  const canDo = createCanDo(membershipLookupFor(supabase));
-  const allowed = await canDo({ id: user.id as UserId }, 'workspace.manage', {
-    workspaceId: workspace.id,
-  });
-  if (!allowed) return { error: 'Only workspace admins can manage quality standards.' as const };
-  return { supabase, userId: user.id as UserId, workspace };
+  return authorizeAction('workspace.manage', 'Only workspace admins can manage quality standards.');
 }
 
 function toConstraints(form: QualityStandardForm) {

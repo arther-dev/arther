@@ -1,5 +1,6 @@
 export {
   createCanDo,
+  roleAllows,
   type Action,
   type AuthUser,
   type CanDo,
@@ -7,4 +8,3 @@ export {
   type MembershipLookup,
   type Resource,
 } from './can-do';
-export { countSeats, seatForRole } from './seats';

@@ -80,8 +80,10 @@ export default async function LibraryPage({
     ? components.find((c) => c.id === briefComponentId)
     : undefined;
   if (briefComponent) {
-    const brief = await getEntityBrief(supabase, 'component', briefComponent.id);
-    const briefUsage = await listBriefKeyUsage(supabase, workspace.id);
+    const [brief, briefUsage] = await Promise.all([
+      getEntityBrief(supabase, 'component', briefComponent.id),
+      listBriefKeyUsage(supabase, workspace.id),
+    ]);
     const expandedKey = fragment ? briefFragmentKeySchema.safeParse(fragment).data : undefined;
     const editorIds = brief.fragments.map((f) => f.updated_by).filter(Boolean) as UserId[];
     const editors = await listUsersByIds(supabase, editorIds);
@@ -113,13 +115,11 @@ export default async function LibraryPage({
       </AppShell>
     );
   }
-  const componentFields = await listFieldsForComponents(
-    supabase,
-    components.map((c) => c.id as ComponentId),
-  );
-  const archivedFields = await listArchivedFields(supabase, {
-    componentIds: components.map((c) => c.id as ComponentId),
-  });
+  const componentIds = components.map((c) => c.id as ComponentId);
+  const [componentFields, archivedFields] = await Promise.all([
+    listFieldsForComponents(supabase, componentIds),
+    listArchivedFields(supabase, { componentIds }),
+  ]);
   const archivedFieldsFor = (id: ComponentId) =>
     archivedFields.filter((f) => f.component_id === id);
 

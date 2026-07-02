@@ -16,6 +16,7 @@ import {
   type ComponentId,
   type ResolvedSpecEntry,
 } from '@arther/types';
+import { roleAllows } from '@arther/authz';
 import { AppShell, EmptyState } from '@arther/ui';
 import { getSupabaseServer } from '../../../../../lib/supabase/server';
 import { DeltaEditor, type EditorComponent } from './DeltaEditor';
@@ -57,7 +58,7 @@ export default async function VariantDetailPage({ params }: { params: Promise<{ 
   }
 
   const { variant, entries, warnings } = resolved;
-  const canEdit = workspace.role !== 'viewer';
+  const canEdit = roleAllows(workspace.role, 'doc.write');
 
   // Base reference: the product's components + their fields (with options/units).
   const edges = await listProductComponents(supabase, variant.productId);
