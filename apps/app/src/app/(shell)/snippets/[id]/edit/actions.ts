@@ -1,9 +1,8 @@
 'use server';
 
-import { createCanDo } from '@arther/authz';
-import { getActiveWorkspace, membershipLookupFor, updateLibraryItemBlocks } from '@arther/db';
-import { blockContentSchema, libraryItemIdSchema, type LibraryItemId, type UserId } from '@arther/types';
-import { getSupabaseServer } from '../../../../../lib/supabase/server';
+import { updateLibraryItemBlocks } from '@arther/db';
+import { blockContentSchema, libraryItemIdSchema, type LibraryItemId } from '@arther/types';
+import { authorizeAction } from '../../../../../lib/authorize';
 import { reactToSnippetSourceChange } from '../../_lib/source-edit-reaction';
 
 export interface SaveBlocksResult {
@@ -29,26 +28,15 @@ export async function saveLibraryItemBlocksAction(
   const parsed = blocksSchema.safeParse(blocks);
   if (!parsed.success) return { ok: false, error: 'Add at least one block, and check each one’s content.' };
 
-  const supabase = await getSupabaseServer();
-  if (!supabase) return { ok: false, error: 'Not configured in this environment yet.' };
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { ok: false, error: 'Not signed in.' };
-  const workspace = await getActiveWorkspace(supabase);
-  if (!workspace) return { ok: false, error: 'No workspace yet.' };
-
-  const canDo = createCanDo(membershipLookupFor(supabase));
-  if (!(await canDo({ id: user.id as UserId }, 'doc.write', { workspaceId: workspace.id }))) {
-    return { ok: false, error: 'Viewers can’t edit the block library.' };
-  }
+  const auth = await authorizeAction('doc.write', 'Viewers can’t edit the block library.');
+  if ('error' in auth) return { ok: false, error: auth.error };
 
   try {
-    await updateLibraryItemBlocks(supabase, {
-      workspaceId: workspace.id,
+    await updateLibraryItemBlocks(auth.supabase, {
+      workspaceId: auth.workspace.id,
       id: idParsed.data as LibraryItemId,
       blocks: parsed.data,
-      userId: user.id as UserId,
+      userId: auth.userId,
     });
   } catch {
     return { ok: false, error: 'Could not save the library item.' };
@@ -57,10 +45,10 @@ export async function saveLibraryItemBlocksAction(
   // R.3b — re-editing the source diverges any *overridden* embed from a snapshot
   // it no longer tracks: flag those `source_changed` and notify each overriding
   // doc owner (shared with rollback, R.4). Best-effort; the save already committed.
-  await reactToSnippetSourceChange(supabase, {
-    workspaceId: workspace.id,
+  await reactToSnippetSourceChange(auth.supabase, {
+    workspaceId: auth.workspace.id,
     libraryItemId: idParsed.data as LibraryItemId,
-    actorId: user.id as UserId,
+    actorId: auth.userId,
   });
   return { ok: true };
 }

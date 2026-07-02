@@ -1,12 +1,9 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { createCanDo } from '@arther/authz';
 import {
   archiveConvertEmbedsToStatic,
   createLibraryItem,
-  getActiveWorkspace,
-  membershipLookupFor,
   renameLibraryItem,
   rollbackLibraryItem,
   setLibraryItemArchived,
@@ -17,9 +14,8 @@ import {
   libraryItemIdSchema,
   renameLibraryItemSchema,
   type LibraryItemId,
-  type UserId,
 } from '@arther/types';
-import { getSupabaseServer } from '../../../lib/supabase/server';
+import { authorizeAction } from '../../../lib/authorize';
 import { reactToSnippetSourceChange } from './_lib/source-edit-reaction';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -42,19 +38,7 @@ export interface SnippetFormState {
  * defence-in-depth posture as the other shell surfaces.
  */
 async function authorizeEdit() {
-  const supabase = await getSupabaseServer();
-  if (!supabase) return { error: 'Not configured in this environment yet.' as const };
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: 'Not signed in.' as const };
-  const workspace = await getActiveWorkspace(supabase);
-  if (!workspace) return { error: 'No workspace yet — create one first.' as const };
-
-  const canDo = createCanDo(membershipLookupFor(supabase));
-  const allowed = await canDo({ id: user.id as UserId }, 'doc.write', { workspaceId: workspace.id });
-  if (!allowed) return { error: 'Only editors can manage the block library.' as const };
-  return { supabase, userId: user.id as UserId, workspace };
+  return authorizeAction('doc.write', 'Only editors can manage the block library.');
 }
 
 export async function createSnippetAction(

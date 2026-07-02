@@ -41,6 +41,24 @@ export function formatFieldValue(
 }
 
 /**
+ * Resolve the unit symbol a stored value displays with: a `unit_id` embedded in
+ * the value object (versioned values pin the unit they were entered in) wins
+ * over the field's current unit. The one implementation of that precedence —
+ * the spec grid, the override row, and the history feed all use it.
+ */
+export function unitSymbolFor(
+  value: unknown,
+  fieldUnitId: string | null,
+  units: ReadonlyArray<{ id: string; symbol: string }>,
+): string | undefined {
+  const unitId =
+    value && typeof value === 'object' && 'unit_id' in value
+      ? ((value as { unit_id?: string | null }).unit_id ?? fieldUnitId)
+      : fieldUnitId;
+  return units.find((u) => u.id === unitId)?.symbol;
+}
+
+/**
  * A (review-cycle-time) — a compact human duration from a count of hours: "—" when
  * unknown, minutes under an hour, "Xh" / "Xd Yh" otherwise. Pure; used by the admin
  * analytics surface to render average/median time-in-review.

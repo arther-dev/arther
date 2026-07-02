@@ -1,12 +1,9 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { createCanDo } from '@arther/authz';
 import {
   archiveBrandProfile,
   createBrandProfile,
-  getActiveWorkspace,
-  membershipLookupFor,
   restoreBrandProfile,
   setDefaultBrandProfile,
   updateBrandProfile,
@@ -19,9 +16,8 @@ import {
   parseStringList,
   type BrandProfileForm,
   type BrandProfileId,
-  type UserId,
 } from '@arther/types';
-import { getSupabaseServer } from '../../../../lib/supabase/server';
+import { authorizeAction } from '../../../../lib/authorize';
 
 export interface BrandProfileFormState {
   error?: string;
@@ -32,21 +28,7 @@ export interface BrandProfileFormState {
 
 /** Brand Profiles are owner/admin (canDo 'workspace.manage', matching the 0004 RLS). */
 async function authorizeManage() {
-  const supabase = await getSupabaseServer();
-  if (!supabase) return { error: 'Not configured in this environment yet.' as const };
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: 'Not signed in.' as const };
-  const workspace = await getActiveWorkspace(supabase);
-  if (!workspace) return { error: 'No workspace yet — create one first.' as const };
-
-  const canDo = createCanDo(membershipLookupFor(supabase));
-  const allowed = await canDo({ id: user.id as UserId }, 'workspace.manage', {
-    workspaceId: workspace.id,
-  });
-  if (!allowed) return { error: 'Only workspace admins can manage brand profiles.' as const };
-  return { supabase, userId: user.id as UserId, workspace };
+  return authorizeAction('workspace.manage', 'Only workspace admins can manage brand profiles.');
 }
 
 /** Turn the validated free-text form into the stored JSONB shapes (G0.4). */

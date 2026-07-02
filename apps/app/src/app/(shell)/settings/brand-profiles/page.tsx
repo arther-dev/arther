@@ -4,6 +4,7 @@ import {
   listArchivedBrandProfiles,
   listBrandProfiles,
 } from '@arther/db';
+import { roleAllows } from '@arther/authz';
 import { AppShell, EmptyState } from '@arther/ui';
 import { getSupabaseServer } from '../../../../lib/supabase/server';
 import {
@@ -50,7 +51,7 @@ export default async function BrandProfilesPage() {
     );
   }
 
-  const canManage = workspace.role === 'owner' || workspace.role === 'admin';
+  const canManage = roleAllows(workspace.role, 'workspace.manage');
   if (!canManage) {
     return (
       <AppShell>

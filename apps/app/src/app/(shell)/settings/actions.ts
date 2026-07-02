@@ -2,14 +2,13 @@
 
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
-import { createCanDo } from '@arther/authz';
+import { sendEmail } from '@arther/config';
 import { rateLimit } from '@arther/rate-limit';
 import {
   cancelWorkspaceDeletion,
   createInvitation,
-  getActiveWorkspace,
-  listMembers,
-  membershipLookupFor,
+  DbRuleError,
+  isMemberEmail,
   removeMember,
   requestWorkspaceDeletion,
   revokeInvitation,
@@ -19,6 +18,7 @@ import {
   updateWorkspaceName,
 } from '@arther/db';
 import { emailField, requiredText, type UserId, type WorkspaceId } from '@arther/types';
+import { authorizeAction } from '../../../lib/authorize';
 import { appOrigin } from '../../../lib/origin';
 import { getSupabaseServer } from '../../../lib/supabase/server';
 
@@ -31,21 +31,7 @@ export interface SettingsFormState {
 
 /** Workspace administration is owner/admin (canDo 'workspace.manage', guardrail 1). */
 async function authorizeManage() {
-  const supabase = await getSupabaseServer();
-  if (!supabase) return { error: 'Not configured in this environment yet.' as const };
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: 'Not signed in.' as const };
-  const workspace = await getActiveWorkspace(supabase);
-  if (!workspace) return { error: 'No workspace yet — create one first.' as const };
-
-  const canDo = createCanDo(membershipLookupFor(supabase));
-  const allowed = await canDo({ id: user.id as UserId }, 'workspace.manage', {
-    workspaceId: workspace.id,
-  });
-  if (!allowed) return { error: 'Only workspace admins can change this.' as const };
-  return { supabase, userId: user.id as UserId, workspace };
+  return authorizeAction('workspace.manage', 'Only workspace admins can change this.');
 }
 
 export async function renameWorkspaceAction(
@@ -163,12 +149,7 @@ export async function changeRoleAction(
       updatedBy: auth.userId,
     });
   } catch (e) {
-    return {
-      error:
-        e instanceof Error && e.message.includes('transfer ownership')
-          ? 'Transfer ownership before changing the owner’s role.'
-          : 'Could not change the role.',
-    };
+    return { error: e instanceof DbRuleError ? e.message : 'Could not change the role.' };
   }
   revalidatePath('/settings');
   return { done: true };
@@ -189,12 +170,7 @@ export async function removeMemberAction(
   try {
     await removeMember(auth.supabase, parsed.data.memberId);
   } catch (e) {
-    return {
-      error:
-        e instanceof Error && e.message.includes('owner cannot be removed')
-          ? 'The owner can’t be removed — transfer ownership first.'
-          : 'Could not remove the member.',
-    };
+    return { error: e instanceof DbRuleError ? e.message : 'Could not remove the member.' };
   }
   revalidatePath('/settings');
   return { done: true };
@@ -219,12 +195,7 @@ export async function transferOwnershipAction(
       newOwnerUserId: parsed.data.newOwnerUserId as UserId,
     });
   } catch (e) {
-    return {
-      error:
-        e instanceof Error && e.message.includes('only the workspace owner')
-          ? 'Only the current owner can transfer ownership.'
-          : 'Could not transfer ownership.',
-    };
+    return { error: e instanceof DbRuleError ? e.message : 'Could not transfer ownership.' };
   }
   revalidatePath('/settings');
   return { done: true };
@@ -257,8 +228,7 @@ export async function inviteMemberAction(
   }
 
   // Inviting an existing member is a no-op worth a friendly message.
-  const members = await listMembers(auth.supabase, auth.workspace.id as WorkspaceId);
-  if (members.some((m) => m.email.toLowerCase() === parsed.data.email.toLowerCase())) {
+  if (await isMemberEmail(auth.supabase, auth.workspace.id as WorkspaceId, parsed.data.email)) {
     return { error: 'That person is already a member.' };
   }
 
@@ -276,29 +246,15 @@ export async function inviteMemberAction(
 
   const inviteUrl = `${await appOrigin()}/invite/${invitationId}`;
 
-  const resendKey = process.env.RESEND_API_KEY;
-  if (resendKey) {
-    // RESEND_FROM must be on a domain verified in Resend to reach arbitrary
-    // recipients; the onboarding default only delivers to the account owner.
-    const from = process.env.RESEND_FROM ?? 'Arther <onboarding@resend.dev>';
-    const subject = `You're invited to ${auth.workspace.name} on Arther`;
-    const line = `${auth.workspace.name} invited you to join as ${parsed.data.role}.`;
-    try {
-      await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          from,
-          to: [parsed.data.email],
-          subject,
-          text: `${line} Accept within 7 days: ${inviteUrl}`,
-          html: `<p>${line}</p><p><a href="${inviteUrl}">Accept your invitation</a> — the link expires in 7 days.</p>`,
-        }),
-      });
-    } catch {
-      // The invitation row exists either way — the copyable link still works.
-    }
-  }
+  // Best-effort — the invitation row exists either way and the copyable link
+  // still works (sendEmail degrades to false while Resend is unprovisioned).
+  const line = `${auth.workspace.name} invited you to join as ${parsed.data.role}.`;
+  await sendEmail({
+    to: parsed.data.email,
+    subject: `You're invited to ${auth.workspace.name} on Arther`,
+    text: `${line} Accept within 7 days: ${inviteUrl}`,
+    html: `<p>${line}</p><p><a href="${inviteUrl}">Accept your invitation</a> — the link expires in 7 days.</p>`,
+  });
 
   revalidatePath('/settings');
   return { done: true, inviteUrl };
@@ -339,11 +295,11 @@ export async function requestWorkspaceDeletionAction(
     .safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { error: 'Type the workspace address to confirm.' };
 
-  const auth = await authorizeManage();
+  const auth = await authorizeAction(
+    'workspace.delete',
+    'Only the workspace owner can delete the workspace.',
+  );
   if ('error' in auth) return { error: auth.error };
-  if (auth.workspace.role !== 'owner') {
-    return { error: 'Only the workspace owner can delete the workspace.' };
-  }
   if (parsed.data.confirmSlug.toLowerCase() !== auth.workspace.slug.toLowerCase()) {
     return { error: 'That doesn’t match the workspace address.' };
   }
@@ -353,9 +309,7 @@ export async function requestWorkspaceDeletionAction(
   } catch (e) {
     return {
       error:
-        e instanceof Error && e.message.includes('only the workspace owner')
-          ? 'Only the workspace owner can delete the workspace.'
-          : 'Could not schedule the workspace for deletion.',
+        e instanceof DbRuleError ? e.message : 'Could not schedule the workspace for deletion.',
     };
   }
   revalidatePath('/settings');
@@ -388,8 +342,8 @@ export async function cancelWorkspaceDeletionAction(
   } catch (e) {
     return {
       error:
-        e instanceof Error && e.message.includes('only the workspace owner')
-          ? 'Only the workspace owner can restore the workspace.'
+        e instanceof DbRuleError
+          ? e.message
           : 'Could not restore the workspace — the grace period may have expired.',
     };
   }

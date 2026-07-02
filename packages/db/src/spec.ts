@@ -628,7 +628,7 @@ export async function moveSpecFieldOrder(
 
   let query = client
     .from('spec_fields')
-    .select('id')
+    .select('id, display_order')
     .eq('category', field.category as string)
     .is('archived_at', null)
     .order('display_order', { ascending: true })
@@ -639,19 +639,30 @@ export async function moveSpecFieldOrder(
   const { data: siblings, error: sibErr } = await query;
   if (sibErr) throw new Error(`moveSpecFieldOrder(siblings): ${sibErr.message}`);
 
-  const ids = (siblings ?? []).map((s) => s.id as string);
+  const rows = (siblings ?? []) as Array<{ id: string; display_order: number }>;
+  const orderById = new Map(rows.map((r) => [r.id, r.display_order]));
+  const ids = rows.map((r) => r.id);
   const idx = ids.indexOf(input.fieldId);
   if (idx < 0) return;
   const reordered = moveInList(ids, idx, input.direction);
   if (reordered[idx] === ids[idx]) return; // boundary — nothing moved
 
-  for (let i = 0; i < reordered.length; i += 1) {
-    const { error: upErr } = await client
-      .from('spec_fields')
-      .update({ display_order: i, updated_by: input.userId })
-      .eq('id', reordered[i]!);
-    if (upErr) throw new Error(`moveSpecFieldOrder(update): ${upErr.message}`);
-  }
+  // Write only the rows whose position actually changes — a one-step move on an
+  // already-normalized group is exactly two updates; gapped/duplicate orders
+  // (legacy data) still normalize because every drifted row is included.
+  const updates = reordered
+    .map((id, i) => ({ id, i }))
+    .filter(({ id, i }) => orderById.get(id) !== i)
+    .map(({ id, i }) =>
+      client
+        .from('spec_fields')
+        .update({ display_order: i, updated_by: input.userId })
+        .eq('id', id)
+        .then(({ error: upErr }) => {
+          if (upErr) throw new Error(`moveSpecFieldOrder(update): ${upErr.message}`);
+        }),
+    );
+  await Promise.all(updates);
 }
 
 /** Display names for feed attribution (id → name/email). */

@@ -3,7 +3,6 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
-import { createCanDo } from '@arther/authz';
 import {
   assignApprovalRole,
   createApprovalRole,
@@ -12,10 +11,8 @@ import {
   deleteApprovalRole,
   deleteSection,
   forkDocumentType,
-  getActiveWorkspace,
   getDocumentType,
   listApprovalRoles,
-  membershipLookupFor,
   reorderSections,
   setDocumentTypeArchived,
   unassignApprovalRole,
@@ -37,9 +34,8 @@ import {
   requiredText,
   type DocumentTypeId,
   type DocumentTypeSectionId,
-  type UserId,
 } from '@arther/types';
-import { getSupabaseServer } from '../../../../lib/supabase/server';
+import { authorizeAction } from '../../../../lib/authorize';
 
 export interface DocTypeFormState {
   error?: string;
@@ -52,21 +48,7 @@ export interface DocTypeFormState {
  * (owner/admin), with the 0004 admin-write RLS policies as defence in depth.
  */
 async function authorizeManage() {
-  const supabase = await getSupabaseServer();
-  if (!supabase) return { error: 'Not configured in this environment yet.' as const };
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: 'Not signed in.' as const };
-  const workspace = await getActiveWorkspace(supabase);
-  if (!workspace) return { error: 'No workspace yet — create one first.' as const };
-
-  const canDo = createCanDo(membershipLookupFor(supabase));
-  const allowed = await canDo({ id: user.id as UserId }, 'workspace.manage', {
-    workspaceId: workspace.id,
-  });
-  if (!allowed) return { error: 'Only workspace admins can configure document types.' as const };
-  return { supabase, userId: user.id as UserId, workspace };
+  return authorizeAction('workspace.manage', 'Only workspace admins can configure document types.');
 }
 
 export async function createDocumentTypeAction(

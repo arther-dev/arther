@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { roleAllows } from '@arther/authz';
 import { getActiveWorkspace, listQualityStandards } from '@arther/db';
 import { AppShell, EmptyState } from '@arther/ui';
 import { getSupabaseServer } from '../../../../lib/supabase/server';
@@ -45,7 +46,7 @@ export default async function QualityStandardsPage() {
     );
   }
 
-  const canManage = workspace.role === 'owner' || workspace.role === 'admin';
+  const canManage = roleAllows(workspace.role, 'workspace.manage');
   if (!canManage) {
     return (
       <AppShell>

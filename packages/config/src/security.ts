@@ -43,16 +43,46 @@ export const STATIC_SECURITY_HEADERS: Readonly<Record<string, string>> = {
 };
 
 /**
- * Build the per-request Content-Security-Policy string for the given nonce.
+ * The directive table both policies share — one place a CSP tweak lands.
  * Directives are assembled in a deterministic order so the output is stable
- * and testable.
+ * and testable; callers vary only script-src, connect-src, and form-action.
  */
+function assemblePolicy(
+  overrides: { scriptSrc: string[]; connectSrc: string[]; formAction: string[] },
+  isDev: boolean,
+): string {
+  const directives: Array<[string, string[]]> = [
+    ['default-src', ["'self'"]],
+    ['base-uri', ["'self'"]],
+    ['object-src', ["'none'"]],
+    ['frame-ancestors', ["'none'"]],
+    ['form-action', overrides.formAction],
+    // Logos and (later) doc imagery live in Supabase Storage.
+    ['img-src', ["'self'", 'data:', 'blob:', 'https://*.supabase.co']],
+    ['font-src', ["'self'", 'data:']],
+    // Style injection (styled-jsx / Tailwind layer) is low-risk; allow inline.
+    ['style-src', ["'self'", "'unsafe-inline'"]],
+    ['script-src', overrides.scriptSrc],
+    ['connect-src', overrides.connectSrc],
+    ['worker-src', ["'self'", 'blob:']],
+    ['manifest-src', ["'self'"]],
+  ];
+
+  const policy = directives.map(([name, values]) => `${name} ${values.join(' ')}`);
+  // Force HTTPS for any sub-resource in production.
+  if (!isDev) policy.push('upgrade-insecure-requests');
+  return policy.join('; ');
+}
+
+/** Dev: Next's HMR client uses eval + inline bootstrap. */
+const DEV_SCRIPT_SRC = ["'self'", "'unsafe-inline'", "'unsafe-eval'"];
+
+/** Build the per-request Content-Security-Policy string for the given nonce. */
 export function buildContentSecurityPolicy(nonce: string, options: CspOptions = {}): string {
   const { app = false, isDev = false } = options;
 
   const scriptSrc = isDev
-    ? // Dev: Next's HMR client uses eval + inline bootstrap.
-      ["'self'", "'unsafe-inline'", "'unsafe-eval'"]
+    ? DEV_SCRIPT_SRC
     : // Prod: nonce + strict-dynamic; 'self' is the CSP2 fallback.
       ["'self'", `'nonce-${nonce}'`, "'strict-dynamic'"];
 
@@ -73,28 +103,7 @@ export function buildContentSecurityPolicy(nonce: string, options: CspOptions = 
   // Google; the form-action grant keeps that navigation legal under CSP3.
   const formAction = app ? ["'self'", 'https://accounts.google.com'] : ["'self'"];
 
-  const directives: Array<[string, string[]]> = [
-    ['default-src', ["'self'"]],
-    ['base-uri', ["'self'"]],
-    ['object-src', ["'none'"]],
-    ['frame-ancestors', ["'none'"]],
-    ['form-action', formAction],
-    // Logos and (later) doc imagery live in Supabase Storage.
-    ['img-src', ["'self'", 'data:', 'blob:', 'https://*.supabase.co']],
-    ['font-src', ["'self'", 'data:']],
-    // Style injection (styled-jsx / Tailwind layer) is low-risk; allow inline.
-    ['style-src', ["'self'", "'unsafe-inline'"]],
-    ['script-src', scriptSrc],
-    ['connect-src', connectSrc],
-    ['worker-src', ["'self'", 'blob:']],
-    ['manifest-src', ["'self'"]],
-  ];
-
-  const policy = directives.map(([name, values]) => `${name} ${values.join(' ')}`);
-  // Force HTTPS for any sub-resource in production.
-  if (!isDev) policy.push('upgrade-insecure-requests');
-
-  return policy.join('; ');
+  return assemblePolicy({ scriptSrc, connectSrc, formAction }, isDev);
 }
 
 /** A short, URL-safe nonce for a single response's CSP. */
@@ -114,26 +123,6 @@ export function generateCspNonce(): string {
  */
 export function buildCacheableCsp(options: { isDev?: boolean } = {}): string {
   const { isDev = false } = options;
-  const scriptSrc = isDev
-    ? ["'self'", "'unsafe-inline'", "'unsafe-eval'"]
-    : ["'self'", "'unsafe-inline'"];
-
-  const directives: Array<[string, string[]]> = [
-    ['default-src', ["'self'"]],
-    ['base-uri', ["'self'"]],
-    ['object-src', ["'none'"]],
-    ['frame-ancestors', ["'none'"]],
-    ['form-action', ["'self'"]],
-    ['img-src', ["'self'", 'data:', 'blob:', 'https://*.supabase.co']],
-    ['font-src', ["'self'", 'data:']],
-    ['style-src', ["'self'", "'unsafe-inline'"]],
-    ['script-src', scriptSrc],
-    ['connect-src', ["'self'"]],
-    ['worker-src', ["'self'", 'blob:']],
-    ['manifest-src', ["'self'"]],
-  ];
-
-  const policy = directives.map(([name, values]) => `${name} ${values.join(' ')}`);
-  if (!isDev) policy.push('upgrade-insecure-requests');
-  return policy.join('; ');
+  const scriptSrc = isDev ? DEV_SCRIPT_SRC : ["'self'", "'unsafe-inline'"];
+  return assemblePolicy({ scriptSrc, connectSrc: ["'self'"], formAction: ["'self'"] }, isDev);
 }

@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { roleAllows } from '@arther/authz';
 import { getActiveWorkspace, getQualityStandard } from '@arther/db';
 import { qualityStandardIdSchema } from '@arther/types';
 import { AppShell, EmptyState } from '@arther/ui';
@@ -31,7 +32,7 @@ export default async function QualityStandardEditorPage({
   }
 
   const workspace = await getActiveWorkspace(supabase);
-  const canManage = workspace?.role === 'owner' || workspace?.role === 'admin';
+  const canManage = workspace ? roleAllows(workspace.role, 'workspace.manage') : false;
   const standard =
     parsedId.success && canManage ? await getQualityStandard(supabase, parsedId.data) : null;
 

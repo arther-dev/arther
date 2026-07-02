@@ -7,6 +7,7 @@ import {
   listMembers,
   type DocumentTypeDetail,
 } from '@arther/db';
+import { roleAllows } from '@arther/authz';
 import { AppShell, EmptyState } from '@arther/ui';
 import { documentTypeIdSchema } from '@arther/types';
 import { getSupabaseServer } from '../../../../lib/supabase/server';
@@ -65,7 +66,7 @@ export default async function DocumentTypesPage({
     );
   }
 
-  const canManage = workspace.role === 'owner' || workspace.role === 'admin';
+  const canManage = roleAllows(workspace.role, 'workspace.manage');
   const { type: typeParam } = await searchParams;
   const selectedId = typeParam ? documentTypeIdSchema.safeParse(typeParam).data : undefined;
 

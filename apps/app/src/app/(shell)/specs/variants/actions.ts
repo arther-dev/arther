@@ -1,15 +1,12 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { createCanDo } from '@arther/authz';
 import {
   addVariantDelta,
   createVariant,
   deleteVariant,
   getSpecField,
   getVariant,
-  membershipLookupFor,
-  getActiveWorkspace,
   removeVariantDelta,
   renameVariant,
   setVariantDefault,
@@ -25,10 +22,9 @@ import {
   variantIdSchema,
   type ProductId,
   type SpecFieldId,
-  type UserId,
   type VariantId,
 } from '@arther/types';
-import { getSupabaseServer } from '../../../../lib/supabase/server';
+import { authorizeAction } from '../../../../lib/authorize';
 
 export interface VariantActionResult {
   ok: boolean;
@@ -38,19 +34,7 @@ export interface VariantActionResult {
 
 /** The variant model is editor-level (owner/admin/member; viewers excluded). */
 async function authorizeEdit() {
-  const supabase = await getSupabaseServer();
-  if (!supabase) return { error: 'Not configured in this environment yet.' as const };
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: 'Not signed in.' as const };
-  const workspace = await getActiveWorkspace(supabase);
-  if (!workspace) return { error: 'No workspace yet — create one first.' as const };
-  const canDo = createCanDo(membershipLookupFor(supabase));
-  if (!(await canDo({ id: user.id as UserId }, 'doc.write', { workspaceId: workspace.id }))) {
-    return { error: 'Only editors can manage variants.' as const };
-  }
-  return { supabase, userId: user.id as UserId, workspace };
+  return authorizeAction('doc.write', 'Only editors can manage variants.');
 }
 
 export async function createVariantAction(

@@ -7,7 +7,13 @@ import {
   listUsersByIds,
   type UnitRow,
 } from '@arther/db';
-import { formatFieldValue, groupReplies, type SpecFieldId, type UserId } from '@arther/types';
+import {
+  formatFieldValue,
+  groupReplies,
+  unitSymbolFor,
+  type SpecFieldId,
+  type UserId,
+} from '@arther/types';
 import { ArchiveToggle, CommentForm } from './DetailForms';
 import type { ComponentOption } from './FieldValueEditor';
 
@@ -30,13 +36,14 @@ export async function FieldDetail({
   components: ComponentOption[];
   closeHref: string;
 }) {
-  const field = await getSpecField(supabase, fieldId);
-  if (!field) return null;
-
-  const [versions, comments] = await Promise.all([
+  // All three reads are keyed only by fieldId — fire them together.
+  const [field, versions, comments] = await Promise.all([
+    getSpecField(supabase, fieldId),
     listFieldVersions(supabase, fieldId),
     listFieldComments(supabase, fieldId),
   ]);
+  if (!field) return null;
+
   const people = await listUsersByIds(supabase, [
     ...versions.map((v) => v.changed_by),
     ...comments.map((c) => c.author_id),
@@ -44,15 +51,12 @@ export async function FieldDetail({
   const who = (id: UserId | null) =>
     id ? (people.get(id)?.name ?? people.get(id)?.email ?? 'someone') : 'someone';
 
-  const symbolFor = (value: unknown) => {
-    const unitId =
-      value && typeof value === 'object' && 'unit_id' in value
-        ? ((value as { unit_id?: string }).unit_id ?? field.unit_id)
-        : field.unit_id;
-    return units.find((u) => u.id === unitId)?.symbol;
-  };
   const fmt = (value: unknown) =>
-    formatFieldValue(field.type, (value ?? null) as never, symbolFor(value));
+    formatFieldValue(
+      field.type,
+      (value ?? null) as never,
+      unitSymbolFor(value, field.unit_id, units),
+    );
 
   const referencedName =
     field.type === 'reference' && field.value

@@ -7,6 +7,7 @@ import {
   getWorkspaceReviewCycleTimes,
   getZeroResultSearches,
 } from '@arther/db';
+import { roleAllows } from '@arther/authz';
 import { formatReviewDuration } from '@arther/types';
 import { AppShell, EmptyState } from '@arther/ui';
 import { getSupabaseServer } from '../../../../lib/supabase/server';
@@ -50,7 +51,7 @@ export default async function WorkspaceAnalyticsPage() {
     );
   }
 
-  const canManage = workspace.role === 'owner' || workspace.role === 'admin';
+  const canManage = roleAllows(workspace.role, 'workspace.manage');
   if (!canManage) {
     return (
       <AppShell>

@@ -370,6 +370,7 @@ export {
   createInvitation,
   getInvitation,
   getPendingWorkspaceDeletion,
+  isMemberEmail,
   listInvitations,
   listMembers,
   removeMember,

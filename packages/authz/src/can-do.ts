@@ -22,6 +22,7 @@ export type Action =
   | 'comment.write'
   | 'workspace.manage'
   | 'workspace.delete'
+  | 'workspace.transfer'
   | 'member.invite'
   | (string & {});
 
@@ -47,31 +48,42 @@ export type MembershipLookup = (
   workspaceId: WorkspaceId,
 ) => Promise<Membership | null>;
 
+/**
+ * The decision table itself — the one place a role is mapped to a permission.
+ * Surfaces that already hold the caller's role (getActiveWorkspace returns it)
+ * use this directly for render gating and re-checks instead of re-encoding the
+ * rules inline; canDo() is the same table behind a membership lookup.
+ */
+export function roleAllows(role: WorkspaceRole, action: Action): boolean {
+  switch (action) {
+    case 'workspace.manage':
+    case 'member.invite':
+      return role === 'owner' || role === 'admin';
+    case 'spec.write':
+    case 'doc.write':
+    case 'doc.generate':
+    case 'doc.submit': // drive document lifecycle (send for review / pull back)
+    case 'doc.revise': // fork a new working copy from a published snapshot
+    case 'doc.publish':
+      return role !== 'viewer'; // Editor seats only
+    case 'spec.read':
+    case 'doc.read':
+    case 'comment.write':
+    case 'doc.approve': // approving/rejecting is a spec'd viewer right (billing spec)
+      return true; // any member, incl. viewer
+    case 'workspace.delete':
+    case 'workspace.transfer':
+      return role === 'owner';
+    default:
+      return role === 'owner'; // closed by default
+  }
+}
+
 export function createCanDo(membership: MembershipLookup) {
   return async function canDo(user: AuthUser, action: Action, resource: Resource): Promise<boolean> {
     const m = await membership(user.id, resource.workspaceId); // null ⇒ not a member ⇒ deny
     if (!m) return false;
-    switch (action) {
-      case 'workspace.manage':
-      case 'member.invite':
-        return m.role === 'owner' || m.role === 'admin';
-      case 'spec.write':
-      case 'doc.write':
-      case 'doc.generate':
-      case 'doc.submit': // drive document lifecycle (send for review / pull back)
-      case 'doc.revise': // fork a new working copy from a published snapshot
-      case 'doc.publish':
-        return m.role !== 'viewer'; // Editor seats only
-      case 'spec.read':
-      case 'doc.read':
-      case 'comment.write':
-      case 'doc.approve': // approving/rejecting is a spec'd viewer right (billing spec)
-        return true; // any member, incl. viewer
-      case 'workspace.delete':
-        return m.role === 'owner';
-      default:
-        return m.role === 'owner'; // closed by default
-    }
+    return roleAllows(m.role, action);
   };
 }
 

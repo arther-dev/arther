@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import type { OverrideRow, SpecFieldRow, UnitRow } from '@arther/db';
-import { formatFieldValue, isOverridableFieldType } from '@arther/types';
+import { formatFieldValue, isOverridableFieldType, unitSymbolFor } from '@arther/types';
 import { BoxIcon, GridIcon, LocalRail, TagIcon } from '@arther/ui';
 import { FieldOrderControls } from './DetailForms';
 import { FieldValueEditor, OverrideEditor, type ComponentOption } from './FieldValueEditor';
@@ -101,11 +101,7 @@ export function FieldGrid({
             overrideContext?.overrides.get(`${overrideContext.edgeId}:${field.id}`) ?? null;
           // Effective value in a product context = override, else global (§3.5).
           const effective = override?.value ?? field.value;
-          const valueUnitId =
-            effective && 'unit_id' in (effective as object)
-              ? ((effective as { unit_id?: string }).unit_id ?? field.unit_id)
-              : field.unit_id;
-          const symbol = units.find((u) => u.id === valueUnitId)?.symbol;
+          const symbol = unitSymbolFor(effective, field.unit_id, units);
           return (
             <FieldRowWithHeader
               key={field.id}
@@ -151,14 +147,8 @@ function FieldRowWithHeader({
   isLast: boolean;
 }) {
   const effective = override?.value ?? field.value;
-  const globalSymbol = (() => {
-    if (override === null) return symbol;
-    const unitId =
-      field.value && 'unit_id' in (field.value as object)
-        ? ((field.value as { unit_id?: string }).unit_id ?? field.unit_id)
-        : field.unit_id;
-    return units.find((u) => u.id === unitId)?.symbol;
-  })();
+  const globalSymbol =
+    override === null ? symbol : unitSymbolFor(field.value, field.unit_id, units);
   // §5.5: a reference renders as a navigable link to the referenced component.
   const referenced =
     field.type === 'reference' && effective

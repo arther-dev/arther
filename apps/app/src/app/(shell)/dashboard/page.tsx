@@ -17,6 +17,7 @@ import {
   summarizeActionItems,
   type WorkspaceId,
 } from '@arther/types';
+import { roleAllows } from '@arther/authz';
 import { AppShell, EmptyState } from '@arther/ui';
 import { getSupabaseServer } from '../../../lib/supabase/server';
 import { AssistantNudge } from '../../../components/AssistantNudge';
@@ -93,7 +94,7 @@ export default async function DashboardPage({
   if (!workspace) redirect('/welcome');
 
   let checklist: ReactNode = null;
-  if (workspace.role === 'owner' || workspace.role === 'admin') {
+  if (roleAllows(workspace.role, 'workspace.manage')) {
     checklist = await buildChecklist(supabase, workspace.id);
   }
 

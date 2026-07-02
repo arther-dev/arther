@@ -3,6 +3,7 @@
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { rateLimit } from '@arther/rate-limit';
+import { acceptInvitation, DbRuleError } from '@arther/db';
 import {
   emailField,
   requiredText,
@@ -224,14 +225,14 @@ export async function acceptInviteAction(
     return { error: 'Log in (or sign up) with the invited email first, then open this link again.' };
   }
 
-  const { error } = await supabase.rpc('accept_workspace_invitation', {
-    p_invitation_id: parsed.data.invitationId,
-  });
-  if (error) {
-    if (error.message.includes('different email')) {
-      return { error: 'This invitation was sent to a different email address.' };
-    }
-    return { error: 'This invitation is no longer valid — ask for a new one.' };
+  try {
+    await acceptInvitation(supabase, parsed.data.invitationId);
+  } catch (e) {
+    // The 0014 RPC raises user-safe rule messages (revoked/expired/wrong email).
+    return {
+      error:
+        e instanceof DbRuleError ? e.message : 'This invitation is no longer valid — ask for a new one.',
+    };
   }
   redirect('/dashboard');
 }

@@ -3,7 +3,6 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
-import { createCanDo } from '@arther/authz';
 import { createAiGateway } from '@arther/ai-gateway';
 import { rateLimit } from '@arther/rate-limit';
 import {
@@ -12,10 +11,8 @@ import {
   createServiceClient,
   DbRuleError,
   getImportSession,
-  getActiveWorkspace,
   listUnits,
   loadCurrentSpecState,
-  membershipLookupFor,
   propagateImportBatch,
   updateImportSession,
   type ImportInterpretation,
@@ -33,8 +30,8 @@ import {
   type ParsedWorkbook,
   type PlannedMutation,
 } from '@arther/spec-import';
-import { parseFieldValue, type ProductId, type SpecFieldId, type UserId } from '@arther/types';
-import { getSupabaseServer } from '../../../../lib/supabase/server';
+import { parseFieldValue, type ProductId, type SpecFieldId } from '@arther/types';
+import { authorizeAction } from '../../../../lib/authorize';
 import { CATEGORIES } from '../shared';
 import { parseDecisions, recomputePlan } from './plan';
 
@@ -47,20 +44,7 @@ const MAX_UPLOAD_BYTES = 15 * 1024 * 1024;
 
 /** Import is spec mutation — editor-gated end to end (canDo + RLS behind it). */
 async function authorize() {
-  const supabase = await getSupabaseServer();
-  if (!supabase) return { error: 'Not configured in this environment yet.' as const };
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: 'Not signed in.' as const };
-  const workspace = await getActiveWorkspace(supabase);
-  if (!workspace) return { error: 'No workspace yet — create one first.' as const };
-  const canDo = createCanDo(membershipLookupFor(supabase));
-  const allowed = await canDo({ id: user.id as UserId }, 'spec.write', {
-    workspaceId: workspace.id,
-  });
-  if (!allowed) return { error: 'Viewers can’t import specs — ask for an Editor seat.' as const };
-  return { supabase, userId: user.id as UserId, workspace };
+  return authorizeAction('spec.write', 'Viewers can’t import specs — ask for an Editor seat.');
 }
 
 type Authorized = Exclude<Awaited<ReturnType<typeof authorize>>, { error: string }>;

@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { roleAllows } from '@arther/authz';
 import { BlockRenderer } from '@arther/block-renderer';
 import {
   getActiveWorkspace,
@@ -251,7 +252,7 @@ export default async function DocumentPage({
   const variantNameById = new Map(variants.map((v) => [v.id as string, v.name]));
   const blockContentById = new Map(tree.blocks.map((b) => [b.id as string, b.content]));
   const openConflicts =
-    workspace.role !== 'viewer'
+    roleAllows(workspace.role, 'doc.write')
       ? await listMergeConflicts(supabase, tree.document.id, { status: 'open' })
       : [];
   const mergeConflictViews: MergeConflictView[] = openConflicts.map((c) => ({
@@ -314,7 +315,7 @@ export default async function DocumentPage({
             {tree.revision.state}
           </span>
           <span style={{ flex: 1 }} />
-          {workspace.role !== 'viewer' ? (
+          {roleAllows(workspace.role, 'doc.write') ? (
             <DuplicateDocumentButton
               documentId={tree.document.id}
               sourceProductId={tree.document.product_id}
@@ -395,7 +396,7 @@ export default async function DocumentPage({
         ) : null}
         {variants.length > 0 ? (
           <p className="specs-grid__meta" style={{ display: 'flex', gap: 12 }}>
-            {workspace.role !== 'viewer' ? (
+            {roleAllows(workspace.role, 'doc.write') ? (
               <Link href={`/documents/${tree.document.id}/variant-scope`}>Manage variant scope →</Link>
             ) : null}
             {variants.length >= 2 ? (

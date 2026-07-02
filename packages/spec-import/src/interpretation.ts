@@ -121,8 +121,3 @@ export type ImportableFieldType =
   | 'enum'
   | 'multi_enum'
   | 'table';
-
-/** The spec_fields.type an interpreted value maps to. */
-export function fieldTypeOfRawValue(value: RawFieldValue): ImportableFieldType {
-  return value.kind === 'empty' ? 'scalar' : value.kind;
-}

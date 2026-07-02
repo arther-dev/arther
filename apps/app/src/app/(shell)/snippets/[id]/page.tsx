@@ -5,6 +5,7 @@ import {
   listSnippetReviewItems,
   listUsersByIds,
 } from '@arther/db';
+import { roleAllows } from '@arther/authz';
 import { blockPlainText, libraryItemIdSchema, libraryItemTypeLabel } from '@arther/types';
 import { AppShell, EmptyState } from '@arther/ui';
 import { getSupabaseServer } from '../../../../lib/supabase/server';
@@ -64,7 +65,7 @@ export default async function SnippetDetailPage({
   const ownerLabel = item.ownerId
     ? (owners?.get(item.ownerId)?.name ?? owners?.get(item.ownerId)?.email ?? 'Unknown')
     : 'Unassigned';
-  const canEdit = workspace.role !== 'viewer';
+  const canEdit = roleAllows(workspace.role, 'doc.write');
 
   // R.9 — a spec change may have flagged this snippet's prose as stale; editing it
   // resolves the flag everywhere. Surface the prompt to the owner/editors.
