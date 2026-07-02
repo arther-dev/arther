@@ -16,7 +16,7 @@ Method: five parallel audits over the Phase 1 surfaces (packages `config`/`db`/`
 | F3 Authorization | **Complete** | Single `canDo` authority, closed by default, RLS behind it. The two purity deviations found (inline owner check in the deletion action; role rules re-encoded in ~15 page gates) are **fixed in this PR** via `roleAllows`. |
 | F4 Workspace admin | **Complete** | Slug immutability, exactly-one-owner, invite expiry all DB-enforced and probed. Resend delivery is key-gated (copyable link until provisioned). |
 | F5 Spec DB core | Partial | 8 types Zod-gated, append-only versions, scalar-only overrides, release guards, cycle check, archive rules — all present and probed. **Gaps:** custom units/categories have schema+RLS but **no create surface**; table fields store whole-value blobs, not the row-level diffs F5.5 promises (the 0012 comment claims otherwise — doc/code contradiction); two acceptance scenarios unprobed (shared-component-two-products history; override-leaves-global-untouched). |
-| F6 Spec DB UI | Partial | Three-panel model, tree, all 8 editors incl. Excel paste + chart, override affordances, unified feed. **Acceptance failure: unit conversion is not implemented** — switching a unit re-labels the number without converting (`si_factor` is seeded but never read; admitted in `FieldValueEditor.tsx`'s comment). |
+| F6 Spec DB UI | Partial | Three-panel model, tree, all 8 editors incl. Excel paste + chart, override affordances, unified feed. **Acceptance failure: unit conversion is not implemented** — switching a unit re-labels the number without converting (`si_factor` is seeded but never read; admitted in `FieldValueEditor.tsx`'s comment). **RESOLVED 2026-07-02** — registry-backed conversion in `@arther/types/units.ts` (affine via SI base, app-side °C offset, delta rule for absolute tolerances) wired into the editors' unit select. |
 | F7 AI import | Partial | Upload→interpret→reconcile→review→commit-as-release all real and probed; additive-by-default holds. **Gaps:** interpretation runs inline in the server action — the "long imports run as a durable job" acceptance (ADR-006's "first use") never happened (`import_sessions.trigger_run_id` is never set); note-row/embedded-unit validation is model-prompted rather than deterministic; no migration/provisioning creates the `spec-imports` bucket. |
 | F8 Hardening | Partial | RLS probe in CI, rate limits on all three surfaces, headers/CSP on both apps, Zod at every sampled boundary, single-handler probe, deletion grace + purge cron. **Gap: F8.4** — PITR unenabled (owner-deferred) and no step-by-step restore runbook; the restore acceptance was never exercised. |
 
@@ -24,7 +24,7 @@ Method: five parallel audits over the Phase 1 surfaces (packages `config`/`db`/`
 
 ### Top gaps, ranked (follow-up work)
 
-1. **F6 — unit conversion on display** (only outright acceptance failure on a shipped surface; shows wrong-looking data silently).
+1. ~~**F6 — unit conversion on display**~~ **RESOLVED 2026-07-02** (`@arther/types/units.ts` + the editors' unit select; was the only outright acceptance failure on a shipped surface).
 2. **F7 — durable job for long imports** (inline AI call in a server action; `maxDuration=300` is the only mitigation).
 3. **F2.2 — `auth_providers` never populated**, and `handle_new_user()` never re-mirrors profile changes.
 4. **F1.6 — the workspace-id lint rule** was deferred and never landed.

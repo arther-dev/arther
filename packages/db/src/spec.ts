@@ -160,6 +160,8 @@ export interface UnitRow {
   name: string;
   symbol: string;
   dimension: string;
+  /** Linear factor to the dimension's SI base (F6 display conversion, §3.6). */
+  si_factor: number;
 }
 
 /** Global built-ins (workspace_id null) + the workspace's custom units. */
@@ -169,7 +171,7 @@ export async function listUnits(
 ): Promise<UnitRow[]> {
   const { data, error } = await client
     .from('units')
-    .select('id, name, symbol, dimension')
+    .select('id, name, symbol, dimension, si_factor')
     .or(`workspace_id.is.null,workspace_id.eq.${workspaceId}`)
     .order('dimension')
     .order('name');
